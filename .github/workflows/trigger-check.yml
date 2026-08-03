@@ -1,0 +1,29 @@
+name: Trigger deal check
+
+# Déclenche un cycle de vérification en appelant l'endpoint admin du backend.
+# Utile si le backend est hébergé sur un plan gratuit qui se met en veille
+# après inactivité (ex Render free) : cet appel HTTP le réveille puis lance
+# la vérification, sans dépendre du scheduler interne qui serait, lui,
+# suspendu pendant la mise en veille. Voir README > "Hébergement 100% gratuit".
+#
+# Configuration requise : dans Settings -> Secrets and variables -> Actions
+# du repo, ajouter un secret BACKEND_URL avec l'URL du backend déployé (ex
+# https://pokemon-deal-hunter-backend.onrender.com, sans slash final).
+
+on:
+  schedule:
+    - cron: "*/20 * * * *"   # toutes les 20 min ; ajuster pour matcher CHECK_INTERVAL_MINUTES
+  workflow_dispatch: {}       # permet aussi un déclenchement manuel depuis l'onglet Actions
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Appeler /api/admin/run-check-now
+        run: |
+          if [ -z "${{ secrets.BACKEND_URL }}" ]; then
+            echo "Secret BACKEND_URL non configuré — voir le commentaire en haut de ce fichier."
+            exit 1
+          fi
+          curl --fail --max-time 90 --retry 2 --retry-delay 10 \
+            -X POST "${{ secrets.BACKEND_URL }}/api/admin/run-check-now"

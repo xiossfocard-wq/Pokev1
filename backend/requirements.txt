@@ -1,0 +1,12 @@
+# Backend — Pokémon Deal Hunter
+# Installer avec : pip install -r requirements.txt --break-system-packages
+# (ou dans un venv : python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt)
+
+fastapi>=0.111,<1.0
+uvicorn[standard]>=0.29,<1.0
+sqlalchemy>=2.0,<3.0
+psycopg2-binary>=2.9,<3.0   # driver Postgres, nécessaire pour Neon en production (inutile en dev SQLite)
+apscheduler>=3.10,<4.0
+python-dotenv>=1.0,<2.0
+requests>=2.31,<3.0
+pydantic>=2.6,<3.0

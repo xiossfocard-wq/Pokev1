@@ -1,0 +1,28 @@
+# Blueprint Render (https://render.com/docs/blueprint-spec) : permet un
+# déploiement du backend en quelques clics via "New +" -> "Blueprint" en
+# pointant sur ce repo GitHub. Plan "free" par défaut — voir README pour les
+# limites (mise en veille après 15 min d'inactivité) et comment vivre avec.
+services:
+  - type: web
+    name: pokemon-deal-hunter-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        sync: false   # coller ici la connection string Neon (voir README)
+      - key: EBAY_CLIENT_ID
+        sync: false
+      - key: EBAY_CLIENT_SECRET
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: CHECK_INTERVAL_MINUTES
+        value: "20"
+      - key: VINTED_ENABLED
+        value: "true"
