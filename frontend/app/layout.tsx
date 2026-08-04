@@ -11,7 +11,7 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-body" });
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
 export const metadata: Metadata = {
-  title: "Chasse aux bonnes affaires — Cartes Pokémon FR",
+  title: "Le Pokéradar à Pépites",
   description:
     "Surveillance Vinted & eBay pour cartes Pokémon françaises, comparée à Cardmarket et ZebraDex.",
 };

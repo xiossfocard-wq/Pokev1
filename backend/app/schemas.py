@@ -25,6 +25,14 @@ class ListingOut(BaseModel):
     quality_vision_score: Optional[float] = None
     quality_vision_detail: Optional[dict] = None
     deal_score: Optional[float] = None
+    rarity_tier: Optional[str] = None
+    is_vintage: bool = False
+    is_popular_pokemon: bool = False
+    condition_tier: Optional[str] = None
+    price_low_eur: Optional[float] = None
+    price_high_eur: Optional[float] = None
+    price_match_confidence: Optional[str] = None
+    price_detail: Optional[dict] = None
     status: str
     first_seen_at: datetime
     last_seen_at: datetime

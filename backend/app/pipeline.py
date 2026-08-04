@@ -22,6 +22,8 @@ from app.matching.card_matcher import guess_card_from_title
 from app.models import Listing, SourcePlatform, ListingStatus, PriceReference, NotificationSent
 from app.scoring.margin import calculate_margin, normalize_margin_ratio
 from app.scoring.quality_text import analyze_text_quality
+from app.scoring.card_appeal import detect_card_appeal
+from app.services.price_index import find_price_for_listing, sync_series_batch
 from app.scoring.deal_score import calculate_deal_score, QualityBlend
 from app.scoring.seller_reliability import score_ebay_seller, score_vinted_seller
 from app.vision.quality_vision import analyze_card_photos
@@ -102,65 +104,51 @@ def _lookup_zebradex_price(match) -> Optional[float]:
     return _zebradex_prices.get(match.card_slug)
 
 
-def _get_or_fetch_reference_price(db: Session, title: str) -> tuple:
+def _get_or_fetch_reference_price(db: Session, title: str, description: str = "") -> tuple:
     """
-    Retourne (reference_price, source_label) ou (None, None). Combine
-    Cardmarket et ZebraDex quand les deux sont disponibles (moyenne simple,
-    label "cardmarket+zebradex") ; utilise celui des deux qui est
-    disponible sinon. Le résultat combiné est mis en cache 1 jour en DB
-    sous la même clé que précédemment (le format ne change pas).
+    Resout le prix de reference depuis l'index local (voir
+    services/price_index.py). Retourne (prix, libelle_source, detail_dict)
+    ou (None, None, None).
+
+    Change le 04/08/2026 : avant, chaque annonce declenchait une requete
+    Cardmarket carte-par-carte qui echouait presque toujours (l'URL exige
+    l'extension exacte, indevinable depuis un titre Vinted). Desormais
+    l'index ZebraDex complet est construit en tache de fond et le matching
+    se fait en local, sans requete reseau par annonce.
     """
-    match = guess_card_from_title(title)
+    match = find_price_for_listing(db, title, description)
     if match is None:
-        return None, None
-
-    cached = db.query(PriceReference).filter_by(card_slug=match.card_slug).first()
-    if cached and cached.fetched_at and datetime.utcnow() - cached.fetched_at < PRICE_CACHE_MAX_AGE:
-        price = cached.trend_price_eur or cached.avg_30d_price_eur
-        return price, (cached.price_source or "cardmarket") + " (cache)"
-
-    cardmarket_price = _lookup_cardmarket_price(match)
-    zebradex_price = _lookup_zebradex_price(match)
-
-    if cardmarket_price is not None and zebradex_price is not None:
-        price = (cardmarket_price + zebradex_price) / 2
-        source_label = "cardmarket+zebradex"
-    elif cardmarket_price is not None:
-        price = cardmarket_price
-        source_label = "cardmarket"
-    elif zebradex_price is not None:
-        price = zebradex_price
-        source_label = "zebradex"
-    else:
-        return None, None
-
-    if cached:
-        cached.trend_price_eur = price
-        cached.fetched_at = datetime.utcnow()
-        cached.price_source = source_label
-    else:
-        db.add(PriceReference(
-            card_slug=match.card_slug,
-            trend_price_eur=price,
-            price_source=source_label,
-            fetched_at=datetime.utcnow(),
-        ))
-    db.commit()
-
-    return price, source_label
+        return None, None, None
+    detail = match.to_dict()
+    label = f"zebradex ({detail['confidence']})"
+    return match.row.price_eur, label, detail
 
 
 def _score_listing(db: Session, listing: Listing):
+    # Filtre langue (activé par défaut, voir FRENCH_ONLY dans .env) : le
+    # plus tôt possible, avant même de dépenser un appel Cardmarket/vision,
+    # pour ne pas payer à analyser des annonces qu'on ignorera de toute
+    # façon. Ne détecte que les indices EXPLICITES de langue étrangère dans
+    # le titre (voir app/core/language_filter.py) — un titre qui ne dit
+    # rien est traité comme probablement français, pas comme suspect.
     if settings.french_only and looks_non_french(listing.title, listing.description):
         listing.status = ListingStatus.IGNORED
         listing.scored_at = datetime.utcnow()
         db.commit()
         return
 
-    reference_price, source_label = _get_or_fetch_reference_price(db, listing.title)
+    reference_price, source_label, price_detail = _get_or_fetch_reference_price(
+        db, listing.title, listing.description or ""
+    )
 
     text_quality = analyze_text_quality(listing.title, listing.description)
     listing.quality_text_score = text_quality.score
+    listing.condition_tier = text_quality.condition_tier
+
+    appeal = detect_card_appeal(listing.title, listing.description)
+    listing.rarity_tier = appeal["rarity_tier"]
+    listing.is_vintage = appeal["is_vintage"]
+    listing.is_popular_pokemon = appeal["is_popular_pokemon"]
 
     # NB coût : contrairement à la version précédente, l'analyse vision
     # tourne maintenant pour toute annonce avec photos dès que la clé est
@@ -186,6 +174,11 @@ def _score_listing(db: Session, listing: Listing):
             listing.quality_vision_score = vision_result.score
             listing.quality_vision_detail = vision_result.to_dict()
 
+    # Second filtre langue, cette fois basé sur ce que la vision a
+    # réellement lu sur la carte (plus fiable que le titre pour les
+    # annonces qui ne précisent rien) — s'applique même si le titre seul
+    # n'avait rien détecté. On ne rejette que sur un signal net (pas de
+    # français), pas sur une lecture vide/incertaine.
     if (
         settings.french_only
         and vision_result
@@ -205,18 +198,32 @@ def _score_listing(db: Session, listing: Listing):
     if reference_price is None and vision_result and vision_result.ocr_confidence in ("medium", "high"):
         ocr_text = f"{vision_result.printed_name} {vision_result.printed_set_number}".strip()
         if ocr_text:
-            reference_price, source_label = _get_or_fetch_reference_price(db, ocr_text)
+            reference_price, source_label, price_detail = _get_or_fetch_reference_price(db, ocr_text)
             if reference_price is not None:
                 source_label = f"{source_label} (via OCR photo)"
 
     if reference_price is None:
-        listing.status = ListingStatus.IGNORED
+        # NB (04/08/2026) : avant, ce cas utilisait IGNORED, ce qui faisait
+        # disparaître l'annonce du dashboard (routers/listings.py exclut
+        # IGNORED) — corrigé suite à un retour : l'utilisateur veut voir ces
+        # annonces quand même pour comparer manuellement au prix du marché,
+        # même sans marge calculée automatiquement.
+        listing.status = ListingStatus.NO_PRICE_MATCH
         listing.scored_at = datetime.utcnow()
         db.commit()
         return
 
     listing.reference_price = reference_price
     listing.reference_price_source = source_label
+    if price_detail:
+        listing.price_detail = price_detail
+        listing.price_low_eur = price_detail.get("price_low_eur")
+        listing.price_high_eur = price_detail.get("price_high_eur")
+        listing.price_match_confidence = price_detail.get("confidence")
+        # La rarete officielle ZebraDex est plus fiable que la detection
+        # par mots-cles du titre : elle a la priorite quand disponible.
+        if price_detail.get("rarity"):
+            listing.rarity_tier = price_detail["rarity"]
 
     margin_result = calculate_margin(
         listing_price=listing.price,
@@ -245,11 +252,11 @@ def _score_listing(db: Session, listing: Listing):
         listing.seller_reliability_score = seller_result.score
         listing.seller_reliability_detail = seller_result.detail
 
-    listing.deal_score = calculate_deal_score(
+    listing.deal_score = min(100.0, calculate_deal_score(
         margin_score_0_100=margin_score,
         quality_blend=quality_blend,
         seller_score_0_100=listing.seller_reliability_score or 50.0,
-    )
+    ) + appeal["appeal_bonus"])
     listing.status = ListingStatus.SCORED
     listing.scored_at = datetime.utcnow()
     db.commit()
@@ -343,8 +350,20 @@ def run_vinted_check(db: Session):
         logger.info("Vinted: désactivé par config")
         return
 
+    # Deux passes avec des tris différents plutôt qu'une seule : "newest_first"
+    # seul ratait les bonnes affaires plus anciennes toujours en vente (retour
+    # utilisateur du 04/08/2026). "price_low_to_high" n'a pas pu être vérifié
+    # en conditions réelles (paramètre standard chez Vinted mais pas testé
+    # spécifiquement sur ce catalogue) — si cette 2e passe ne remonte rien de
+    # nouveau, vérifier avec /api/admin/debug-vinted en changeant le tri.
+    results = []
     try:
-        results = _vinted_scraper.search_pokemon_listings(search_text=settings.vinted_search_text)
+        results += _vinted_scraper.search_pokemon_listings(
+            search_text=settings.vinted_search_text, sort_order="newest_first"
+        )
+        results += _vinted_scraper.search_pokemon_listings(
+            search_text=settings.vinted_search_text, sort_order="price_low_to_high"
+        )
     except VintedBlockedError as exc:
         logger.warning("Vinted: %s", exc)
         return
@@ -387,7 +406,23 @@ def run_vinted_check(db: Session):
 
 
 def run_full_check(db: Session):
-    logger.info("=== Début du cycle de vérification ===")
+    logger.info("=== Debut du cycle de verification ===")
+
+    # L'index de prix se construit progressivement, quelques series par
+    # cycle (voir services/price_index.py). Fait AVANT la collecte pour que
+    # les annonces du cycle beneficient des prix les plus recents.
+    # Encapsule : une panne ZebraDex ne doit jamais empecher la collecte
+    # d'annonces, qui reste utile meme sans prix de reference.
+    try:
+        summary = sync_series_batch(db, batch_size=settings.zebradex_batch_size)
+        logger.info(
+            "Index prix : +%d serie(s), %d cartes en base, %d serie(s) restantes",
+            summary["series_synced"], summary["total_prices_in_index"],
+            summary["series_never_synced_remaining"],
+        )
+    except Exception as exc:
+        logger.error("Index prix : synchronisation echouee (%s) - collecte poursuivie", exc)
+
     run_ebay_check(db)
     run_vinted_check(db)
-    logger.info("=== Fin du cycle de vérification ===")
+    logger.info("=== Fin du cycle de verification ===")

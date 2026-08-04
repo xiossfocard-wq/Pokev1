@@ -23,14 +23,18 @@ fetch web, PAS depuis ce conteneur qui n'a pas d'accès réseau sortant) :
 - L'endpoint JSON interne "/api/v2/catalog/items" est bloqué d'emblée par
   la protection anti-bot (Datadome) même pour une requête ponctuelle et
   bien formée : on ne l'utilise donc PAS.
-- Les pages HTML "humaines" du catalogue répondent normalement et
-  affichent bien les annonces (prix, état, vendeur...). C'est donc cette
+- Les pages HTML "humaines" du catalogue (ex:
+  https://www.vinted.fr/brand/191646-pokemon?catalog[]=1502 — 1502 étant
+  l'ID catégorie "Cartes à collectionner à l'unité") répondent normalement
+  et affichent bien les annonces (prix, état, vendeur...). C'est donc cette
   famille d'URL "catalogue humain" qui est utilisée ci-dessous, combinée à
   `search_text` pour filtrer sur "carte pokemon".
 - Le contenu exact du JSON embarqué (__NEXT_DATA__ / __NUXT__) n'a en
-  revanche pas pu être inspecté brut avant le premier lancement réel, d'où
-  la méthode diagnostic_fetch() ajoutée ci-dessous pour lever le doute
-  directement en production sans avoir besoin de fouiller les logs.
+  revanche pas pu être inspecté brut (le fetch de vérification renvoie du
+  texte déjà extrait/converti, pas le HTML source), donc la fonction
+  `_walk_for_items` reste volontairement générique et tolérante. Si elle
+  ne trouve rien lors du premier lancement réel, le plus rapide est de
+  m'envoyer un extrait du `<script>` JSON de la page pour l'ajuster.
 - Les ID de catégorie/marque Vinted peuvent changer : à revérifier
   ponctuellement si le scraper cesse de remonter des résultats.
 """
@@ -58,9 +62,11 @@ DEFAULT_HEADERS = {
 }
 
 # Motifs de scripts susceptibles de contenir l'état JSON hydraté de la page
-# — gardés pour fetch_item_detail, mais confirmés INUTILISABLES pour la page
-# catalogue (voir _parse_catalog_html : ni __NEXT_DATA__ ni __NUXT__ ne sont
-# présents sur cette page, confirmé en prod le 04/08/2026).
+# — gardés pour fetch_item_detail (page fiche article, structure non confirmée
+# séparément), mais confirmés INUTILISABLES pour la page catalogue (voir plus
+# bas _parse_catalog_html, basé sur un vrai échantillon récupéré en prod le
+# 04/08/2026 via /api/admin/debug-vinted : ni __NEXT_DATA__ ni __NUXT__ ne
+# sont présents sur cette page).
 _JSON_BLOB_PATTERNS = [
     re.compile(r'<script[^>]+id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.DOTALL),
     re.compile(r'window\.__NUXT__\s*=\s*(\{.*?\});?\s*</script>', re.DOTALL),
@@ -88,9 +94,11 @@ COOLDOWN_SECONDS_AFTER_BLOCK = 30 * 60
 # Catégorie Vinted FR "Cartes à collectionner à l'unité". Historique : une
 # première valeur (1502) s'est révélée incorrecte lors du tout premier essai
 # en production (03/08/2026). Reconfirmée le 04/08/2026 via plusieurs pages
-# réelles trouvées par recherche web : la sous-catégorie "cartes à l'unité"
-# (par opposition aux lots) est 4875. À revérifier si le scraper cesse à
-# nouveau de remonter des résultats pertinents.
+# réelles trouvées par recherche web (ex:
+# vinted.fr/catalog/4874-carduri-de-tranzactionare/brand/191646-pokemon pour
+# la catégorie parente "Trading cards" = 4874) : la sous-catégorie "cartes à
+# l'unité" (par opposition aux lots) est 4875. À revérifier si le scraper
+# cesse à nouveau de remonter des résultats pertinents.
 TRADING_CARDS_SINGLES_CATALOG_ID = 4875
 POKEMON_BRAND_ID = 191646
 
@@ -227,21 +235,31 @@ class VintedScraper:
 
     def diagnostic_fetch(self, search_text: str = "carte pokemon") -> dict:
         """
-        v2 : cherche autour des liens /items/... plutot qu'un blob JSON
-        hydrate, qui n'existe pas sur cette page (confirme en prod).
+        Fait exactement la même requête que search_pokemon_listings, mais
+        retourne des infos de diagnostic au lieu d'essayer de parser des
+        annonces. Utilisé via GET /api/admin/debug-vinted quand l'extraction
+        échoue en prod, pour obtenir un vrai échantillon de HTML sans avoir
+        besoin d'accéder aux logs bruts. Volontairement en lecture seule et
+        peu coûteux (une seule requête, comme un cycle normal).
+
+        v2 (04/08/2026) : première diagnostic en prod a révélé que la page
+        ne contient NI __NEXT_DATA__ NI __NUXT__ (mon hypothèse de départ
+        était fausse) — donc on cherche maintenant autour des liens
+        d'annonces (/items/...) plutôt qu'un blob JSON hydraté.
         """
         path = self._search_path(search_text)
         resp = self._get(path)
         if resp is None:
             return {
                 "ok": False,
-                "reason": "Requete bloquee ou echouee - voir logs Render.",
+                "reason": "Requête bloquée ou échouée avant même de recevoir une "
+                          "réponse — voir les logs Render pour le détail (403/429/timeout).",
                 "url_tentee": f"{self.base_url}{path}",
             }
 
         html = resp.text
 
-        def sample_around(needle, before=150, after=900, occurrence=0):
+        def sample_around(needle: str, before: int = 150, after: int = 900, occurrence: int = 0):
             positions = [m.start() for m in re.finditer(re.escape(needle), html)]
             if len(positions) <= occurrence:
                 return None
@@ -269,7 +287,11 @@ class VintedScraper:
     def _parse_catalog_html(cls, html: str) -> list:
         """
         Extrait les annonces directement depuis le HTML de la page
-        catalogue. Ne dépend d'aucun blob JSON. Dédoublonne par item_id.
+        catalogue (voir constantes _ITEM_LINK_PATTERN / _ITEM_IMAGE_PATTERN
+        ci-dessus pour le format réel, confirmé en prod le 04/08/2026).
+        Ne dépend d'aucun blob JSON. Dédoublonne par item_id (chaque annonce
+        apparaît une fois comme lien cliquable, potentiellement croisée
+        avec d'autres occurrences du même id ailleurs sur la page).
         """
         images_by_id = {}
         for match in _ITEM_IMAGE_PATTERN.finditer(html):
@@ -295,7 +317,7 @@ class VintedScraper:
                 currency="EUR",
                 url=f"https://www.vinted.fr{href}",
                 photo_urls=[images_by_id[item_id]] if item_id in images_by_id else [],
-                description="",
+                description="",  # pas dispo sur la page catalogue, voir fetch_item_detail
                 raw={
                     "condition": parsed.get("condition"),
                     "price_incl_protection_acheteur": parsed.get("price_incl"),
@@ -305,7 +327,15 @@ class VintedScraper:
         return listings
 
     @staticmethod
-    def _parse_title_attr(title_attr: str):
+    def _parse_title_attr(title_attr: str) -> Optional[dict]:
+        """
+        title_attr ressemble à :
+        "Magicarpe FR 19/98 - Excellent, Marque: Pokémon, État: Très bon état, 2.99 €, 3.84 €"
+        Le titre peut être générique ("Pokémon" tout seul) si le vendeur n'a
+        pas mis de titre descriptif — on garde quand même l'annonce, le
+        matching de carte (card_matcher.py) et l'OCR photo serviront de
+        filet de rattrapage dans ce cas.
+        """
         if ", Marque:" not in title_attr:
             return None
         title = title_attr.split(", Marque:")[0].strip()
@@ -335,22 +365,30 @@ class VintedScraper:
             "price_incl": price_incl,
         }
 
-    def _search_path(self, search_text: str) -> str:
+    def _search_path(self, search_text: str, sort_order: str = "newest_first") -> str:
         return (
             f"/catalog/{TRADING_CARDS_SINGLES_CATALOG_ID}"
             f"?search_text={requests.utils.quote(search_text)}"
             f"&brand_ids[]={POKEMON_BRAND_ID}"
-            "&order=newest_first"
+            f"&order={sort_order}"
         )
 
-    def search_pokemon_listings(self, search_text: str = "carte pokemon", per_page: int = 48) -> list:
+    def search_pokemon_listings(
+        self, search_text: str = "carte pokemon", per_page: int = 48, sort_order: str = "newest_first"
+    ) -> list:
         """
         Récupère les annonces du catalogue de recherche Vinted pour les
         cartes Pokémon, via parsing HTML direct (_parse_catalog_html).
         Retourne une liste vide (avec log d'avertissement) si rien n'est
         extrait plutôt que de faire planter le pipeline.
+
+        `sort_order` : "newest_first" (défaut) ne remonte que les annonces
+        les plus récentes — utile pour la fraîcheur, mais rate les bonnes
+        affaires plus anciennes toujours en vente. Voir run_vinted_check
+        (pipeline.py) qui appelle cette méthode 2x avec des tris différents
+        pour élargir la couverture, suite à un retour utilisateur.
         """
-        resp = self._get(self._search_path(search_text))
+        resp = self._get(self._search_path(search_text, sort_order))
         if resp is None:
             return []
 

@@ -58,9 +58,18 @@ class Settings:
         default_factory=lambda: os.environ.get("VINTED_SEARCH_TEXT", "carte pokemon")
     )
 
-    # --- Filtre langue (active par defaut : cartes francaises uniquement) ---
+    # --- Filtre langue (activé par défaut : cartes françaises uniquement) ---
     french_only: bool = field(
         default_factory=lambda: os.environ.get("FRENCH_ONLY", "true").lower() != "false"
+    )
+
+    # --- ZebraDex (source principale de prix, aucune cle requise) ---
+    # Nombre de series synchronisees par cycle. 169 series au total, ~6s
+    # par requete : 6 par cycle de 20 min = index complet en ~10h, puis
+    # rafraichissement continu. Augmenter accelere mais sollicite plus le
+    # site ; 30 est un maximum raisonnable.
+    zebradex_batch_size: int = field(
+        default_factory=lambda: int(os.environ.get("ZEBRADEX_BATCH_SIZE", "6"))
     )
 
     # --- Cardmarket (prix de référence public, pas de clé API) ---

@@ -7,6 +7,16 @@ mots-clés. Ce n'est pas une compréhension sémantique fine (une description
 qui dit "aucune rayure" contient quand même le mot "rayure" — on essaie de
 gérer les négations simples les plus fréquentes, mais ça reste imparfait,
 d'où le poids modéré donné à ce signal dans le score final).
+
+Échelle d'état détectée (recherche faite le 04/08/2026) : le marché de la
+carte à l'unité (Cardmarket, TCGplayer, eBay, communauté FR) utilise une
+échelle standard, du meilleur au pire : NM (Near Mint / quasi neuf) > LP
+(Lightly Played / légers défauts) > MP (Moderately Played / état moyen) >
+HP (Heavily Played / très usée) > DMG (Damaged / endommagée). C'est
+différent du grading professionnel numérique (PSA/BGS/CGC 1-10), qui
+s'applique à une carte déjà scellée dans un boîtier certifié — la plupart
+des annonces d'occasion sur Vinted/eBay utilisent l'échelle NM/LP/MP/HP,
+pas une note PSA.
 """
 import re
 from dataclasses import dataclass, field
@@ -36,6 +46,21 @@ NEGATION_PATTERNS = ["sans ", "pas de ", "aucun ", "aucune ", "no "]
 
 _NEGATION_WINDOW = 12  # nb de caractères avant le mot-clé où chercher une négation
 
+# Échelle d'état standard du marché carte à l'unité, du meilleur au pire —
+# voir docstring du module. Ordre de la liste = ordre de priorité de
+# détection (si plusieurs correspondent, on garde la meilleure trouvée).
+_CONDITION_TIERS = [
+    ("NM", ["near mint", "nm", "mint", "quasi neuf", "comme neuf"]),
+    ("LP", ["lightly played", "legers defauts", "légers défauts", "lp", "excellent"]),
+    ("MP", ["moderately played", "etat moyen", "état moyen", "mp"]),
+    ("HP", ["heavily played", "tres usee", "très usée", "hp"]),
+    ("DMG", ["damaged", "endommagée", "endommagee", "abimée", "abimee", "dmg"]),
+]
+_CONDITION_PATTERNS = [
+    (tier, re.compile("|".join(rf"\b{re.escape(kw)}\b" for kw in kws), re.IGNORECASE))
+    for tier, kws in _CONDITION_TIERS
+]
+
 
 @dataclass
 class TextQualityResult:
@@ -43,6 +68,7 @@ class TextQualityResult:
     matched_positive: List[str] = field(default_factory=list)
     matched_negative: List[str] = field(default_factory=list)
     negated_negative: List[str] = field(default_factory=list)  # ex: "sans rayure"
+    condition_tier: str = None  # "NM" | "LP" | "MP" | "HP" | "DMG" | None si indétecté
 
     def to_dict(self) -> dict:
         return {
@@ -50,6 +76,7 @@ class TextQualityResult:
             "matched_positive": self.matched_positive,
             "matched_negative": self.matched_negative,
             "negated_negative": self.negated_negative,
+            "condition_tier": self.condition_tier,
         }
 
 
@@ -88,9 +115,16 @@ def analyze_text_quality(title: str, description: str) -> TextQualityResult:
     score += min(len(negated_negative), 3) * 3.0    # léger bonus si défauts explicitement niés
     score = max(0.0, min(100.0, score))
 
+    condition_tier = None
+    for tier, pattern in _CONDITION_PATTERNS:
+        if pattern.search(full_text):
+            condition_tier = tier
+            break
+
     return TextQualityResult(
         score=score,
         matched_positive=matched_positive,
         matched_negative=matched_negative,
         negated_negative=negated_negative,
+        condition_tier=condition_tier,
     )

@@ -5,7 +5,10 @@ import Link from "next/link";
 import {
   fetchListings,
   triggerCheckNow,
+  fetchPriceIndexStatus,
+  triggerPriceSync,
   type Listing,
+  type PriceIndexStatus,
   type SortField,
   type SortOrder,
 } from "@/lib/api";
@@ -21,6 +24,8 @@ export default function DashboardPage() {
   const [mobileTab, setMobileTab] = useState<"vinted" | "ebay">("vinted");
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [indexStatus, setIndexStatus] = useState<PriceIndexStatus | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -42,11 +47,31 @@ export default function DashboardPage() {
     }
   }, [sortBy, order, minScore]);
 
+  const loadIndexStatus = useCallback(() => {
+    fetchPriceIndexStatus().then(setIndexStatus).catch(() => {});
+  }, []);
+
   useEffect(() => {
     load();
-    const interval = setInterval(load, 60_000); // rafraîchit l'affichage 1x/min
+    loadIndexStatus();
+    const interval = setInterval(() => {
+      load();
+      loadIndexStatus();
+    }, 60_000);
     return () => clearInterval(interval);
-  }, [load]);
+  }, [load, loadIndexStatus]);
+
+  async function handleSyncPrices() {
+    setSyncing(true);
+    try {
+      await triggerPriceSync(12);
+    } finally {
+      setTimeout(() => {
+        setSyncing(false);
+        loadIndexStatus();
+      }, 5000);
+    }
+  }
 
   async function handleCheckNow() {
     setChecking(true);
@@ -65,10 +90,10 @@ export default function DashboardPage() {
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl text-parchment-100">
-            Chasse aux bonnes affaires
+            Le Pokéradar à Pépites
           </h1>
           <p className="text-xs text-ink-600">
-            Cartes Pokémon FR · Vinted &amp; eBay, comparées à Cardmarket &amp; ZebraDex
+            Vinted &amp; eBay passés au radar · comparés à Cardmarket &amp; ZebraDex
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -98,6 +123,36 @@ export default function DashboardPage() {
       {error && (
         <div className="mb-4 rounded-md border border-rust-500/40 bg-rust-500/10 px-3 py-2 text-xs text-rust-400">
           {error}
+        </div>
+      )}
+
+      {indexStatus && indexStatus.series_pending > 0 && (
+        <div className="mb-4 rounded-lg border border-ember-500/30 bg-ember-500/5 px-3 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-ember-400">
+                Index des prix en construction — {indexStatus.progress_percent}%
+              </p>
+              <p className="mt-0.5 text-[11px] text-ink-600">
+                {indexStatus.cards_in_index.toLocaleString("fr-FR")} cartes indexées ·{" "}
+                {indexStatus.series_synced}/{indexStatus.series_known} séries. Les annonces
+                sans prix seront recalculées au fur et à mesure.
+              </p>
+            </div>
+            <button
+              onClick={handleSyncPrices}
+              disabled={syncing}
+              className="shrink-0 rounded-md border border-ember-500/40 px-2.5 py-1 text-[11px] text-ember-400 transition-colors hover:bg-ember-500/10 disabled:opacity-50"
+            >
+              {syncing ? "Synchro…" : "Accélérer"}
+            </button>
+          </div>
+          <div className="mt-2 h-1 overflow-hidden rounded-full bg-ink-700">
+            <div
+              className="h-full rounded-full bg-ember-500 transition-all duration-500"
+              style={{ width: `${indexStatus.progress_percent}%` }}
+            />
+          </div>
         </div>
       )}
 
@@ -147,10 +202,17 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <p className="mt-8 text-center text-[11px] text-ink-600">
-        * Les scores de qualité photo sont des estimations indicatives générées
-        automatiquement — pas un grading professionnel (PSA/BGS/CGC).
-      </p>
+      <div className="mt-10 space-y-1.5 border-t border-ink-800 pt-4 text-center text-[11px] text-ink-600">
+        <p>
+          * Scores de qualité = estimations automatiques indicatives, pas un grading
+          professionnel (PSA/BGS/CGC).
+        </p>
+        <p>
+          Prix de référence : ZebraDex (marché FR). La fourchette affichée est dérivée de la
+          volatilité sur 7 jours, ce n&apos;est pas un historique de ventes conclues.
+        </p>
+        <p>Vérifie toujours l&apos;annonce et les photos avant d&apos;acheter.</p>
+      </div>
     </main>
   );
 }

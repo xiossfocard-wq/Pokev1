@@ -13,6 +13,28 @@ export interface VisionDetail {
   disclaimer: string;
 }
 
+export interface PriceDetail {
+  price_eur: number;
+  price_low_eur: number | null;
+  price_high_eur: number | null;
+  variation_7d_eur: number | null;
+  rarity: string | null;
+  series_name: string | null;
+  matched_card: string;
+  matched_code: string | null;
+  confidence: string;
+  reason: string;
+  source: string;
+}
+
+export interface PriceIndexStatus {
+  series_known: number;
+  series_synced: number;
+  series_pending: number;
+  cards_in_index: number;
+  progress_percent: number;
+}
+
 export interface Listing {
   id: number;
   source: ListingSource;
@@ -29,9 +51,17 @@ export interface Listing {
   margin_net: number | null;
   margin_ratio: number | null;
   quality_text_score: number | null;
+  condition_tier: string | null;
+  price_low_eur: number | null;
+  price_high_eur: number | null;
+  price_match_confidence: string | null;
+  price_detail: PriceDetail | null;
   quality_vision_score: number | null;
   quality_vision_detail: VisionDetail | null;
   deal_score: number | null;
+  rarity_tier: string | null;
+  is_vintage: boolean;
+  is_popular_pokemon: boolean;
   status: string;
   first_seen_at: string;
   last_seen_at: string;
@@ -92,4 +122,15 @@ export function updateSettings(update: Partial<AppSettings>): Promise<AppSetting
 
 export function triggerCheckNow(): Promise<{ status: string }> {
   return apiFetch<{ status: string }>("/api/admin/run-check-now", { method: "POST" });
+}
+
+export function fetchPriceIndexStatus(): Promise<PriceIndexStatus> {
+  return apiFetch<PriceIndexStatus>("/api/admin/price-index-status");
+}
+
+export function triggerPriceSync(batchSize = 12): Promise<{ status: string }> {
+  return apiFetch<{ status: string }>(
+    `/api/admin/sync-prices?batch_size=${batchSize}`,
+    { method: "POST" }
+  );
 }
