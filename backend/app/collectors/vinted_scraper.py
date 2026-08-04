@@ -57,12 +57,30 @@ DEFAULT_HEADERS = {
     "Accept-Language": "fr-FR,fr;q=0.9",
 }
 
-# Motifs de scripts susceptibles de contenir l'état JSON hydraté de la page.
+# Motifs de scripts susceptibles de contenir l'état JSON hydraté de la page
+# — gardés pour fetch_item_detail, mais confirmés INUTILISABLES pour la page
+# catalogue (voir _parse_catalog_html : ni __NEXT_DATA__ ni __NUXT__ ne sont
+# présents sur cette page, confirmé en prod le 04/08/2026).
 _JSON_BLOB_PATTERNS = [
     re.compile(r'<script[^>]+id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.DOTALL),
     re.compile(r'window\.__NUXT__\s*=\s*(\{.*?\});?\s*</script>', re.DOTALL),
     re.compile(r'<script[^>]+type="application/json"[^>]*>(.*?)</script>', re.DOTALL),
 ]
+
+# Chaque annonce sur la page catalogue est un <a href="/items/{id}-{slug}">
+# avec un attribut title="{titre}, Marque: Pokémon, État: {état}, {prix} €,
+# {prix avec protection acheteur} €" — confirmé sur un vrai échantillon prod
+# le 04/08/2026. La photo associée est un <img> voisin partageant le même id
+# dans son data-testid.
+_ITEM_LINK_PATTERN = re.compile(
+    r'<a\s+href="(/items/(\d+)-[^"?]*)[^"]*"[^>]*'
+    r'data-testid="product-item-id-\d+--overlay-link"[^>]*title="([^"]*)"'
+)
+_ITEM_IMAGE_PATTERN = re.compile(
+    r'<img\s+src="([^"]+)"[^>]*data-testid="product-item-id-(\d+)--image--img"'
+)
+_PRICE_IN_TITLE_PATTERN = re.compile(r'(\d+[.,]\d{2})\s*€')
+_CONDITION_IN_TITLE_PATTERN = re.compile(r'État:\s*([^,]+)')
 
 CONSECUTIVE_BLOCK_THRESHOLD = 3   # après ce nb de 403/429 d'affilée, on met en pause
 COOLDOWN_SECONDS_AFTER_BLOCK = 30 * 60
@@ -247,6 +265,76 @@ class VintedScraper:
             "sample_around_first_euro_sign": sample_around("€", before=400, after=400),
         }
 
+    @classmethod
+    def _parse_catalog_html(cls, html: str) -> list:
+        """
+        Extrait les annonces directement depuis le HTML de la page
+        catalogue. Ne dépend d'aucun blob JSON. Dédoublonne par item_id.
+        """
+        images_by_id = {}
+        for match in _ITEM_IMAGE_PATTERN.finditer(html):
+            src, item_id = match.groups()
+            images_by_id.setdefault(item_id, src)
+
+        listings = []
+        seen_ids = set()
+        for match in _ITEM_LINK_PATTERN.finditer(html):
+            href, item_id, title_attr = match.groups()
+            if item_id in seen_ids:
+                continue
+            seen_ids.add(item_id)
+
+            parsed = cls._parse_title_attr(title_attr)
+            if parsed is None:
+                continue
+
+            listings.append(VintedListing(
+                item_id=item_id,
+                title=parsed["title"],
+                price=parsed["price"],
+                currency="EUR",
+                url=f"https://www.vinted.fr{href}",
+                photo_urls=[images_by_id[item_id]] if item_id in images_by_id else [],
+                description="",
+                raw={
+                    "condition": parsed.get("condition"),
+                    "price_incl_protection_acheteur": parsed.get("price_incl"),
+                    "title_attr": title_attr,
+                },
+            ))
+        return listings
+
+    @staticmethod
+    def _parse_title_attr(title_attr: str):
+        if ", Marque:" not in title_attr:
+            return None
+        title = title_attr.split(", Marque:")[0].strip()
+        if not title:
+            return None
+
+        prices = _PRICE_IN_TITLE_PATTERN.findall(title_attr)
+        if not prices:
+            return None
+        try:
+            price = float(prices[0].replace(",", "."))
+        except ValueError:
+            return None
+
+        price_incl = None
+        if len(prices) > 1:
+            try:
+                price_incl = float(prices[1].replace(",", "."))
+            except ValueError:
+                pass
+
+        condition_match = _CONDITION_IN_TITLE_PATTERN.search(title_attr)
+        return {
+            "title": title,
+            "condition": condition_match.group(1).strip() if condition_match else None,
+            "price": price,
+            "price_incl": price_incl,
+        }
+
     def _search_path(self, search_text: str) -> str:
         return (
             f"/catalog/{TRADING_CARDS_SINGLES_CATALOG_ID}"
@@ -258,30 +346,22 @@ class VintedScraper:
     def search_pokemon_listings(self, search_text: str = "carte pokemon", per_page: int = 48) -> list:
         """
         Récupère les annonces du catalogue de recherche Vinted pour les
-        cartes Pokémon. Retourne une liste vide (avec log d'avertissement)
-        si l'extraction JSON échoue plutôt que de faire planter le pipeline.
+        cartes Pokémon, via parsing HTML direct (_parse_catalog_html).
+        Retourne une liste vide (avec log d'avertissement) si rien n'est
+        extrait plutôt que de faire planter le pipeline.
         """
         resp = self._get(self._search_path(search_text))
         if resp is None:
             return []
 
-        blob = self._extract_json_blob(resp.text)
-        if blob is None:
-            logger.error(
-                "Vinted: impossible d'extraire l'état JSON de la page de "
-                "recherche — la structure de page a probablement changé. "
-                "Ce module nécessite un ajustement avec un vrai échantillon "
-                "de HTML récupéré en conditions réelles."
+        listings = self._parse_catalog_html(resp.text)[:per_page]
+        if not listings:
+            logger.warning(
+                "Vinted: 0 annonce extraite de la page catalogue — soit "
+                "aucun résultat réel pour cette recherche, soit la "
+                "structure a de nouveau changé. Vérifier avec "
+                "/api/admin/debug-vinted."
             )
-            return []
-
-        raw_items = self._walk_for_items(blob)[:per_page]
-        listings = []
-        for raw_item in raw_items:
-            try:
-                listings.append(self._parse_raw_item(raw_item))
-            except (KeyError, TypeError, ValueError) as exc:
-                logger.warning("Vinted: item ignoré (parsing échoué: %s)", exc)
         return listings
 
     @staticmethod
