@@ -58,6 +58,11 @@ class Settings:
         default_factory=lambda: os.environ.get("VINTED_SEARCH_TEXT", "carte pokemon")
     )
 
+    # --- Filtre langue (active par defaut : cartes francaises uniquement) ---
+    french_only: bool = field(
+        default_factory=lambda: os.environ.get("FRENCH_ONLY", "true").lower() != "false"
+    )
+
     # --- Cardmarket (prix de référence public, pas de clé API) ---
     # Voir app/collectors/cardmarket_prices.py pour comment obtenir cette URL
     # manuellement. Non renseigné -> fallback automatique sur le lookup

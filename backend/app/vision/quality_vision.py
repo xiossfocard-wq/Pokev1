@@ -1,26 +1,4 @@
-"""
-Analyse indicative de l'état d'une carte à partir de ses photos, via l'API
-Anthropic (Claude, capacité vision). Utilise des requêtes HTTP directes
-(pas le SDK `anthropic`) pour limiter les dépendances.
-
-Fait aussi office d'extraction de texte (OCR) sur les photos : plutôt que
-d'ajouter une dépendance/un service séparé pour lire le nom et le numéro de
-set imprimés sur la carte, on demande cette lecture dans le même appel que
-l'analyse de qualité (une seule requête, un seul coût, et la vision d'un
-LLM gère mieux les reflets/l'angle/le holo qu'un OCR classique type
-Tesseract). Le résultat (`printed_name`, `printed_set_number`) sert dans le
-pipeline (voir pipeline.py > _score_listing) à corriger le matching de
-carte quand le titre de l'annonce est imprécis mais qu'une photo lisible
-est disponible. Si tu préfères éviter un appel API payant juste pour cette
-lecture, une alternative 100% gratuite/hors-ligne est Tesseract OCR
-(`pytesseract` + paquet système `tesseract-ocr`) — moins fiable sur du
-texte holographique/incliné, mais gratuite et ne nécessite aucune clé.
-
-IMPORTANT (à répercuter dans l'UI, cf. frontend) : ceci est une estimation
-indicative basée sur des photos d'annonce (souvent de qualité/éclairage
-variable), PAS un grading professionnel (PSA/BGS/CGC). Le score doit
-toujours être présenté avec cette réserve explicite.
-"""
+"""Analyse indicative de l'état d'une carte + OCR (nom, numéro, langue), via l'API Anthropic."""
 import base64
 import json
 import logging
@@ -43,10 +21,12 @@ SYSTEM_PROMPT = (
     "d'éclats visibles, et la netteté/brillance de la surface si visible. "
     "En plus de l'analyse d'état, lis aussi le texte imprimé visible sur la "
     "carte elle-même (pas le titre/la description de l'annonce, qui peuvent "
-    "être imprécis) : le nom du Pokémon tel qu'imprimé, et le numéro de set "
-    "au format 'X/Y' s'il est visible sur la photo. Si ce n'est pas lisible "
-    "(photo floue, coupée, texte caché), laisse ces champs vides plutôt que "
-    "de deviner. "
+    "être imprécis) : le nom du Pokémon tel qu'imprimé, le numéro de set "
+    "au format 'X/Y' s'il est visible, et la LANGUE du texte imprimé sur la "
+    "carte (français, anglais, japonais, allemand, etc. — déduite du texte "
+    "visible sur la carte elle-même, ex 'Dresseur'/'Énergie' = français vs "
+    "'Trainer'/'Energy' = anglais). Si ce n'est pas lisible (photo floue, "
+    "coupée, texte caché), laisse ces champs vides plutôt que de deviner. "
     "Réponds UNIQUEMENT en JSON valide, sans texte avant/après, au format : "
     '{"score": <0-100>, "centering": "<commentaire court>", '
     '"corners": "<commentaire court>", "surface": "<commentaire court>", '
@@ -54,6 +34,8 @@ SYSTEM_PROMPT = (
     'ex: photo floue, mauvais éclairage, une seule face visible>", '
     '"printed_name": "<nom exact lu sur la carte, ou vide si illisible>", '
     '"printed_set_number": "<ex \'4/102\', ou vide si illisible>", '
+    '"printed_language": "<français|anglais|japonais|allemand|italien|'
+    'espagnol|coréen|chinois|autre|vide si illisible>", '
     '"ocr_confidence": "<low|medium|high>"}'
 )
 
@@ -68,6 +50,7 @@ class VisionQualityResult:
     caveats: str
     printed_name: str = ""
     printed_set_number: str = ""
+    printed_language: str = ""
     ocr_confidence: str = "low"
     raw_response: Optional[dict] = None
 
@@ -81,6 +64,7 @@ class VisionQualityResult:
             "caveats": self.caveats,
             "printed_name": self.printed_name,
             "printed_set_number": self.printed_set_number,
+            "printed_language": self.printed_language,
             "ocr_confidence": self.ocr_confidence,
             "disclaimer": (
                 "Estimation indicative générée automatiquement à partir des "
@@ -90,7 +74,6 @@ class VisionQualityResult:
 
 
 def _fetch_image_as_base64(url: str, timeout: int = 15) -> Optional[tuple]:
-    """Retourne (base64_data, media_type) ou None si l'image n'a pas pu être récupérée."""
     try:
         resp = requests.get(url, timeout=timeout)
         resp.raise_for_status()
@@ -100,7 +83,7 @@ def _fetch_image_as_base64(url: str, timeout: int = 15) -> Optional[tuple]:
 
     content_type = resp.headers.get("Content-Type", "image/jpeg").split(";")[0]
     if content_type not in ("image/jpeg", "image/png", "image/webp", "image/gif"):
-        content_type = "image/jpeg"  # meilleur effort
+        content_type = "image/jpeg"
 
     return base64.b64encode(resp.content).decode(), content_type
 
@@ -113,11 +96,6 @@ def analyze_card_photos(
     model: str = "claude-sonnet-4-6",
     max_photos: int = 4,
 ) -> Optional[VisionQualityResult]:
-    """
-    Envoie jusqu'à `max_photos` photos à l'API Anthropic pour une estimation
-    qualité indicative. Retourne None (avec log) en cas d'échec, pour que le
-    pipeline retombe simplement sur le score texte seul (cf. QualityBlend).
-    """
     if not photo_urls:
         return None
 
@@ -179,6 +157,7 @@ def analyze_card_photos(
             caveats=parsed.get("caveats", ""),
             printed_name=(parsed.get("printed_name") or "").strip(),
             printed_set_number=(parsed.get("printed_set_number") or "").strip(),
+            printed_language=(parsed.get("printed_language") or "").strip().lower(),
             ocr_confidence=parsed.get("ocr_confidence", "low"),
             raw_response=parsed,
         )

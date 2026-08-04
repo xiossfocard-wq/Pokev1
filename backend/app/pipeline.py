@@ -17,6 +17,7 @@ from app.collectors.cardmarket_prices import CardmarketPriceClient
 from app.collectors.ebay_browse import EbayBrowseClient
 from app.collectors.vinted_scraper import VintedScraper, VintedBlockedError
 from app.collectors.zebradex_prices import ZebraDexPriceClient
+from app.core.language_filter import looks_non_french
 from app.matching.card_matcher import guess_card_from_title
 from app.models import Listing, SourcePlatform, ListingStatus, PriceReference, NotificationSent
 from app.scoring.margin import calculate_margin, normalize_margin_ratio
@@ -150,6 +151,12 @@ def _get_or_fetch_reference_price(db: Session, title: str) -> tuple:
 
 
 def _score_listing(db: Session, listing: Listing):
+    if settings.french_only and looks_non_french(listing.title, listing.description):
+        listing.status = ListingStatus.IGNORED
+        listing.scored_at = datetime.utcnow()
+        db.commit()
+        return
+
     reference_price, source_label = _get_or_fetch_reference_price(db, listing.title)
 
     text_quality = analyze_text_quality(listing.title, listing.description)
@@ -178,6 +185,17 @@ def _score_listing(db: Session, listing: Listing):
             vision_score = vision_result.score
             listing.quality_vision_score = vision_result.score
             listing.quality_vision_detail = vision_result.to_dict()
+
+    if (
+        settings.french_only
+        and vision_result
+        and vision_result.printed_language
+        and vision_result.printed_language not in ("français", "francais", "french")
+    ):
+        listing.status = ListingStatus.IGNORED
+        listing.scored_at = datetime.utcnow()
+        db.commit()
+        return
 
     # Filet de rattrapage : si le titre de l'annonce n'a pas suffi à trouver
     # un prix de référence (ex: "Lot cartes pokémon TBE" très générique) mais
