@@ -23,18 +23,14 @@ fetch web, PAS depuis ce conteneur qui n'a pas d'accès réseau sortant) :
 - L'endpoint JSON interne "/api/v2/catalog/items" est bloqué d'emblée par
   la protection anti-bot (Datadome) même pour une requête ponctuelle et
   bien formée : on ne l'utilise donc PAS.
-- Les pages HTML "humaines" du catalogue (ex:
-  https://www.vinted.fr/brand/191646-pokemon?catalog[]=1502 — 1502 étant
-  l'ID catégorie "Cartes à collectionner à l'unité") répondent normalement
-  et affichent bien les annonces (prix, état, vendeur...). C'est donc cette
+- Les pages HTML "humaines" du catalogue répondent normalement et
+  affichent bien les annonces (prix, état, vendeur...). C'est donc cette
   famille d'URL "catalogue humain" qui est utilisée ci-dessous, combinée à
   `search_text` pour filtrer sur "carte pokemon".
 - Le contenu exact du JSON embarqué (__NEXT_DATA__ / __NUXT__) n'a en
-  revanche pas pu être inspecté brut (le fetch de vérification renvoie du
-  texte déjà extrait/converti, pas le HTML source), donc la fonction
-  `_walk_for_items` reste volontairement générique et tolérante. Si elle
-  ne trouve rien lors du premier lancement réel, le plus rapide est de
-  m'envoyer un extrait du `<script>` JSON de la page pour l'ajuster.
+  revanche pas pu être inspecté brut avant le premier lancement réel, d'où
+  la méthode diagnostic_fetch() ajoutée ci-dessous pour lever le doute
+  directement en production sans avoir besoin de fouiller les logs.
 - Les ID de catégorie/marque Vinted peuvent changer : à revérifier
   ponctuellement si le scraper cesse de remonter des résultats.
 """
@@ -71,10 +67,13 @@ _JSON_BLOB_PATTERNS = [
 CONSECUTIVE_BLOCK_THRESHOLD = 3   # après ce nb de 403/429 d'affilée, on met en pause
 COOLDOWN_SECONDS_AFTER_BLOCK = 30 * 60
 
-# Catégorie Vinted FR "Cartes à collectionner à l'unité" (vérifiée manuellement
-# le mois du développement — à revérifier si le scraper ne remonte plus rien,
-# Vinted renumérote parfois ses catégories).
-TRADING_CARDS_SINGLES_CATALOG_ID = 1502
+# Catégorie Vinted FR "Cartes à collectionner à l'unité". Historique : une
+# première valeur (1502) s'est révélée incorrecte lors du tout premier essai
+# en production (03/08/2026). Reconfirmée le 04/08/2026 via plusieurs pages
+# réelles trouvées par recherche web : la sous-catégorie "cartes à l'unité"
+# (par opposition aux lots) est 4875. À revérifier si le scraper cesse à
+# nouveau de remonter des résultats pertinents.
+TRADING_CARDS_SINGLES_CATALOG_ID = 4875
 POKEMON_BRAND_ID = 191646
 
 
@@ -208,19 +207,57 @@ class VintedScraper:
                 found.extend(VintedScraper._walk_for_items(value))
         return found
 
+    def diagnostic_fetch(self, search_text: str = "carte pokemon") -> dict:
+        """
+        Fait exactement la même requête que search_pokemon_listings, mais
+        retourne des infos de diagnostic au lieu d'essayer de parser des
+        annonces. Utilisé via GET /api/admin/debug-vinted quand l'extraction
+        échoue en prod, pour obtenir un vrai échantillon de HTML sans avoir
+        besoin d'accéder aux logs bruts. Volontairement en lecture seule et
+        peu coûteux (une seule requête, comme un cycle normal).
+        """
+        path = self._search_path(search_text)
+        resp = self._get(path)
+        if resp is None:
+            return {
+                "ok": False,
+                "reason": "Requête bloquée ou échouée avant même de recevoir une "
+                          "réponse — voir les logs Render pour le détail (403/429/timeout).",
+                "url_tentee": f"{self.base_url}{path}",
+            }
+
+        html = resp.text
+        idx = html.find('"id"')
+        return {
+            "ok": True,
+            "status_code": resp.status_code,
+            "url_tentee": f"{self.base_url}{path}",
+            "html_length": len(html),
+            "contains___NEXT_DATA__": "__NEXT_DATA__" in html,
+            "contains___NUXT__": "__NUXT__" in html,
+            "script_tag_count": html.count("<script"),
+            "application_json_script_count": html.count('type="application/json"'),
+            "sample_first_1500_chars": html[:1500],
+            "sample_around_first_id_key": (
+                html[max(0, idx - 300): idx + 700] if idx != -1 else None
+            ),
+        }
+
+    def _search_path(self, search_text: str) -> str:
+        return (
+            f"/catalog/{TRADING_CARDS_SINGLES_CATALOG_ID}"
+            f"?search_text={requests.utils.quote(search_text)}"
+            f"&brand_ids[]={POKEMON_BRAND_ID}"
+            "&order=newest_first"
+        )
+
     def search_pokemon_listings(self, search_text: str = "carte pokemon", per_page: int = 48) -> list:
         """
         Récupère les annonces du catalogue de recherche Vinted pour les
         cartes Pokémon. Retourne une liste vide (avec log d'avertissement)
         si l'extraction JSON échoue plutôt que de faire planter le pipeline.
         """
-        path = (
-            f"/catalog/{TRADING_CARDS_SINGLES_CATALOG_ID}"
-            f"?search_text={requests.utils.quote(search_text)}"
-            f"&brand_ids[]={POKEMON_BRAND_ID}"
-            "&order=newest_first"
-        )
-        resp = self._get(path)
+        resp = self._get(self._search_path(search_text))
         if resp is None:
             return []
 
