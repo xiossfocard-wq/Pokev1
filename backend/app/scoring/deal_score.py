@@ -7,6 +7,7 @@ ajustables depuis les settings de l'app sans toucher au code, et pour
 pouvoir être testés indépendamment.
 """
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass
@@ -30,7 +31,7 @@ class DealScoreWeights:
 class QualityBlend:
     """Combine le score texte (mots-clés) et le score vision (photos)."""
     text_score: float
-    vision_score: float | None  # None si l'analyse vision n'a pas encore tourné
+    vision_score: Optional[float]  # None si l'analyse vision n'a pas encore tourné
     vision_weight: float = 0.65  # la vision est jugée plus fiable que le texte seul
 
     def combined(self) -> float:
@@ -46,7 +47,7 @@ def calculate_deal_score(
     margin_score_0_100: float,
     quality_blend: QualityBlend,
     seller_score_0_100: float,
-    weights: DealScoreWeights | None = None,
+    weights: Optional[DealScoreWeights] = None,
 ) -> float:
     """
     Retourne un score final 0-100. Toutes les entrées doivent déjà être
