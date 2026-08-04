@@ -16,7 +16,6 @@ from app.config import settings
 from app.collectors.cardmarket_prices import CardmarketPriceClient
 from app.collectors.ebay_browse import EbayBrowseClient
 from app.collectors.vinted_scraper import VintedScraper, VintedBlockedError
-from app.collectors.zebradex_prices import ZebraDexPriceClient
 from app.core.language_filter import looks_non_french
 from app.matching.card_matcher import guess_card_from_title
 from app.models import Listing, SourcePlatform, ListingStatus, PriceReference, NotificationSent
@@ -35,7 +34,6 @@ logger = logging.getLogger(__name__)
 PRICE_CACHE_MAX_AGE = timedelta(days=1)
 
 _cardmarket_client = CardmarketPriceClient()
-_zebradex_client = ZebraDexPriceClient()
 _vinted_scraper = VintedScraper(request_delay_seconds=settings.vinted_request_delay_seconds)
 
 # Cache en mémoire du price guide en masse (voir collectors/cardmarket_prices.py
