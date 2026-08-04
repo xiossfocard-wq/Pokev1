@@ -209,25 +209,29 @@ class VintedScraper:
 
     def diagnostic_fetch(self, search_text: str = "carte pokemon") -> dict:
         """
-        Fait exactement la même requête que search_pokemon_listings, mais
-        retourne des infos de diagnostic au lieu d'essayer de parser des
-        annonces. Utilisé via GET /api/admin/debug-vinted quand l'extraction
-        échoue en prod, pour obtenir un vrai échantillon de HTML sans avoir
-        besoin d'accéder aux logs bruts. Volontairement en lecture seule et
-        peu coûteux (une seule requête, comme un cycle normal).
+        v2 : cherche autour des liens /items/... plutot qu'un blob JSON
+        hydrate, qui n'existe pas sur cette page (confirme en prod).
         """
         path = self._search_path(search_text)
         resp = self._get(path)
         if resp is None:
             return {
                 "ok": False,
-                "reason": "Requête bloquée ou échouée avant même de recevoir une "
-                          "réponse — voir les logs Render pour le détail (403/429/timeout).",
+                "reason": "Requete bloquee ou echouee - voir logs Render.",
                 "url_tentee": f"{self.base_url}{path}",
             }
 
         html = resp.text
-        idx = html.find('"id"')
+
+        def sample_around(needle, before=150, after=900, occurrence=0):
+            positions = [m.start() for m in re.finditer(re.escape(needle), html)]
+            if len(positions) <= occurrence:
+                return None
+            idx = positions[occurrence]
+            return html[max(0, idx - before): idx + after]
+
+        items_positions = [m.start() for m in re.finditer(r'"/items/\d+', html)]
+
         return {
             "ok": True,
             "status_code": resp.status_code,
@@ -237,10 +241,10 @@ class VintedScraper:
             "contains___NUXT__": "__NUXT__" in html,
             "script_tag_count": html.count("<script"),
             "application_json_script_count": html.count('type="application/json"'),
-            "sample_first_1500_chars": html[:1500],
-            "sample_around_first_id_key": (
-                html[max(0, idx - 300): idx + 700] if idx != -1 else None
-            ),
+            "items_link_count": len(items_positions),
+            "sample_around_first_items_link": sample_around('"/items/', occurrence=0),
+            "sample_around_second_items_link": sample_around('"/items/', occurrence=1),
+            "sample_around_first_euro_sign": sample_around("€", before=400, after=400),
         }
 
     def _search_path(self, search_text: str) -> str:
