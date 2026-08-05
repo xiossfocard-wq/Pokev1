@@ -71,13 +71,13 @@ DEFAULT_HEADERS = {
 MIN_DELAY_SECONDS = 6.0  # respectueux : 1 requete / 6s max
 
 _SERIES_LINK_PATTERN = re.compile(
-    r'href="(?:https://zebradex\.fr)?(/fr/tcg/pokemon/([a-z0-9-]+)/([a-z0-9.-]+)/([a-z0-9-]+)/(\d+))"',
+    r"""href=['"](?:https://zebradex\.fr)?(/fr/tcg/pokemon/([a-z0-9-]+)/([a-z0-9.-]+)/([a-z0-9-]+)/(\d+))['"]""",
     re.IGNORECASE,
 )
 
 _CARD_LINK_PATTERN = re.compile(
-    r'href="(?:https://zebradex\.fr)?/fr/tcg/pokemon/[a-z0-9-]+/[a-z0-9.-]+/[a-z0-9-]+/'
-    r'([a-z0-9-]+)/([a-z0-9-]+)/(\d+)"',
+    r"""href=['"](?:https://zebradex\.fr)?/fr/tcg/pokemon/[a-z0-9-]+/[a-z0-9.-]+/[a-z0-9-]+/"""
+    r"""([a-z0-9-]+)/([a-z0-9-]+)/(\d+)['"]""",
     re.IGNORECASE,
 )
 
