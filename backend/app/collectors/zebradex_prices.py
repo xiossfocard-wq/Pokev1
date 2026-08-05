@@ -45,7 +45,7 @@ from app.core import robots_compliance
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://zebradex.fr"
-SERIES_INDEX_URL = f"{BASE_URL}/series"
+SERIES_INDEX_URL = f"{BASE_URL}/series.php"
 
 DEFAULT_HEADERS = {
     "User-Agent": (
