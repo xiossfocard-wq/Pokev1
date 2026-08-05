@@ -7,12 +7,14 @@ import {
   triggerCheckNow,
   fetchPriceIndexStatus,
   triggerPriceSync,
+  searchListings,
   type Listing,
   type PriceIndexStatus,
   type SortField,
   type SortOrder,
 } from "@/lib/api";
 import ListingColumn from "@/components/ListingColumn";
+import ListingCard from "@/components/ListingCard";
 
 export default function DashboardPage() {
   const [vinted, setVinted] = useState<Listing[]>([]);
@@ -26,6 +28,12 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [indexStatus, setIndexStatus] = useState<PriceIndexStatus | null>(null);
   const [syncing, setSyncing] = useState(false);
+
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState<string | null>(null);
+  const [searchResults, setSearchResults] = useState<Listing[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -85,6 +93,33 @@ export default function DashboardPage() {
     }
   }
 
+  async function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    const q = searchInput.trim();
+    if (q.length < 2) return;
+    setSearching(true);
+    setSearchError(null);
+    setSearchQuery(q);
+    try {
+      const results = await searchListings(q);
+      setSearchResults(results);
+    } catch (err) {
+      setSearchError(
+        "La recherche a échoué — le backend est peut-être en train de se réveiller " +
+          "(hébergement gratuit), réessaie dans quelques secondes."
+      );
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function clearSearch() {
+    setSearchQuery(null);
+    setSearchResults([]);
+    setSearchInput("");
+    setSearchError(null);
+  }
+
   return (
     <main className="mx-auto max-w-5xl px-4 py-6">
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -126,7 +161,71 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {indexStatus && indexStatus.series_pending > 0 && (
+      <form onSubmit={handleSearch} className="mb-4 flex gap-2">
+        <input
+          type="text"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          placeholder="Chercher un Pokémon ou une carte précise (ex: Pikachu, Dracaufeu ex, PAF 232)…"
+          className="flex-1 rounded-md border border-ink-700 bg-ink-800 px-3 py-2 text-sm text-parchment-100 placeholder:text-ink-600 focus:border-ember-500 focus:outline-none"
+        />
+        <button
+          type="submit"
+          disabled={searching || searchInput.trim().length < 2}
+          className="shrink-0 rounded-md border border-ember-500/50 bg-ember-500/10 px-4 py-2 text-sm font-medium text-ember-400 transition-colors hover:bg-ember-500/20 disabled:opacity-40"
+        >
+          {searching ? "Recherche…" : "Chercher"}
+        </button>
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={clearSearch}
+            className="shrink-0 rounded-md border border-ink-700 px-3 py-2 text-sm text-ink-600 transition-colors hover:border-ink-600 hover:text-parchment-100"
+          >
+            Effacer
+          </button>
+        )}
+      </form>
+
+      {searchQuery && (
+        <section className="mb-8">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="font-display text-lg text-parchment-100">
+              Résultats pour « {searchQuery} »
+              <span className="ml-2 font-mono text-xs font-normal text-ink-600">
+                {searchResults.length}
+              </span>
+            </h2>
+          </div>
+
+          {searchError && (
+            <div className="mb-3 rounded-md border border-rust-500/40 bg-rust-500/10 px-3 py-2 text-xs text-rust-400">
+              {searchError}
+            </div>
+          )}
+
+          {searching && (
+            <div className="rounded-md border border-dashed border-ink-700 p-6 text-center text-xs text-ink-600">
+              Recherche en cours sur Vinted et eBay — ça peut prendre quelques secondes…
+            </div>
+          )}
+
+          {!searching && !searchError && searchResults.length === 0 && (
+            <div className="rounded-md border border-dashed border-ink-700 p-6 text-center text-xs text-ink-600">
+              Aucune annonce trouvée pour ce terme pour l&apos;instant. Réessaie avec un
+              nom légèrement différent, ou reviens plus tard.
+            </div>
+          )}
+
+          <div className="flex flex-col gap-2">
+            {searchResults.map((l) => (
+              <ListingCard key={`${l.source}-${l.id}`} listing={l} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {!searchQuery && indexStatus && indexStatus.series_pending > 0 && (
         <div className="mb-4 rounded-lg border border-ember-500/30 bg-ember-500/5 px-3 py-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
@@ -156,7 +255,8 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Mobile : onglets pour basculer entre les deux colonnes */}
+      {!searchQuery && (
+      <>
       <div className="mb-3 flex gap-1 md:hidden">
         {(["vinted", "ebay"] as const).map((tab) => (
           <button
@@ -201,6 +301,8 @@ export default function DashboardPage() {
           />
         </div>
       </div>
+      </>
+      )}
 
       <div className="mt-10 space-y-1.5 border-t border-ink-800 pt-4 text-center text-[11px] text-ink-600">
         <p>

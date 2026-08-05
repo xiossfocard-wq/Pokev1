@@ -134,3 +134,9 @@ export function triggerPriceSync(batchSize = 12): Promise<{ status: string }> {
     { method: "POST" }
   );
 }
+
+export function searchListings(query: string): Promise<Listing[]> {
+  return apiFetch<Listing[]>(`/api/listings/search?q=${encodeURIComponent(query)}`, {
+    method: "POST",
+  });
+}

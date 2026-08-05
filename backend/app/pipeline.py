@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from sqlalchemy.orm import Session
+from sqlalchemy import nullslast
 
 from app.config import settings
 from app.collectors.cardmarket_prices import CardmarketPriceClient
@@ -401,6 +402,130 @@ def run_vinted_check(db: Session):
         db.commit()
         _score_listing(db, listing)
         _maybe_notify(db, listing, threshold=settings.default_deal_score_threshold)
+
+
+def run_targeted_search(db: Session, query: str, limit: int = 60) -> list:
+    """
+    Recherche A LA DEMANDE sur un terme precis (ex: "Pikachu", "Dracaufeu
+    ex", un code de set...), contrairement a run_ebay_check/run_vinted_check
+    qui tournent en tache de fond sur le terme generique de config.
+    """
+    query = (query or "").strip()
+    if not query:
+        return []
+
+    matched_keys = set()
+
+    if settings.vinted_enabled:
+        try:
+            vinted_results = _vinted_scraper.search_pokemon_listings(
+                search_text=query, sort_order="newest_first"
+            )
+        except VintedBlockedError as exc:
+            logger.warning("Recherche ciblee Vinted: %s", exc)
+            vinted_results = []
+        except Exception as exc:
+            logger.error("Recherche ciblee Vinted echouee (%s)", exc)
+            vinted_results = []
+
+        for item in vinted_results:
+            matched_keys.add((SourcePlatform.VINTED, item.item_id))
+            existing = db.query(Listing).filter_by(
+                source=SourcePlatform.VINTED, external_id=item.item_id
+            ).first()
+            if existing:
+                existing.last_seen_at = datetime.utcnow()
+                db.commit()
+                continue
+
+            seller_result = score_vinted_seller(
+                review_count=item.seller_review_count,
+                average_rating=item.seller_average_rating,
+            )
+            listing = Listing(
+                source=SourcePlatform.VINTED,
+                external_id=item.item_id,
+                title=item.title,
+                description=item.description or "",
+                url=item.url,
+                price=item.price,
+                shipping_price=0.0,
+                currency=item.currency,
+                photo_urls=item.photo_urls,
+                seller_username=item.seller_username,
+                seller_reliability_score=seller_result.score,
+                seller_reliability_detail=seller_result.detail,
+            )
+            db.add(listing)
+            db.commit()
+            _score_listing(db, listing)
+            _maybe_notify(db, listing, threshold=settings.default_deal_score_threshold)
+
+    if settings.ebay_client_id and settings.ebay_client_secret:
+        try:
+            client = EbayBrowseClient(
+                client_id=settings.ebay_client_id,
+                client_secret=settings.ebay_client_secret,
+                marketplace_id=settings.ebay_marketplace_id,
+                use_sandbox=settings.ebay_use_sandbox,
+            )
+            ebay_results = client.search_pokemon_listings(keywords=f"pokemon carte {query}")
+        except Exception as exc:
+            logger.error("Recherche ciblee eBay echouee (%s)", exc)
+            ebay_results = []
+
+        for item in ebay_results:
+            matched_keys.add((SourcePlatform.EBAY, item.item_id))
+            existing = db.query(Listing).filter_by(
+                source=SourcePlatform.EBAY, external_id=item.item_id
+            ).first()
+            if existing:
+                existing.last_seen_at = datetime.utcnow()
+                db.commit()
+                continue
+
+            seller_result = score_ebay_seller(
+                feedback_percentage=item.seller_feedback_percentage,
+                feedback_score=item.seller_feedback_score,
+            )
+            listing = Listing(
+                source=SourcePlatform.EBAY,
+                external_id=item.item_id,
+                title=item.title,
+                description="",
+                url=item.item_web_url,
+                price=item.price,
+                shipping_price=item.shipping_cost or 0.0,
+                currency=item.currency,
+                photo_urls=[item.image_url] if item.image_url else [],
+                seller_username=item.seller_username,
+                seller_reliability_score=seller_result.score,
+                seller_reliability_detail=seller_result.detail,
+            )
+            db.add(listing)
+            db.commit()
+            _score_listing(db, listing)
+            _maybe_notify(db, listing, threshold=settings.default_deal_score_threshold)
+
+    if not matched_keys:
+        return []
+
+    conditions = [
+        (Listing.source == src) & (Listing.external_id == ext_id)
+        for src, ext_id in matched_keys
+    ]
+    combined = conditions[0]
+    for cond in conditions[1:]:
+        combined = combined | cond
+
+    return (
+        db.query(Listing)
+        .filter(combined)
+        .filter(Listing.status != ListingStatus.IGNORED)
+        .order_by(nullslast(Listing.deal_score.desc()))
+        .limit(limit)
+        .all()
+    )
 
 
 def run_full_check(db: Session):

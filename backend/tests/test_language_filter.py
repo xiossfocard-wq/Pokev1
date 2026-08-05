@@ -35,3 +35,29 @@ class TestLanguageFilter(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLanguageFilterV2(unittest.TestCase):
+    def test_japanese_script_detected(self):
+        self.assertTrue(looks_non_french("ピカチュウ 美品"))
+
+    def test_korean_script_detected(self):
+        self.assertTrue(looks_non_french("포켓몬 카드"))
+
+    def test_chinese_script_detected(self):
+        self.assertTrue(looks_non_french("宝可梦 卡片"))
+
+    def test_short_token_jp_detected(self):
+        self.assertTrue(looks_non_french("Dracaufeu JP set de base"))
+
+    def test_short_token_kr_detected(self):
+        self.assertTrue(looks_non_french("Pikachu KR promo"))
+
+    def test_jp_does_not_match_inside_other_word(self):
+        self.assertFalse(looks_non_french("carte enjpolie fictive"))
+
+    def test_generic_french_title_still_passes(self):
+        self.assertFalse(looks_non_french("Carte Pokémon Dracaufeu très bon état"))
+
+    def test_empty_still_passes(self):
+        self.assertFalse(looks_non_french("", None))
