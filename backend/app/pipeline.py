@@ -419,6 +419,7 @@ def run_full_check(db: Session):
             summary["series_never_synced_remaining"],
         )
     except Exception as exc:
+        db.rollback()
         logger.error("Index prix : synchronisation echouee (%s) - collecte poursuivie", exc)
 
     run_ebay_check(db)
