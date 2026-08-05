@@ -52,8 +52,20 @@ DEFAULT_HEADERS = {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "fr-FR,fr;q=0.9",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
 }
 
 MIN_DELAY_SECONDS = 6.0  # respectueux : 1 requete / 6s max
@@ -141,6 +153,8 @@ class ZebraDexClient:
         self.session.headers.update(DEFAULT_HEADERS)
         self.min_delay = min_delay
         self._last_request_ts = 0.0
+        self._last_status_code = None
+        self._last_final_url = None
 
     def _throttle(self):
         elapsed = time.time() - self._last_request_ts
@@ -159,6 +173,8 @@ class ZebraDexClient:
         except requests.RequestException as exc:
             logger.warning("ZebraDex: echec sur %s (%s)", url, exc)
             return None
+        self._last_status_code = resp.status_code
+        self._last_final_url = resp.url
         return resp.text
 
     def discover_series(self) -> List[ZebraDexSeries]:
@@ -311,6 +327,8 @@ class ZebraDexClient:
 
     def diagnostic_fetch(self, series_url: Optional[str] = None) -> dict:
         url = series_url or SERIES_INDEX_URL
+        self._last_status_code = None
+        self._last_final_url = None
         html = self._get(url)
         if html is None:
             return {"ok": False, "url": url, "reason": "requete bloquee/echouee - voir logs"}
@@ -318,10 +336,18 @@ class ZebraDexClient:
         by_links = self._parse_by_links(html)
         by_text = self._parse_by_text(html)
         idx = html.find("\u20ac")
+        raw_marker_idx = html.find("tcg/pokemon")
         return {
             "ok": True,
             "url": url,
+            "final_url_after_redirects": self._last_final_url,
+            "status_code": self._last_status_code,
             "html_length": len(html),
+            "raw_marker_tcg_pokemon_found": raw_marker_idx != -1,
+            "sample_around_raw_marker": (
+                html[max(0, raw_marker_idx - 200): raw_marker_idx + 300]
+                if raw_marker_idx != -1 else None
+            ),
             "series_links_found": len(self.parse_series_index(html)),
             "cards_found_by_links": len(by_links),
             "cards_found_by_text": len(by_text),
