@@ -35,10 +35,22 @@ _NON_FRENCH_KEYWORDS = [
     "version us", "version anglaise", "import us", "import usa", "us version",
     "néerlandaise", "neerlandaise", "dutch",
     "portugaise", "portugais", "portuguese",
+    "version anglaise", "eng version", "english version",
+    "jp version", "ver. jap", "ver jap",
 ]
 
 _KEYWORD_PATTERN = re.compile(
     "|".join(re.escape(kw) for kw in _NON_FRENCH_KEYWORDS), re.IGNORECASE
+)
+
+_SHORT_TOKEN_PATTERN = re.compile(r"\b(jp|kr)\b", re.IGNORECASE)
+
+_NON_LATIN_SCRIPT_PATTERN = re.compile(
+    "["
+    "\u3040-\u30ff"
+    "\u4e00-\u9fff"
+    "\uac00-\ud7a3"
+    "]"
 )
 
 
@@ -46,10 +58,13 @@ def looks_non_french(*texts) -> bool:
     """
     True si un des textes fournis (titre, condition, description...)
     contient un indice clair de langue non-française. Ignore les valeurs
-    None/vides. Ne garantit PAS l'inverse : un retour False ne prouve pas
-    que la carte est française, juste qu'aucun signal contraire n'a été vu.
+    None/vides. Ne garantit PAS l'inverse.
     """
     combined = " ".join(t for t in texts if t)
     if not combined:
         return False
+    if _NON_LATIN_SCRIPT_PATTERN.search(combined):
+        return True
+    if _SHORT_TOKEN_PATTERN.search(combined):
+        return True
     return bool(_KEYWORD_PATTERN.search(combined))
