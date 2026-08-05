@@ -406,11 +406,14 @@ def run_vinted_check(db: Session):
 def run_full_check(db: Session):
     logger.info("=== Debut du cycle de verification ===")
 
-    # L'index de prix se construit progressivement, quelques series par
-    # cycle (voir services/price_index.py). Fait AVANT la collecte pour que
-    # les annonces du cycle beneficient des prix les plus recents.
-    # Encapsule : une panne ZebraDex ne doit jamais empecher la collecte
-    # d'annonces, qui reste utile meme sans prix de reference.
+    # NB (05/08/2026) : collecte (eBay/Vinted) D'ABORD, index de prix
+    # ZebraDex ENSUITE. L'ordre precedent retardait Vinted/eBay de
+    # plusieurs heures tant que l'index progressif (6 series/cycle sur
+    # 158) n'avait pas avance. Les annonces sans prix restent visibles et
+    # seront recalculees au fur et a mesure.
+    run_ebay_check(db)
+    run_vinted_check(db)
+
     try:
         summary = sync_series_batch(db, batch_size=settings.zebradex_batch_size)
         logger.info(
@@ -422,6 +425,4 @@ def run_full_check(db: Session):
         db.rollback()
         logger.error("Index prix : synchronisation echouee (%s) - collecte poursuivie", exc)
 
-    run_ebay_check(db)
-    run_vinted_check(db)
     logger.info("=== Fin du cycle de verification ===")
