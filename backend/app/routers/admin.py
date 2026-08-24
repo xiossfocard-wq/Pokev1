@@ -49,16 +49,21 @@ def sync_prices(background_tasks: BackgroundTasks, batch_size: int = Query(6, ge
 
 
 @router.post("/rescore-unpriced")
-def rescore_unpriced(limit: int = Query(120, ge=1, le=1000)):
+def rescore_unpriced(
+    limit: int = Query(120, ge=1, le=2000),
+    include_uncertain: bool = Query(True, description="Inclure aussi les prix en confiance faible"),
+):
     """
-    Retente le rapprochement sur les annonces restees sans prix de
-    reference. Tourne aussi automatiquement a chaque cycle ; cet endpoint
-    sert a voir l'effet tout de suite, par exemple juste apres une
-    amelioration du moteur de matching.
+    Retente le rapprochement sur les annonces sans prix de reference et,
+    par defaut, sur celles dont le prix a ete trouve en confiance faible.
+    Tourne aussi automatiquement a chaque cycle ; cet endpoint sert a voir
+    l'effet tout de suite apres une amelioration du moteur de matching.
     """
     db = SessionLocal()
     try:
-        return {"status": "ok", **rescore_unpriced_listings(db, limit=limit)}
+        return {"status": "ok", **rescore_unpriced_listings(
+            db, limit=limit, include_uncertain=include_uncertain
+        )}
     finally:
         db.close()
 

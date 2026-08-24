@@ -568,49 +568,64 @@ def run_targeted_search(db: Session, query: str, limit: int = 60, on_progress=No
     )
 
 
-def rescore_unpriced_listings(db: Session, limit: int = 120) -> dict:
+def rescore_unpriced_listings(
+    db: Session, limit: int = 120, include_uncertain: bool = True
+) -> dict:
     """
-    Repasse sur les annonces restees SANS prix de reference et retente le
-    rapprochement.
+    Repasse sur les annonces mal loties et retente le rapprochement :
+    - celles restees SANS prix de reference ;
+    - avec `include_uncertain`, celles dont le prix a ete trouve en
+      confiance "faible" (nom seul, plusieurs cartes homonymes) : ce sont
+      souvent des prix carrement FAUX, pas juste imprecis, et sans ce
+      repassage ils ne se corrigeaient jamais.
 
     Indispensable pour deux raisons : l'index de prix se construit
     progressivement (une annonce collectee avant sa serie n'avait aucune
     chance d'etre reconnue), et le moteur de matching s'ameliore avec le
-    temps. Sans ce repassage, une annonce ratee une fois l'etait pour
-    toujours - alors que le bandeau du dashboard promet exactement
+    temps. Sans ce repassage, une annonce mal identifiee une fois l'etait
+    pour toujours - alors que le bandeau du dashboard promet exactement
     l'inverse ("les annonces sans prix seront recalculees au fur et a
     mesure").
 
-    On traite les plus recemment vues en premier, et on saute l'analyse
-    vision (deja faite, et facturee) pour que ce passage reste gratuit.
+    Les annonces les plus anciennement scorees passent en premier : ca fait
+    tourner la file au lieu de reexaminer sans cesse les memes.
+
+    L'analyse vision est sautee (deja faite, et facturee) : ce repassage ne
+    coute rien d'autre que des requetes en base.
     """
+    condition = Listing.reference_price.is_(None)
+    if include_uncertain:
+        condition = condition | (Listing.price_match_confidence == "low")
+
     listings = (
         db.query(Listing)
-        .filter(
-            Listing.reference_price.is_(None),
-            Listing.status != ListingStatus.IGNORED,
-        )
-        .order_by(nullslast(Listing.last_seen_at.desc()))
+        .filter(condition, Listing.status != ListingStatus.IGNORED)
+        .order_by(Listing.scored_at.asc().nullsfirst())
         .limit(limit)
         .all()
     )
 
-    recovered = 0
-    for listing in listings:
+    before = [(l.reference_price, l.price_match_confidence) for l in listings]
+
+    recovered, corrected = 0, 0
+    for listing, (old_price, _old_confidence) in zip(listings, before):
         try:
             _score_listing(db, listing, skip_vision=True)
         except Exception as exc:
             db.rollback()
             logger.error("Repassage de l'annonce %s echoue (%s)", listing.id, exc)
             continue
-        if listing.reference_price is not None:
+        if old_price is None and listing.reference_price is not None:
             recovered += 1
+        elif old_price is not None and listing.reference_price != old_price:
+            corrected += 1
 
     logger.info(
-        "Repassage : %d annonce(s) sans prix reexaminee(s), %d ont trouve un prix",
-        len(listings), recovered,
+        "Repassage : %d annonce(s) reexaminee(s), %d ont trouve un prix, "
+        "%d ont vu leur prix corrige",
+        len(listings), recovered, corrected,
     )
-    return {"examined": len(listings), "recovered": recovered}
+    return {"examined": len(listings), "recovered": recovered, "corrected": corrected}
 
 
 def run_full_check(db: Session):
