@@ -3,7 +3,7 @@ from typing import Optional
 
 from app.config import settings
 from app.database import SessionLocal
-from app.pipeline import run_full_check
+from app.pipeline import run_full_check, rescore_unpriced_listings
 from app.collectors.vinted_scraper import VintedScraper
 from app.collectors.zebradex_prices import ZebraDexClient
 from app.services.price_index import (
@@ -46,6 +46,21 @@ def sync_prices(background_tasks: BackgroundTasks, batch_size: int = Query(6, ge
     """
     background_tasks.add_task(_sync_prices_with_own_session, batch_size)
     return {"status": f"synchronisation de {batch_size} serie(s) lancee en arriere-plan"}
+
+
+@router.post("/rescore-unpriced")
+def rescore_unpriced(limit: int = Query(120, ge=1, le=1000)):
+    """
+    Retente le rapprochement sur les annonces restees sans prix de
+    reference. Tourne aussi automatiquement a chaque cycle ; cet endpoint
+    sert a voir l'effet tout de suite, par exemple juste apres une
+    amelioration du moteur de matching.
+    """
+    db = SessionLocal()
+    try:
+        return {"status": "ok", **rescore_unpriced_listings(db, limit=limit)}
+    finally:
+        db.close()
 
 
 @router.post("/refresh-series-catalog")

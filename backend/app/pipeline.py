@@ -18,7 +18,6 @@ from app.collectors.cardmarket_prices import CardmarketPriceClient
 from app.collectors.ebay_browse import EbayBrowseClient
 from app.collectors.vinted_scraper import VintedScraper, VintedBlockedError
 from app.core.language_filter import looks_non_french
-from app.matching.card_matcher import guess_card_from_title
 from app.models import Listing, SourcePlatform, ListingStatus, PriceReference, NotificationSent
 from app.scoring.margin import calculate_margin, normalize_margin_ratio
 from app.scoring.quality_text import analyze_text_quality
@@ -123,7 +122,10 @@ def _get_or_fetch_reference_price(db: Session, title: str, description: str = ""
     return match.row.price_eur, label, detail
 
 
-def _score_listing(db: Session, listing: Listing):
+def _score_listing(db: Session, listing: Listing, skip_vision: bool = False):
+    """`skip_vision=True` sert au repassage des annonces sans prix : on
+    reutilise le score vision deja calcule au lieu de rappeler (et de
+    repayer) l'API pour une photo qu'on a deja analysee."""
     # Filtre langue (activé par défaut, voir FRENCH_ONLY dans .env) : le
     # plus tôt possible, avant même de dépenser un appel Cardmarket/vision,
     # pour ne pas payer à analyser des annonces qu'on ignorera de toute
@@ -158,9 +160,9 @@ def _score_listing(db: Session, listing: Listing):
     # la façon la plus simple de limiter la casse est de réduire
     # CHECK_INTERVAL_MINUTES/le volume de mots-clés de recherche plutôt que
     # de complexifier cette logique.
-    vision_score = None
+    vision_score = listing.quality_vision_score
     vision_result = None
-    if settings.anthropic_api_key and listing.photo_urls:
+    if not skip_vision and settings.anthropic_api_key and listing.photo_urls:
         vision_result = analyze_card_photos(
             api_key=settings.anthropic_api_key,
             photo_urls=listing.photo_urls,
@@ -566,6 +568,51 @@ def run_targeted_search(db: Session, query: str, limit: int = 60, on_progress=No
     )
 
 
+def rescore_unpriced_listings(db: Session, limit: int = 120) -> dict:
+    """
+    Repasse sur les annonces restees SANS prix de reference et retente le
+    rapprochement.
+
+    Indispensable pour deux raisons : l'index de prix se construit
+    progressivement (une annonce collectee avant sa serie n'avait aucune
+    chance d'etre reconnue), et le moteur de matching s'ameliore avec le
+    temps. Sans ce repassage, une annonce ratee une fois l'etait pour
+    toujours - alors que le bandeau du dashboard promet exactement
+    l'inverse ("les annonces sans prix seront recalculees au fur et a
+    mesure").
+
+    On traite les plus recemment vues en premier, et on saute l'analyse
+    vision (deja faite, et facturee) pour que ce passage reste gratuit.
+    """
+    listings = (
+        db.query(Listing)
+        .filter(
+            Listing.reference_price.is_(None),
+            Listing.status != ListingStatus.IGNORED,
+        )
+        .order_by(nullslast(Listing.last_seen_at.desc()))
+        .limit(limit)
+        .all()
+    )
+
+    recovered = 0
+    for listing in listings:
+        try:
+            _score_listing(db, listing, skip_vision=True)
+        except Exception as exc:
+            db.rollback()
+            logger.error("Repassage de l'annonce %s echoue (%s)", listing.id, exc)
+            continue
+        if listing.reference_price is not None:
+            recovered += 1
+
+    logger.info(
+        "Repassage : %d annonce(s) sans prix reexaminee(s), %d ont trouve un prix",
+        len(listings), recovered,
+    )
+    return {"examined": len(listings), "recovered": recovered}
+
+
 def run_full_check(db: Session):
     logger.info("=== Debut du cycle de verification ===")
 
@@ -587,5 +634,14 @@ def run_full_check(db: Session):
     except Exception as exc:
         db.rollback()
         logger.error("Index prix : synchronisation echouee (%s) - collecte poursuivie", exc)
+
+    # Apres avoir enrichi l'index, on retente les annonces restees sans
+    # prix : c'est ce qui rend visible l'avancement de l'indexation sur les
+    # annonces deja collectees.
+    try:
+        rescore_unpriced_listings(db)
+    except Exception as exc:
+        db.rollback()
+        logger.error("Repassage des annonces sans prix echoue (%s)", exc)
 
     logger.info("=== Fin du cycle de verification ===")
