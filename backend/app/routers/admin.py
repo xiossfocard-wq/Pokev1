@@ -4,6 +4,7 @@ from typing import Optional
 from app.config import settings
 from app.database import SessionLocal
 from app.pipeline import run_full_check, rescore_unpriced_listings
+from app.core.language_filter import detect_language
 from app.collectors.vinted_scraper import VintedScraper
 from app.collectors.zebradex_prices import ZebraDexClient
 from app.services.price_index import (
@@ -104,6 +105,16 @@ def test_price_match(title: str = Query(..., description="Titre d'annonce a test
         return {"matched": True, "title": title, **match.to_dict()}
     finally:
         db.close()
+
+
+@router.get("/test-language")
+def test_language(title: str = Query(..., description="Titre d'annonce a tester")):
+    """
+    Explique pourquoi une annonce est jugee francaise ou non. Sans ca, une
+    annonce ecartee disparait du dashboard sans qu'on sache pourquoi.
+    """
+    verdict = detect_language(title)
+    return {"title": title, **verdict.to_dict()}
 
 
 @router.get("/debug-vinted")
