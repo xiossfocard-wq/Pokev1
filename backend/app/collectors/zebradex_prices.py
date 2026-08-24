@@ -10,7 +10,7 @@ permet de construire un index complet, puis de faire le matching en local
 sans requête par carte.
 
 Vérifications faites le 04/08/2026 sur de VRAIES pages (pas des suppositions) :
-- https://zebradex.fr/series liste 169 séries FR, de "Set de Base" (1999)
+- https://zebradex.fr/series liste 158 séries FR, de "Set de Base" (1999)
   à "Nuit Noire" (ME05), chacune avec une URL de la forme
   /fr/tcg/pokemon/{bloc}/{code}/{slug-serie}/{id}
 - Une page série (ex Destinees de Paldea) liste ses 245 items, chacun avec :
@@ -179,7 +179,7 @@ class ZebraDexClient:
 
     def discover_series(self) -> List[ZebraDexSeries]:
         """
-        Recupere la liste COMPLETE des series depuis /series (169 series FR
+        Recupere la liste COMPLETE des series depuis /series (158 series FR
         au 04/08/2026). Aucune configuration manuelle : si ZebraDex ajoute
         une serie, elle est decouverte au prochain rafraichissement.
         """

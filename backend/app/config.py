@@ -64,7 +64,7 @@ class Settings:
     )
 
     # --- ZebraDex (source principale de prix, aucune cle requise) ---
-    # Nombre de series synchronisees par cycle. 169 series au total, ~6s
+    # Nombre de series synchronisees par cycle. 158 series au total, ~6s
     # par requete : 6 par cycle de 20 min = index complet en ~10h, puis
     # rafraichissement continu. Augmenter accelere mais sollicite plus le
     # site ; 30 est un maximum raisonnable.

@@ -42,7 +42,7 @@ def sync_prices(background_tasks: BackgroundTasks, batch_size: int = Query(6, ge
     """
     Synchronise un lot de series ZebraDex vers l'index local de prix.
     Progressif par design : a 6s par requete, 30 series = 3 min. Appeler
-    plusieurs fois (ou laisser le scheduler faire) pour couvrir les 169
+    plusieurs fois (ou laisser le scheduler faire) pour couvrir les 158
     series.
     """
     background_tasks.add_task(_sync_prices_with_own_session, batch_size)
@@ -71,7 +71,7 @@ def rescore_unpriced(
 
 @router.post("/refresh-series-catalog")
 def refresh_catalog():
-    """Redecouvre la liste des series ZebraDex (169 au 04/08/2026)."""
+    """Redecouvre la liste des series ZebraDex (158 au 25/08/2026)."""
     db = SessionLocal()
     try:
         added = refresh_series_catalog(db)

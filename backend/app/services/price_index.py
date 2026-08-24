@@ -3,7 +3,7 @@ Construction et interrogation de l'index local de prix de reference.
 
 Deux responsabilites :
 1. SYNCHRONISATION (`sync_series_batch`) : remplit `market_card_prices`
-   depuis ZebraDex, de facon PROGRESSIVE. Les 169 series ne sont pas
+   depuis ZebraDex, de facon PROGRESSIVE. Les 158 series ne sont pas
    telechargees d'un coup (ce serait ~17 min de requetes a 6s d'intervalle,
    incompatible avec un hebergement gratuit et peu respectueux du site) :
    on synchronise `batch_size` series par cycle, en priorisant celles

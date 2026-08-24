@@ -128,7 +128,7 @@ class AppSettings(Base):
 
 class ZebraDexSeriesState(Base):
     """
-    Suivi de synchronisation des series ZebraDex (169 series FR au
+    Suivi de synchronisation des series ZebraDex (158 series FR au
     04/08/2026, decouvertes automatiquement via /series - aucune config
     manuelle). La sync est PROGRESSIVE : quelques series par cycle plutot
     qu'un gros job bloquant, pour ne pas depasser les limites d'un
