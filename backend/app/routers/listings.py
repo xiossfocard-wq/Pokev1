@@ -49,7 +49,12 @@ def list_listings(
 
 @router.get("/{listing_id}", response_model=ListingOut)
 def get_listing(listing_id: int, db: Session = Depends(get_db)):
-    return db.query(Listing).filter(Listing.id == listing_id).first()
+    # Un id inexistant renvoyait None, ce que FastAPI transformait en
+    # erreur 500 illisible : on rend un vrai 404.
+    row = db.query(Listing).filter(Listing.id == listing_id).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Annonce introuvable.")
+    return row
 
 
 def _run_search_job(job: search_jobs.SearchJob):
