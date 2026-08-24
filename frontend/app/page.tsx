@@ -215,8 +215,8 @@ export default function DashboardPage() {
           {searching && (
             <div className="rounded-md border border-dashed border-ink-700 p-6 text-center text-xs text-ink-600">
               <p>
-                Recherche en direct sur Vinted et eBay — compte 1 à 5 minutes,
-                tu peux laisser la page ouverte.
+                Recherche en direct sur Vinted et eBay — compte 1 à 6 minutes
+                la première fois, tu peux laisser la page ouverte.
               </p>
               {searchProgress && (
                 <p className="mt-1.5 font-mono text-[11px] text-ember-400">

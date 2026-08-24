@@ -159,10 +159,12 @@ export interface SearchJob {
 }
 
 // Intervalle entre deux verifications de l'avancement, et duree max avant
-// d'abandonner. Une recherche ciblee interroge Vinted et eBay en direct :
-// compter 1 a 5 min. On laisse 6 min de marge.
+// d'abandonner. Mesure sur la prod le 25/08/2026 : 325 s pour "dracaufeu"
+// (92 annonces toutes nouvelles a scorer). Le plafond precedent de 6 min
+// passait a 35 s pres — on prend une vraie marge, quitte a ce que
+// l'utilisateur abandonne de lui-meme avant.
 const SEARCH_POLL_INTERVAL_MS = 2000;
-const SEARCH_MAX_WAIT_MS = 6 * 60 * 1000;
+const SEARCH_MAX_WAIT_MS = 12 * 60 * 1000;
 
 function startSearch(query: string): Promise<SearchJob> {
   return apiFetch<SearchJob>(
@@ -203,7 +205,7 @@ export async function searchListings(
   }
 
   throw new Error(
-    "La recherche prend anormalement longtemps (plus de 6 minutes). " +
+    "La recherche prend anormalement longtemps (plus de 12 minutes). " +
       "Réessaie dans un moment."
   );
 }
