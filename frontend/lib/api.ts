@@ -25,6 +25,16 @@ export interface PriceDetail {
   confidence: string;
   reason: string;
   source: string;
+  // Combien de cartes portaient ce nom, et l'écart de prix entre elles.
+  // Sert à montrer honnêtement à quel point le prix retenu est solide.
+  candidates_count?: number;
+  price_spread_eur?: number;
+  candidates_min_eur?: number | null;
+  candidates_max_eur?: number | null;
+  uncertain?: boolean;
+  // Alerte explicite (ex : le titre annonce une carte « V » mais la carte
+  // trouvée dans l'index est la carte de base).
+  warning?: string | null;
 }
 
 export interface PriceIndexStatus {

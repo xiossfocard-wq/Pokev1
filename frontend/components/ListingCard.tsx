@@ -48,6 +48,12 @@ export default function ListingCard({ listing }: { listing: Listing }) {
   const hasNoPrice = listing.reference_price === null;
   const hasRange = listing.price_low_eur != null && listing.price_high_eur != null;
   const confidence = listing.price_match_confidence;
+  const detail = listing.price_detail;
+  const priceWarning = detail?.warning ?? null;
+  const ambiguousCount = detail?.candidates_count ?? 0;
+  const spread = detail?.price_spread_eur ?? 0;
+  const minPrice = detail?.candidates_min_eur ?? null;
+  const maxPrice = detail?.candidates_max_eur ?? null;
   const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(
     listing.title + " pokemon carte prix"
   )}`;
@@ -161,6 +167,25 @@ export default function ListingCard({ listing }: { listing: Listing }) {
                   {listing.price_detail?.matched_card
                     ? ` · ${listing.price_detail.matched_card}`
                     : ""}
+                </p>
+              )}
+
+              {/* Combien de cartes homonymes ont dû être départagées, et sur
+                  quelle amplitude de prix. Sans ça, un prix médian calculé
+                  entre 3 € et 250 € s'affiche avec le même aplomb qu'un prix
+                  sûr. */}
+              {ambiguousCount > 1 && (
+                <p className="text-[10px] text-ink-600">
+                  {ambiguousCount} cartes portent ce nom
+                  {spread > 0 && minPrice !== null &&
+                    ` (de ${formatEur(minPrice)} à ${formatEur(maxPrice)})`}
+                  {" "}— prix médian retenu
+                </p>
+              )}
+
+              {priceWarning && (
+                <p className="mt-1 rounded-sm border border-rust-500/40 bg-rust-500/10 px-1.5 py-1 text-[10px] leading-snug text-rust-400">
+                  ⚠ {priceWarning}
                 </p>
               )}
             </div>
