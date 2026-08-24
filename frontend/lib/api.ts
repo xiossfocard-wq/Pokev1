@@ -90,7 +90,17 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     cache: "no-store",
   });
   if (!res.ok) {
-    throw new Error(`Erreur API ${res.status} sur ${path}`);
+    // On remonte le detail renvoye par le backend quand il y en a un :
+    // sans ca, toute erreur ressemblait a "la recherche a echoue", sans
+    // moyen de savoir pourquoi depuis le navigateur.
+    let detail = "";
+    try {
+      const body = await res.json();
+      detail = typeof body?.detail === "string" ? ` — ${body.detail}` : "";
+    } catch {
+      /* corps non JSON : on garde juste le code HTTP */
+    }
+    throw new Error(`Erreur API ${res.status} sur ${path}${detail}`);
   }
   return res.json();
 }
@@ -135,8 +145,65 @@ export function triggerPriceSync(batchSize = 12): Promise<{ status: string }> {
   );
 }
 
-export function searchListings(query: string): Promise<Listing[]> {
-  return apiFetch<Listing[]>(`/api/listings/search?q=${encodeURIComponent(query)}`, {
-    method: "POST",
-  });
+export type SearchJobStatus = "pending" | "running" | "done" | "error";
+
+export interface SearchJob {
+  job_id: string;
+  query: string;
+  status: SearchJobStatus;
+  message: string;
+  error: string | null;
+  result_count: number;
+  elapsed_seconds: number;
+  listings?: Listing[];
+}
+
+// Intervalle entre deux verifications de l'avancement, et duree max avant
+// d'abandonner. Une recherche ciblee interroge Vinted et eBay en direct :
+// compter 1 a 5 min. On laisse 6 min de marge.
+const SEARCH_POLL_INTERVAL_MS = 2000;
+const SEARCH_MAX_WAIT_MS = 6 * 60 * 1000;
+
+function startSearch(query: string): Promise<SearchJob> {
+  return apiFetch<SearchJob>(
+    `/api/listings/search?q=${encodeURIComponent(query)}`,
+    { method: "POST" }
+  );
+}
+
+function fetchSearchJob(jobId: string): Promise<SearchJob> {
+  return apiFetch<SearchJob>(`/api/listings/search/${encodeURIComponent(jobId)}`);
+}
+
+/**
+ * Lance une recherche ciblee et attend son resultat.
+ *
+ * La recherche ne tient PAS dans une seule requete HTTP (1 a 5 min de
+ * travail cote serveur : Vinted + eBay en direct, puis scoring de chaque
+ * annonce). Le backend rend donc un identifiant de job tout de suite, et
+ * on vient chercher l'avancement toutes les 2 s. C'est ce qui corrige la
+ * barre de recherche qui ne rendait jamais rien dans le navigateur.
+ */
+export async function searchListings(
+  query: string,
+  onProgress?: (message: string) => void
+): Promise<Listing[]> {
+  const job = await startSearch(query);
+  const deadline = Date.now() + SEARCH_MAX_WAIT_MS;
+
+  let current = job;
+  while (Date.now() < deadline) {
+    if (current.status === "done") return current.listings ?? [];
+    if (current.status === "error") {
+      throw new Error(current.error || "La recherche a echoue cote serveur.");
+    }
+    onProgress?.(current.message);
+    await new Promise((r) => setTimeout(r, SEARCH_POLL_INTERVAL_MS));
+    current = await fetchSearchJob(job.job_id);
+  }
+
+  throw new Error(
+    "La recherche prend anormalement longtemps (plus de 6 minutes). " +
+      "Réessaie dans un moment."
+  );
 }

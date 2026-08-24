@@ -34,6 +34,7 @@ export default function DashboardPage() {
   const [searchResults, setSearchResults] = useState<Listing[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchProgress, setSearchProgress] = useState<string>("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -100,16 +101,22 @@ export default function DashboardPage() {
     setSearching(true);
     setSearchError(null);
     setSearchQuery(q);
+    setSearchResults([]);
+    setSearchProgress("Démarrage de la recherche…");
     try {
-      const results = await searchListings(q);
+      const results = await searchListings(q, setSearchProgress);
       setSearchResults(results);
     } catch (err) {
+      // On affiche le message réel en plus de l'explication : sans ça,
+      // impossible de distinguer un backend endormi d'une vraie panne.
+      const detail = err instanceof Error ? err.message : String(err);
       setSearchError(
         "La recherche a échoué — le backend est peut-être en train de se réveiller " +
-          "(hébergement gratuit), réessaie dans quelques secondes."
+          `(hébergement gratuit), réessaie dans quelques secondes. [${detail}]`
       );
     } finally {
       setSearching(false);
+      setSearchProgress("");
     }
   }
 
@@ -118,6 +125,7 @@ export default function DashboardPage() {
     setSearchResults([]);
     setSearchInput("");
     setSearchError(null);
+    setSearchProgress("");
   }
 
   return (
@@ -206,7 +214,15 @@ export default function DashboardPage() {
 
           {searching && (
             <div className="rounded-md border border-dashed border-ink-700 p-6 text-center text-xs text-ink-600">
-              Recherche en cours sur Vinted et eBay — ça peut prendre quelques secondes…
+              <p>
+                Recherche en direct sur Vinted et eBay — compte 1 à 5 minutes,
+                tu peux laisser la page ouverte.
+              </p>
+              {searchProgress && (
+                <p className="mt-1.5 font-mono text-[11px] text-ember-400">
+                  {searchProgress}
+                </p>
+              )}
             </div>
           )}
 

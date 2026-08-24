@@ -404,19 +404,43 @@ def run_vinted_check(db: Session):
         _maybe_notify(db, listing, threshold=settings.default_deal_score_threshold)
 
 
-def run_targeted_search(db: Session, query: str, limit: int = 60) -> list:
+def _existing_by_external_id(db: Session, source, external_ids: list) -> dict:
+    """Recupere en UNE requete les annonces deja connues, au lieu d'une
+    requete par annonce. Sur Neon (base distante), chaque aller-retour coute
+    ~100 ms : sur 50 annonces ca faisait plusieurs secondes pour rien."""
+    if not external_ids:
+        return {}
+    rows = (
+        db.query(Listing)
+        .filter(Listing.source == source, Listing.external_id.in_(external_ids))
+        .all()
+    )
+    return {row.external_id: row for row in rows}
+
+
+def run_targeted_search(db: Session, query: str, limit: int = 60, on_progress=None) -> list:
     """
     Recherche A LA DEMANDE sur un terme precis (ex: "Pikachu", "Dracaufeu
     ex", un code de set...), contrairement a run_ebay_check/run_vinted_check
     qui tournent en tache de fond sur le terme generique de config.
+
+    Duree typique : 1 a 5 minutes. C'est pour cette raison qu'elle n'est PAS
+    appelee directement depuis la requete HTTP mais via un job de fond (voir
+    app/services/search_jobs.py). `on_progress` recoit des messages d'etape
+    a afficher a l'utilisateur pendant l'attente.
     """
     query = (query or "").strip()
     if not query:
         return []
 
+    def progress(message: str):
+        if on_progress:
+            on_progress(message)
+
     matched_keys = set()
 
     if settings.vinted_enabled:
+        progress("Recherche sur Vinted…")
         try:
             vinted_results = _vinted_scraper.search_pokemon_listings(
                 search_text=query, sort_order="newest_first"
@@ -428,16 +452,22 @@ def run_targeted_search(db: Session, query: str, limit: int = 60) -> list:
             logger.error("Recherche ciblee Vinted echouee (%s)", exc)
             vinted_results = []
 
+        known = _existing_by_external_id(
+            db, SourcePlatform.VINTED, [item.item_id for item in vinted_results]
+        )
+        seen_at = datetime.utcnow()
+        new_items = []
         for item in vinted_results:
             matched_keys.add((SourcePlatform.VINTED, item.item_id))
-            existing = db.query(Listing).filter_by(
-                source=SourcePlatform.VINTED, external_id=item.item_id
-            ).first()
+            existing = known.get(item.item_id)
             if existing:
-                existing.last_seen_at = datetime.utcnow()
-                db.commit()
-                continue
+                existing.last_seen_at = seen_at
+            else:
+                new_items.append(item)
+        db.commit()  # un seul commit pour tous les "deja vus"
 
+        for position, item in enumerate(new_items, start=1):
+            progress(f"Vinted : analyse de l'annonce {position}/{len(new_items)}…")
             seller_result = score_vinted_seller(
                 review_count=item.seller_review_count,
                 average_rating=item.seller_average_rating,
@@ -462,6 +492,7 @@ def run_targeted_search(db: Session, query: str, limit: int = 60) -> list:
             _maybe_notify(db, listing, threshold=settings.default_deal_score_threshold)
 
     if settings.ebay_client_id and settings.ebay_client_secret:
+        progress("Recherche sur eBay…")
         try:
             client = EbayBrowseClient(
                 client_id=settings.ebay_client_id,
@@ -474,16 +505,22 @@ def run_targeted_search(db: Session, query: str, limit: int = 60) -> list:
             logger.error("Recherche ciblee eBay echouee (%s)", exc)
             ebay_results = []
 
+        known = _existing_by_external_id(
+            db, SourcePlatform.EBAY, [item.item_id for item in ebay_results]
+        )
+        seen_at = datetime.utcnow()
+        new_items = []
         for item in ebay_results:
             matched_keys.add((SourcePlatform.EBAY, item.item_id))
-            existing = db.query(Listing).filter_by(
-                source=SourcePlatform.EBAY, external_id=item.item_id
-            ).first()
+            existing = known.get(item.item_id)
             if existing:
-                existing.last_seen_at = datetime.utcnow()
-                db.commit()
-                continue
+                existing.last_seen_at = seen_at
+            else:
+                new_items.append(item)
+        db.commit()
 
+        for position, item in enumerate(new_items, start=1):
+            progress(f"eBay : analyse de l'annonce {position}/{len(new_items)}…")
             seller_result = score_ebay_seller(
                 feedback_percentage=item.seller_feedback_percentage,
                 feedback_score=item.seller_feedback_score,
@@ -510,6 +547,7 @@ def run_targeted_search(db: Session, query: str, limit: int = 60) -> list:
     if not matched_keys:
         return []
 
+    progress("Mise en forme des resultats…")
     conditions = [
         (Listing.source == src) & (Listing.external_id == ext_id)
         for src, ext_id in matched_keys
