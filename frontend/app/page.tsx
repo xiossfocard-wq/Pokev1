@@ -36,8 +36,14 @@ export default function DashboardPage() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchProgress, setSearchProgress] = useState<string>("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // `silent` : rafraichir sans vider l'ecran. Le rafraichissement
+  // automatique toutes les 60 s affichait "Chargement…" a la place des
+  // annonces a chaque passage, alors que ce qui est deja affiche reste
+  // parfaitement valable. On ne montre l'etat de chargement que quand
+  // l'utilisateur declenche lui-meme quelque chose (arrivee sur la page,
+  // changement de tri ou de filtre).
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const [v, e] = await Promise.all([
@@ -64,7 +70,7 @@ export default function DashboardPage() {
     load();
     loadIndexStatus();
     const interval = setInterval(() => {
-      load();
+      load(true);
       loadIndexStatus();
     }, 60_000);
     return () => clearInterval(interval);
