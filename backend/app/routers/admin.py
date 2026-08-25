@@ -3,7 +3,7 @@ from typing import Optional
 
 from app.config import settings
 from app.database import SessionLocal
-from app.pipeline import run_full_check, rescore_unpriced_listings
+from app.pipeline import run_full_check, rescore_unpriced_listings, refilter_language
 from app.core.language_filter import detect_language
 from app.collectors.vinted_scraper import VintedScraper
 from app.collectors.zebradex_prices import ZebraDexClient
@@ -65,6 +65,20 @@ def rescore_unpriced(
         return {"status": "ok", **rescore_unpriced_listings(
             db, limit=limit, include_uncertain=include_uncertain
         )}
+    finally:
+        db.close()
+
+
+@router.post("/refilter-language")
+def refilter_language_now(limit: int = Query(2000, ge=1, le=10000)):
+    """
+    Repasse le filtre de langue sur les annonces deja en base. A lancer
+    apres une amelioration du filtre : sans ca, seules les NOUVELLES
+    annonces en beneficient.
+    """
+    db = SessionLocal()
+    try:
+        return {"status": "ok", **refilter_language(db, limit=limit)}
     finally:
         db.close()
 

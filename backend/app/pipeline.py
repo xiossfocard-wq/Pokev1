@@ -628,6 +628,41 @@ def rescore_unpriced_listings(
     return {"examined": len(listings), "recovered": recovered, "corrected": corrected}
 
 
+def refilter_language(db: Session, limit: int = 2000) -> dict:
+    """
+    Repasse le filtre de langue sur les annonces DEJA en base.
+
+    Necessaire parce que le filtre s'ameliore avec le temps, alors qu'une
+    annonce n'est evaluee qu'une fois, a la collecte. Sans ce passage, une
+    carte japonaise ou anglaise entree avant l'amelioration reste affichee
+    pour toujours - y compris en tete des resultats, ce qui est le pire cas
+    (constate le 25/08/2026 : une carte anglaise arrivait n1 avec un score
+    de 97).
+
+    Tres bon marche : aucune requete reseau, aucun scoring, on ne lit que le
+    titre et la description deja stockes.
+    """
+    listings = (
+        db.query(Listing)
+        .filter(Listing.status != ListingStatus.IGNORED)
+        .limit(limit)
+        .all()
+    )
+
+    exclues = 0
+    for listing in listings:
+        if looks_non_french(listing.title, listing.description):
+            listing.status = ListingStatus.IGNORED
+            exclues += 1
+    db.commit()
+
+    logger.info(
+        "Filtre langue : %d annonce(s) reexaminee(s), %d ecartee(s) comme non francaises",
+        len(listings), exclues,
+    )
+    return {"examined": len(listings), "excluded": exclues}
+
+
 def run_full_check(db: Session):
     logger.info("=== Debut du cycle de verification ===")
 
@@ -658,5 +693,15 @@ def run_full_check(db: Session):
     except Exception as exc:
         db.rollback()
         logger.error("Repassage des annonces sans prix echoue (%s)", exc)
+
+    # Le filtre de langue s'ameliore avec le temps, mais une annonce n'est
+    # evaluee qu'a la collecte : sans ce passage, les cartes etrangeres
+    # entrees avant une amelioration resteraient affichees indefiniment.
+    if settings.french_only:
+        try:
+            refilter_language(db)
+        except Exception as exc:
+            db.rollback()
+            logger.error("Repassage du filtre de langue echoue (%s)", exc)
 
     logger.info("=== Fin du cycle de verification ===")
