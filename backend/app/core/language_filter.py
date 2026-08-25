@@ -89,6 +89,14 @@ _WEAK_ENGLISH_MARKERS = [
     "near mint", "mint condition", "trick or trade", "booster box",
     "sealed", "shipping", "brand new", "condition", "graded", "card lot",
     "single card", "very rare", "pack fresh", "please", "worldwide",
+    # Vocabulaire de collectionneur anglophone. Chacun pris isolement est
+    # employe par des vendeurs francais ("Base Set" comme nom de serie,
+    # "Unlimited" comme edition) : c'est bien pour ca qu'ils sont FAIBLES et
+    # qu'il en faut deux. Ajoutes apres avoir vu "Pikachu 58/102 Original
+    # Base Set Unlimited Pokemon Card - Near Mint" arriver en tete des
+    # resultats de recherche le 25/08/2026.
+    "base set", "unlimited", "shadowless", "trading card", "pokemon card",
+    "holo rare", "first edition", "original",
 ]
 
 # ---------------------------------------------------------------------------
@@ -186,7 +194,29 @@ _FRENCH_ASSERTIONS = _compile_words([
 # en francais — le nom anglais ne prouve plus rien.
 _FRENCH_POKEMON_PATTERN = _compile_words(set(_ENGLISH_ONLY_POKEMON.values()))
 
-_SHORT_TOKEN_PATTERN = re.compile(r"(?<![a-z0-9])(jp|kr)(?![a-z0-9])")
+# Sigles de langue que les vendeurs collent en fin de titre : "Pikachu Ex
+# 044/193 JAP", "Vmax 046/184 S8B JPN", "Eevee 9.5 ITA". Repere en verifiant
+# le dashboard en vrai le 25/08/2026 : la version precedente ne connaissait
+# que "jp" et "kr", si bien que "JAP" et "JPN" — de loin les plus frequents —
+# passaient au travers.
+#
+# N'y figurent QUE des sigles qui ne sont pas aussi des mots francais. "EN",
+# "DE", "IT", "US" en sont volontairement absents : "carte EN très bon état",
+# "lot DE 10 cartes" declencheraient le filtre a tort.
+_LANGUAGE_CODES = {
+    "jp": "ja", "jpn": "ja", "jap": "ja",
+    "kr": "ko", "kor": "ko",
+    "eng": "en",
+    "ita": "it",
+    "esp": "es",
+    "ger": "de", "deu": "de",
+    "chn": "zh",
+    "ned": "nl",
+}
+
+_SHORT_TOKEN_PATTERN = re.compile(
+    r"(?<![a-z0-9])(" + "|".join(sorted(_LANGUAGE_CODES, key=len, reverse=True)) + r")(?![a-z0-9])"
+)
 
 _NON_LATIN_SCRIPT_PATTERN = re.compile(
     "["
@@ -236,9 +266,11 @@ def detect_language(*texts) -> LanguageVerdict:
             return LanguageVerdict(False, lang, "high",
                                    [f"langue annoncee explicitement : « {found.group(0)} »"])
 
-    if _SHORT_TOKEN_PATTERN.search(text):
-        return LanguageVerdict(False, "ja/ko", "high",
-                               ["mention « JP » ou « KR »"])
+    sigle = _SHORT_TOKEN_PATTERN.search(text)
+    if sigle:
+        code = sigle.group(1)
+        return LanguageVerdict(False, _LANGUAGE_CODES[code], "high",
+                               [f"sigle de langue « {code.upper()} » dans le titre"])
 
     for lang, pattern in _STRONG_PATTERNS.items():
         found = pattern.findall(text)

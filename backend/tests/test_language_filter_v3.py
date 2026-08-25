@@ -63,6 +63,30 @@ class TestAnnoncesEtrangeresEcartees(unittest.TestCase):
                 self.assertTrue(looks_non_french(titre))
                 self.assertEqual(detect_language(titre).language, "en")
 
+    def test_sigles_de_langue_en_fin_de_titre(self):
+        """Repere en ouvrant le dashboard en vrai : deux annonces japonaises
+        y figuraient encore. La version precedente ne connaissait que "jp" et
+        "kr", alors que les vendeurs ecrivent "JAP" et "JPN"."""
+        cas = [
+            ("Carte Pokémon Pikachu Ex 044/193 JAP", "ja"),
+            ("Pikachu Kanazawa holo PSA 10 JPN Mint", "ja"),
+            ("Pokémon Shaymin 185/182 Holo ITA", "it"),
+            ("Raikou neo revelation holo eng swirl", "en"),
+            ("Dracaufeu KOR promo", "ko"),
+        ]
+        for titre, langue in cas:
+            with self.subTest(titre=titre):
+                self.assertTrue(looks_non_french(titre))
+                self.assertEqual(detect_language(titre).language, langue)
+
+    def test_carte_anglaise_au_vocabulaire_de_collectionneur(self):
+        """Vue en tete des resultats de recherche le 25/08/2026 : "Pikachu"
+        s'ecrit pareil en francais, donc seul le vocabulaire trahit la carte.
+        Un seul mot anglais ne suffit pas, plusieurs oui."""
+        titre = "Pikachu 58/102 Original Base Set Unlimited Pokémon Card – Near Mint"
+        self.assertTrue(looks_non_french(titre))
+        self.assertEqual(detect_language(titre).language, "en")
+
     def test_raison_expliquee(self):
         """Une annonce ecartee doit pouvoir etre expliquee, sinon elle
         disparait du dashboard sans que personne ne sache pourquoi."""
@@ -104,6 +128,14 @@ class TestAnnoncesFrancaisesGardees(unittest.TestCase):
             looks_non_french("Carte card pokémon dracaufeu v de peter promo jumbo")
         )
         self.assertFalse(looks_non_french("Kravos V Full Art 72/73 – Near Mint – FR"))
+
+    def test_sigles_ambigus_en_francais_ignores(self):
+        """"EN", "DE", "IT", "US" sont des mots francais ordinaires : ils ne
+        doivent jamais compter comme sigles de langue, sinon "lot DE 10
+        cartes" disparait du dashboard."""
+        self.assertFalse(looks_non_french("Carte EN très bon état de collection"))
+        self.assertFalse(looks_non_french("Lot DE 10 cartes Pokémon Neuves Fr"))
+        self.assertFalse(looks_non_french("Dracaufeu IT 4/102"))
 
     def test_titre_minimal(self):
         self.assertFalse(looks_non_french("Carte Pokémon"))
