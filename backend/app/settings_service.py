@@ -21,6 +21,12 @@ DEFAULTS = {
     "quality_weight": 0.3,
     "seller_weight": 0.2,
     "check_interval_minutes": app_settings.check_interval_minutes,
+    # Les annonces a 1 EUR sont presque toujours des lots, des cartes
+    # abimees ou des titres trompeurs : leur "marge" de +60 EUR vient d'un
+    # rapprochement de carte errone, pas d'une bonne affaire. On les masque
+    # par defaut, tout en laissant le seuil reglable depuis le dashboard.
+    # Une annonce dont le prix est INFERIEUR OU EGAL a ce seuil est masquee.
+    "min_listing_price": 1.0,
 }
 
 

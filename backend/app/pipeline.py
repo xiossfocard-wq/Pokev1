@@ -234,7 +234,16 @@ def _score_listing(db: Session, listing: Listing, skip_vision: bool = False):
     )
     listing.margin_net = margin_result.net_margin
     listing.margin_ratio = margin_result.margin_ratio
-    margin_score = normalize_margin_ratio(margin_result.margin_ratio)
+
+    # Une marge calculee sur un prix de reference douteux n'est pas une
+    # information : c'est un chiffre inventé. Quand le rapprochement est
+    # incertain (nom seul, plusieurs cartes homonymes aux prix tres
+    # differents, variante qui ne correspond pas), la marge reste AFFICHEE
+    # a titre indicatif mais ne pese plus dans le score - sinon ce sont
+    # justement les rapprochements les plus fragiles qui trustent le haut
+    # du classement, avec des "+63 EUR" qui n'existent pas.
+    prix_doute = bool(price_detail and price_detail.get("uncertain"))
+    margin_score = 50.0 if prix_doute else normalize_margin_ratio(margin_result.margin_ratio)
 
     quality_blend = QualityBlend(text_score=text_quality.score, vision_score=vision_score)
 

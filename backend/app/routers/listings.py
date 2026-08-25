@@ -9,8 +9,20 @@ from app.models import Listing, SourcePlatform, ListingStatus
 from app.schemas import ListingOut
 from app.pipeline import run_targeted_search
 from app.services import search_jobs
+from app.settings_service import load_app_settings
 
 router = APIRouter(prefix="/api/listings", tags=["listings"])
+
+def _min_price_filter(db: Session):
+    """
+    Masque les annonces a tres bas prix. Une carte affichee a 1 EUR avec
+    "+63 EUR de marge" n'est presque jamais une pepite : c'est un lot, une
+    carte abimee, ou un titre qui a trompe le rapprochement. Seuil reglable
+    depuis le dashboard (min_listing_price).
+    """
+    seuil = load_app_settings(db).get("min_listing_price") or 0.0
+    return Listing.price > seuil
+
 
 SORTABLE_FIELDS = {
     "deal_score": Listing.deal_score,
@@ -29,7 +41,11 @@ def list_listings(
     limit: int = Query(100, le=500),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Listing).filter(Listing.status != ListingStatus.IGNORED)
+    query = (
+        db.query(Listing)
+        .filter(Listing.status != ListingStatus.IGNORED)
+        .filter(_min_price_filter(db))
+    )
 
     if source:
         try:
@@ -111,6 +127,7 @@ def get_search_result(job_id: str, db: Session = Depends(get_db)):
             db.query(Listing)
             .filter(Listing.id.in_(job.listing_ids))
             .filter(Listing.status != ListingStatus.IGNORED)
+            .filter(_min_price_filter(db))
             .order_by(nullslast(Listing.deal_score.desc()))
             .all()
         )

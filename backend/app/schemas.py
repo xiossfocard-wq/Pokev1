@@ -44,6 +44,7 @@ class SettingsUpdate(BaseModel):
     quality_weight: Optional[float] = None
     seller_weight: Optional[float] = None
     check_interval_minutes: Optional[int] = None
+    min_listing_price: Optional[float] = None
 
 
 class SettingsOut(BaseModel):
@@ -52,3 +53,4 @@ class SettingsOut(BaseModel):
     quality_weight: float
     seller_weight: float
     check_interval_minutes: int
+    min_listing_price: float

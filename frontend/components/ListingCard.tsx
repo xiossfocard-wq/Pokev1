@@ -57,6 +57,15 @@ export default function ListingCard({ listing }: { listing: Listing }) {
   const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(
     listing.title + " pokemon carte prix"
   )}`;
+  // Cardmarket exige l'extension exacte dans l'URL d'une fiche produit, et
+  // elle est indevinable depuis un titre Vinted (voir la note dans
+  // collectors/cardmarket_prices.py). On pointe donc vers leur RECHERCHE,
+  // qui elle marche toujours, en partant du nom de la carte retenue quand
+  // on en a un — sinon du titre de l'annonce.
+  const cardmarketQuery = detail?.matched_card || listing.title;
+  const cardmarketUrl = `https://www.cardmarket.com/fr/Pokemon/Products/Search?searchString=${encodeURIComponent(
+    cardmarketQuery
+  )}`;
 
   return (
     <article className="group relative overflow-hidden rounded-lg border border-ink-700 bg-ink-800/80 transition-all hover:border-ember-500/50 hover:bg-ink-800">
@@ -123,8 +132,17 @@ export default function ListingCard({ listing }: { listing: Listing }) {
             {listing.margin_net !== null && (
               <span
                 className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${
-                  marginPositive ? "bg-moss-500/20 text-moss-400" : "bg-rust-500/15 text-rust-400"
+                  detail?.uncertain
+                    ? "bg-ink-700 text-ink-600 line-through decoration-ink-600/60"
+                    : marginPositive
+                    ? "bg-moss-500/20 text-moss-400"
+                    : "bg-rust-500/15 text-rust-400"
                 }`}
+                title={
+                  detail?.uncertain
+                    ? "Marge calculée sur un prix de référence incertain — elle ne compte pas dans le score. Survole la carte pour voir pourquoi."
+                    : undefined
+                }
               >
                 {marginPositive ? "+" : ""}
                 {formatEur(listing.margin_net)}
@@ -211,16 +229,81 @@ export default function ListingCard({ listing }: { listing: Listing }) {
         <DealScoreBadge score={listing.deal_score} />
       </a>
 
-      {hasNoPrice && (
-        <a
-          href={searchUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block border-t border-ink-700 px-3 py-1.5 text-center text-[10px] text-ink-600 transition-colors hover:bg-ink-700 hover:text-ember-400"
-        >
-          Chercher le prix manuellement ↗
-        </a>
-      )}
+      {/* Détail du marché, révélé au survol de la carte. En dehors du lien
+          principal : on ne peut pas imbriquer des liens dans un lien. */}
+      <div className="hidden border-t border-ink-700 bg-ink-900/50 px-3 py-2.5 group-focus-within:block group-hover:block">
+        {detail ? (
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
+            <dt className="text-ink-600">Carte retenue</dt>
+            <dd className="text-parchment-100">
+              {detail.matched_card}
+              {detail.matched_code && (
+                <span className="ml-1.5 font-mono text-ink-600">{detail.matched_code}</span>
+              )}
+            </dd>
+
+            {detail.series_name && (
+              <>
+                <dt className="text-ink-600">Série</dt>
+                <dd className="text-parchment-100">{detail.series_name}</dd>
+              </>
+            )}
+
+            <dt className="text-ink-600">Prix marché</dt>
+            <dd className="font-mono text-parchment-100">
+              {formatEur(detail.price_eur)}
+              {hasRange && (
+                <span className="ml-1.5 text-ink-600">
+                  volatilité 7 j : {formatEur(listing.price_low_eur)}–
+                  {formatEur(listing.price_high_eur)}
+                </span>
+              )}
+            </dd>
+
+            {ambiguousCount > 1 && (
+              <>
+                <dt className="text-ink-600">Homonymes</dt>
+                <dd className="text-parchment-100">
+                  {ambiguousCount} cartes de ce nom
+                  {minPrice !== null && (
+                    <span className="font-mono text-ink-600">
+                      {" "}
+                      ({formatEur(minPrice)} → {formatEur(maxPrice)})
+                    </span>
+                  )}
+                </dd>
+              </>
+            )}
+
+            <dt className="text-ink-600">Pourquoi</dt>
+            <dd className="text-ink-600">{detail.reason}</dd>
+          </dl>
+        ) : (
+          <p className="text-[11px] text-ink-600">
+            Aucune carte de l&apos;index ne correspond à ce titre. L&apos;index de prix
+            se construit encore — ou le titre est trop vague pour identifier la carte.
+          </p>
+        )}
+
+        <div className="mt-2 flex flex-wrap gap-2 border-t border-ink-800 pt-2">
+          <a
+            href={cardmarketUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-sm border border-ink-700 px-2 py-1 text-[10px] text-parchment-100 transition-colors hover:border-ember-500 hover:text-ember-400"
+          >
+            Vérifier sur Cardmarket ↗
+          </a>
+          <a
+            href={searchUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-sm border border-ink-700 px-2 py-1 text-[10px] text-ink-600 transition-colors hover:border-ink-600 hover:text-parchment-100"
+          >
+            Recherche Google ↗
+          </a>
+        </div>
+      </div>
     </article>
   );
 }

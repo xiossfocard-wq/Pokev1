@@ -83,6 +83,8 @@ export interface AppSettings {
   quality_weight: number;
   seller_weight: number;
   check_interval_minutes: number;
+  /** Les annonces à ce prix ou en dessous sont masquées. */
+  min_listing_price: number;
 }
 
 export type SortField = "deal_score" | "margin_net" | "first_seen_at" | "price";

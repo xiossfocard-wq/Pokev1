@@ -5,25 +5,16 @@ from app.database import get_db
 from app.config import settings as app_settings
 from app.models import AppSettings
 from app.schemas import SettingsOut, SettingsUpdate
+# DEFAULTS etait duplique ici ET dans settings_service.py : ajouter un
+# reglage d'un seul cote suffisait a le rendre invisible de l'autre.
+# Une seule definition, dans settings_service.
+from app.settings_service import DEFAULTS, load_app_settings
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
-DEFAULTS = {
-    "deal_score_threshold": app_settings.default_deal_score_threshold,
-    "margin_weight": 0.5,
-    "quality_weight": 0.3,
-    "seller_weight": 0.2,
-    "check_interval_minutes": app_settings.check_interval_minutes,
-}
-
 
 def _load_all(db: Session) -> dict:
-    rows = db.query(AppSettings).all()
-    values = dict(DEFAULTS)
-    for row in rows:
-        if row.key in values:
-            values[row.key] = row.value
-    return values
+    return load_app_settings(db)
 
 
 @router.get("", response_model=SettingsOut)

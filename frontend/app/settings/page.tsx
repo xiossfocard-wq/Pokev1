@@ -55,6 +55,15 @@ export default function SettingsPage() {
           max={100}
         />
         <Field
+          label="Prix minimum affiché (€)"
+          hint="Les annonces à ce prix ou en dessous sont masquées. Les cartes à 1 € sont presque toujours des lots ou des titres trompeurs, et leur « marge » vient d'une carte mal identifiée. Mettre 0 pour tout revoir."
+          value={settings.min_listing_price}
+          onChange={(v) => set("min_listing_price", v)}
+          min={0}
+          max={100}
+          step={0.5}
+        />
+        <Field
           label="Intervalle de vérification (minutes)"
           hint="Fréquence des cycles de collecte eBay + Vinted. Redémarre le backend pour appliquer un changement."
           value={settings.check_interval_minutes}
