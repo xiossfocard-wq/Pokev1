@@ -41,6 +41,18 @@ class TestAnnoncesEtrangeresEcartees(unittest.TestCase):
             with self.subTest(titre=titre):
                 self.assertTrue(looks_non_french(titre))
 
+    def test_articles_italiens_seul_indice(self):
+        """Vu sur le dashboard : quand le nom du Pokemon s'ecrit pareil dans
+        les deux langues, l'article contracte est le seul indice restant."""
+        for titre in [
+            "Pikachu Ex del set mega dream",
+            "Mewtwo EX del Team Rocket DRI 081",
+            "Persian EX del Team Rocket DRI 150",
+        ]:
+            with self.subTest(titre=titre):
+                self.assertTrue(looks_non_french(titre))
+                self.assertEqual(detect_language(titre).language, "it")
+
     def test_neerlandais(self):
         self.assertTrue(looks_non_french("Eevee graad 9.5 ita"))
         self.assertTrue(looks_non_french("Piplup GRAAD 9.5"))

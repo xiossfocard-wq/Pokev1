@@ -75,7 +75,13 @@ _STRONG_FOREIGN_MARKERS = {
     "it": ["carta", "carte da collezione", "collezione", "promozionale",
            "spedizione", "condizioni", "gradazione", "cercasi", "evoluzioni",
            "ascesa", "gravita", "folgoranti", "ossidrica", "scintille",
-           "prismatiche", "eroica", "contrappeso", "raro", "nuova"],
+           "prismatiche", "eroica", "contrappeso", "raro", "nuova",
+           # Articles contractes : souvent le SEUL indice quand le nom du
+           # Pokemon s'ecrit pareil dans les deux langues ("Mewtwo EX del
+           # Team Rocket", "Pikachu Ex del set mega dream"). Verifie sur les
+           # 500 annonces reelles : 6 titres concernes, tous italiens.
+           "del", "della", "dello", "dei", "delle",
+           "ottime", "ottimo", "nuovo", "nuove"],
     "nl": ["kaart", "kaarten", "verzamelkaart", "graad", "zeldzaam",
            "nieuwstaat"],
     "es": ["brillante", "envio", "coleccion", "raras", "nueva"],
