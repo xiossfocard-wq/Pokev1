@@ -11,6 +11,9 @@ interface ListingColumnProps {
   sortBy: SortField;
   order: SortOrder;
   onSortChange: (sortBy: SortField, order: SortOrder) => void;
+  /** Appelé quand l'utilisateur corrige une annonce (prix, mauvaise carte,
+   *  masquage) : le parent met sa liste à jour sans tout recharger. */
+  onListingChanged?: (updated: Listing) => void;
 }
 
 const SOURCE_LABEL: Record<ListingSource, string> = { vinted: "Vinted", ebay: "eBay" };
@@ -23,6 +26,7 @@ export default function ListingColumn({
   sortBy,
   order,
   onSortChange,
+  onListingChanged,
 }: ListingColumnProps) {
   return (
     <section className="flex-1 min-w-0">
@@ -50,7 +54,7 @@ export default function ListingColumn({
           </div>
         )}
         {listings.map((l) => (
-          <ListingCard key={l.id} listing={l} />
+          <ListingCard key={l.id} listing={l} onChanged={onListingChanged} />
         ))}
       </div>
     </section>

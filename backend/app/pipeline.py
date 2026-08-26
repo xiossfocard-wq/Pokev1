@@ -131,6 +131,45 @@ def _get_or_fetch_reference_price(db: Session, title: str, description: str = ""
     return match.row.price_eur, label, detail
 
 
+def _resolve_reference_price(db: Session, listing: Listing) -> tuple:
+    """
+    Prix de reference d'une annonce, en donnant TOUJOURS le dernier mot a
+    l'utilisateur.
+
+    - il a saisi un prix a la main : c'est celui-la, en confiance maximale ;
+    - il a signale "ce n'est pas la bonne carte" : aucune identification
+      automatique n'est retentee, on prefere ne rien afficher qu'afficher
+      ce qu'il a deja rejete ;
+    - sinon : identification automatique habituelle.
+    """
+    if listing.manual_reference_price is not None:
+        detail = {
+            "price_eur": listing.manual_reference_price,
+            "price_low_eur": None,
+            "price_high_eur": None,
+            "variation_7d_eur": None,
+            "rarity": None,
+            "series_name": None,
+            "matched_card": "Prix saisi par toi",
+            "matched_code": None,
+            "confidence": "manual",
+            "reason": "prix de marche que tu as corrige toi-meme",
+            "source": "manuel",
+            "candidates_count": 1,
+            "price_spread_eur": 0.0,
+            "candidates_min_eur": None,
+            "candidates_max_eur": None,
+            "uncertain": False,
+            "warning": None,
+        }
+        return listing.manual_reference_price, "corrige par toi", detail
+
+    if listing.manual_status == "wrong_card":
+        return None, None, None
+
+    return _get_or_fetch_reference_price(db, listing.title, listing.description or "")
+
+
 def _score_listing(db: Session, listing: Listing, skip_vision: bool = False):
     """`skip_vision=True` sert au repassage des annonces sans prix : on
     reutilise le score vision deja calcule au lieu de rappeler (et de
@@ -141,15 +180,16 @@ def _score_listing(db: Session, listing: Listing, skip_vision: bool = False):
     # façon. Ne détecte que les indices EXPLICITES de langue étrangère dans
     # le titre (voir app/core/language_filter.py) — un titre qui ne dit
     # rien est traité comme probablement français, pas comme suspect.
-    if settings.french_only and looks_non_french(listing.title, listing.description):
+    # Une annonce que l'utilisateur a lui-meme examinee ne doit plus etre
+    # ecartee automatiquement : s'il l'a corrigee, c'est qu'il la veut.
+    if (settings.french_only and not listing.manual_reviewed_at
+            and looks_non_french(listing.title, listing.description)):
         listing.status = ListingStatus.IGNORED
         listing.scored_at = datetime.utcnow()
         db.commit()
         return
 
-    reference_price, source_label, price_detail = _get_or_fetch_reference_price(
-        db, listing.title, listing.description or ""
-    )
+    reference_price, source_label, price_detail = _resolve_reference_price(db, listing)
 
     text_quality = analyze_text_quality(listing.title, listing.description)
     listing.quality_text_score = text_quality.score
@@ -218,6 +258,22 @@ def _score_listing(db: Session, listing: Listing, skip_vision: bool = False):
         # IGNORED) — corrigé suite à un retour : l'utilisateur veut voir ces
         # annonces quand même pour comparer manuellement au prix du marché,
         # même sans marge calculée automatiquement.
+        #
+        # NB (25/08/2026) : il faut aussi EFFACER ce qui avait ete calcule
+        # auparavant. Sans ca, une annonce qui perd son prix (parce que
+        # l'utilisateur signale "ce n'est pas la bonne carte", ou parce que
+        # l'index a change) gardait son ancien prix, son ancienne marge et
+        # son ancien score — et continuait de trôner en haut du classement
+        # sur la foi d'un chiffre qu'on venait justement de retirer.
+        listing.reference_price = None
+        listing.reference_price_source = None
+        listing.margin_net = None
+        listing.margin_ratio = None
+        listing.price_low_eur = None
+        listing.price_high_eur = None
+        listing.price_match_confidence = None
+        listing.price_detail = None
+        listing.deal_score = None
         listing.status = ListingStatus.NO_PRICE_MATCH
         listing.scored_at = datetime.utcnow()
         db.commit()
@@ -672,6 +728,8 @@ def refilter_language(db: Session, limit: int = 2000) -> dict:
 
     exclues = 0
     for listing in listings:
+        if listing.manual_reviewed_at:
+            continue  # l'utilisateur a tranche lui-meme sur cette annonce
         if looks_non_french(listing.title, listing.description):
             listing.status = ListingStatus.IGNORED
             exclues += 1

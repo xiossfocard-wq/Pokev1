@@ -83,6 +83,17 @@ class Listing(Base):
 
     status = Column(Enum(ListingStatus, native_enum=False), default=ListingStatus.NEW, index=True)
 
+    # --- Corrections saisies a la main depuis le dashboard --------------
+    # L'identification automatique se trompe : le titre est ecrit
+    # librement, l'index de prix est incomplet, et plusieurs cartes portent
+    # souvent le meme nom. Quand l'utilisateur voit que la carte retenue
+    # n'est pas la bonne, il doit pouvoir le dire — et son verdict prime
+    # sur l'automatique, definitivement. Aucun repassage automatique ne
+    # revient dessus.
+    manual_status = Column(String(16), nullable=True, index=True)  # wrong_card | hidden
+    manual_reference_price = Column(Float, nullable=True)          # prix marche saisi a la main
+    manual_reviewed_at = Column(DateTime, nullable=True)
+
     first_seen_at = Column(DateTime, default=datetime.utcnow, index=True)
     last_seen_at = Column(DateTime, default=datetime.utcnow)
     scored_at = Column(DateTime, nullable=True)

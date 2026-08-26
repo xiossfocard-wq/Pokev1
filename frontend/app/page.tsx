@@ -126,6 +126,19 @@ export default function DashboardPage() {
     }
   }
 
+  // Une correction saisie sur une carte se répercute tout de suite dans
+  // les listes affichées, sans recharger toute la page — et une annonce
+  // masquée disparaît sur-le-champ.
+  const handleListingChanged = useCallback((updated: Listing) => {
+    const remplacer = (liste: Listing[]) =>
+      updated.manual_status === "hidden"
+        ? liste.filter((l) => l.id !== updated.id)
+        : liste.map((l) => (l.id === updated.id ? updated : l));
+    setVinted(remplacer);
+    setEbay(remplacer);
+    setSearchResults(remplacer);
+  }, []);
+
   function clearSearch() {
     setSearchQuery(null);
     setSearchResults([]);
@@ -241,7 +254,11 @@ export default function DashboardPage() {
 
           <div className="flex flex-col gap-2">
             {searchResults.map((l) => (
-              <ListingCard key={`${l.source}-${l.id}`} listing={l} />
+              <ListingCard
+                key={`${l.source}-${l.id}`}
+                listing={l}
+                onChanged={handleListingChanged}
+              />
             ))}
           </div>
         </section>
@@ -307,6 +324,7 @@ export default function DashboardPage() {
               setSortBy(f);
               setOrder(o);
             }}
+            onListingChanged={handleListingChanged}
           />
         </div>
         <div className={mobileTab === "ebay" ? "block" : "hidden md:block"}>
@@ -320,6 +338,7 @@ export default function DashboardPage() {
               setSortBy(f);
               setOrder(o);
             }}
+            onListingChanged={handleListingChanged}
           />
         </div>
       </div>

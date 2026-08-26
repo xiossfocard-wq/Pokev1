@@ -36,6 +36,24 @@ class ListingOut(BaseModel):
     status: str
     first_seen_at: datetime
     last_seen_at: datetime
+    # Corrections saisies a la main depuis le dashboard
+    manual_status: Optional[str] = None
+    manual_reference_price: Optional[float] = None
+    manual_reviewed_at: Optional[datetime] = None
+
+
+class ListingCorrection(BaseModel):
+    """
+    Correction saisie par l'utilisateur sur une annonce.
+
+    - "wrong_card" : la carte identifiee n'est pas la bonne. On efface le
+      prix et on ne retente plus rien automatiquement.
+    - "set_price"  : l'utilisateur donne lui-meme le prix du marche.
+    - "hide"       : masquer cette annonce du dashboard.
+    - "reset"      : oublier la correction, revenir a l'automatique.
+    """
+    action: str
+    price: Optional[float] = None
 
 
 class SettingsUpdate(BaseModel):

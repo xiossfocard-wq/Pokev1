@@ -1,5 +1,8 @@
+"use client";
+
+import { useState } from "react";
 import Image from "next/image";
-import type { Listing } from "@/lib/api";
+import { correctListing, type CorrectionAction, type Listing } from "@/lib/api";
 import DealScoreBadge from "./DealScoreBadge";
 
 function timeAgo(iso: string): string {
@@ -40,9 +43,45 @@ const CONFIDENCE_LABEL: Record<string, string> = {
   high: "Prix fiable — carte identifiée précisément",
   medium: "Prix probable — identification partielle",
   low: "Prix incertain — nom seul, plusieurs séries possibles",
+  manual: "Prix que tu as corrigé toi-même",
 };
 
-export default function ListingCard({ listing }: { listing: Listing }) {
+export default function ListingCard({
+  listing,
+  onChanged,
+}: {
+  listing: Listing;
+  onChanged?: (updated: Listing) => void;
+}) {
+  const [enCours, setEnCours] = useState(false);
+  const [saisiePrix, setSaisiePrix] = useState(false);
+  const [prixTape, setPrixTape] = useState("");
+  const [erreurCorrection, setErreurCorrection] = useState<string | null>(null);
+
+  async function corriger(action: CorrectionAction, price?: number) {
+    setEnCours(true);
+    setErreurCorrection(null);
+    try {
+      const maj = await correctListing(listing.id, action, price);
+      setSaisiePrix(false);
+      setPrixTape("");
+      onChanged?.(maj);
+    } catch (err) {
+      setErreurCorrection(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEnCours(false);
+    }
+  }
+
+  function validerPrix() {
+    const valeur = Number(prixTape.replace(",", "."));
+    if (!Number.isFinite(valeur) || valeur <= 0) {
+      setErreurCorrection("Entre un prix supérieur à 0, par exemple 42,50");
+      return;
+    }
+    corriger("set_price", valeur);
+  }
+
   const photo = listing.photo_urls?.[0];
   const marginPositive = (listing.margin_net ?? 0) > 0;
   const hasNoPrice = listing.reference_price === null;
@@ -62,6 +101,7 @@ export default function ListingCard({ listing }: { listing: Listing }) {
   // collectors/cardmarket_prices.py). On pointe donc vers leur RECHERCHE,
   // qui elle marche toujours, en partant du nom de la carte retenue quand
   // on en a un — sinon du titre de l'annonce.
+  const corrigeParToi = listing.manual_reviewed_at !== null;
   const cardmarketQuery = detail?.matched_card || listing.title;
   const cardmarketUrl = `https://www.cardmarket.com/fr/Pokemon/Products/Search?searchString=${encodeURIComponent(
     cardmarketQuery
@@ -118,6 +158,14 @@ export default function ListingCard({ listing }: { listing: Listing }) {
             {listing.is_popular_pokemon && (
               <span className="rounded bg-ink-700 px-1.5 py-0.5 text-[10px] font-semibold text-parchment-100">
                 Populaire
+              </span>
+            )}
+            {corrigeParToi && (
+              <span
+                className="rounded bg-ember-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-ember-400"
+                title="Tu as corrigé cette annonce à la main — l'identification automatique ne revient plus dessus."
+              >
+                Corrigé par toi
               </span>
             )}
           </div>
@@ -302,6 +350,96 @@ export default function ListingCard({ listing }: { listing: Listing }) {
           >
             Recherche Google ↗
           </a>
+        </div>
+
+        {/* Corrections manuelles. C'est toi qui as le dernier mot :
+            l'identification automatique ne reviendra jamais par-dessus. */}
+        <div className="mt-2 border-t border-ink-800 pt-2">
+          {corrigeParToi ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] text-ember-400">
+                {listing.manual_status === "wrong_card"
+                  ? "Tu as signalé que la carte ne correspond pas."
+                  : listing.manual_status === "hidden"
+                  ? "Tu as masqué cette annonce."
+                  : `Prix corrigé par toi : ${formatEur(listing.manual_reference_price)}.`}
+              </span>
+              <button
+                type="button"
+                disabled={enCours}
+                onClick={() => corriger("reset")}
+                className="rounded-sm border border-ink-700 px-2 py-1 text-[10px] text-ink-600 transition-colors hover:border-ink-600 hover:text-parchment-100 disabled:opacity-40"
+              >
+                Annuler ma correction
+              </button>
+            </div>
+          ) : saisiePrix ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-[10px] text-ink-600" htmlFor={`prix-${listing.id}`}>
+                Prix réel du marché
+              </label>
+              <input
+                id={`prix-${listing.id}`}
+                type="text"
+                inputMode="decimal"
+                autoFocus
+                value={prixTape}
+                onChange={(e) => setPrixTape(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") validerPrix();
+                  if (e.key === "Escape") setSaisiePrix(false);
+                }}
+                placeholder="42,50"
+                className="w-24 rounded-sm border border-ink-700 bg-ink-800 px-2 py-1 font-mono text-[11px] text-parchment-100 placeholder:text-ink-600 focus:border-ember-500 focus:outline-none"
+              />
+              <button
+                type="button"
+                disabled={enCours}
+                onClick={validerPrix}
+                className="rounded-sm border border-ember-500/50 bg-ember-500/10 px-2 py-1 text-[10px] text-ember-400 transition-colors hover:bg-ember-500/20 disabled:opacity-40"
+              >
+                Valider
+              </button>
+              <button
+                type="button"
+                onClick={() => setSaisiePrix(false)}
+                className="text-[10px] text-ink-600 underline transition-colors hover:text-parchment-100"
+              >
+                Annuler
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={enCours}
+                onClick={() => corriger("wrong_card")}
+                className="rounded-sm border border-ink-700 px-2 py-1 text-[10px] text-parchment-100 transition-colors hover:border-rust-500 hover:text-rust-400 disabled:opacity-40"
+              >
+                Ce n&apos;est pas la bonne carte
+              </button>
+              <button
+                type="button"
+                disabled={enCours}
+                onClick={() => setSaisiePrix(true)}
+                className="rounded-sm border border-ink-700 px-2 py-1 text-[10px] text-parchment-100 transition-colors hover:border-ember-500 hover:text-ember-400 disabled:opacity-40"
+              >
+                Corriger le prix
+              </button>
+              <button
+                type="button"
+                disabled={enCours}
+                onClick={() => corriger("hide")}
+                className="rounded-sm border border-ink-700 px-2 py-1 text-[10px] text-ink-600 transition-colors hover:border-ink-600 hover:text-parchment-100 disabled:opacity-40"
+              >
+                Masquer
+              </button>
+            </div>
+          )}
+
+          {erreurCorrection && (
+            <p className="mt-1.5 text-[10px] text-rust-400">{erreurCorrection}</p>
+          )}
         </div>
       </div>
     </article>

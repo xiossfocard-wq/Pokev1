@@ -75,6 +75,10 @@ export interface Listing {
   status: string;
   first_seen_at: string;
   last_seen_at: string;
+  /** Corrections que tu as saisies toi-même sur cette annonce. */
+  manual_status: string | null;
+  manual_reference_price: number | null;
+  manual_reviewed_at: string | null;
 }
 
 export interface AppSettings {
@@ -155,6 +159,27 @@ export function triggerPriceSync(batchSize = 12): Promise<{ status: string }> {
     `/api/admin/sync-prices?batch_size=${batchSize}`,
     { method: "POST" }
   );
+}
+
+/**
+ * Correction manuelle d'une annonce.
+ * - "wrong_card" : la carte identifiée n'est pas la bonne → le prix est
+ *   effacé et plus rien n'est retenté automatiquement.
+ * - "set_price"  : tu donnes toi-même le prix du marché.
+ * - "hide"       : masquer cette annonce.
+ * - "reset"      : oublier ta correction, revenir à l'automatique.
+ */
+export type CorrectionAction = "wrong_card" | "set_price" | "hide" | "reset";
+
+export function correctListing(
+  listingId: number,
+  action: CorrectionAction,
+  price?: number
+): Promise<Listing> {
+  return apiFetch<Listing>(`/api/listings/${listingId}/correction`, {
+    method: "POST",
+    body: JSON.stringify({ action, price: price ?? null }),
+  });
 }
 
 export type SearchJobStatus = "pending" | "running" | "done" | "error";

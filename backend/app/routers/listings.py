@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -6,12 +7,18 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, get_db
 from app.models import Listing, SourcePlatform, ListingStatus
-from app.schemas import ListingOut
-from app.pipeline import run_targeted_search
+from app.schemas import ListingCorrection, ListingOut
+from app.pipeline import run_targeted_search, _score_listing
 from app.services import search_jobs
 from app.settings_service import load_app_settings
 
 router = APIRouter(prefix="/api/listings", tags=["listings"])
+
+def _not_hidden_by_user():
+    """L'utilisateur peut masquer une annonce depuis le dashboard : son
+    choix vaut pour toutes les vues, dashboard comme recherche."""
+    return (Listing.manual_status.is_(None)) | (Listing.manual_status != "hidden")
+
 
 def _min_price_filter(db: Session):
     """
@@ -44,6 +51,7 @@ def list_listings(
     query = (
         db.query(Listing)
         .filter(Listing.status.notin_([ListingStatus.IGNORED, ListingStatus.UNAVAILABLE]))
+        .filter(_not_hidden_by_user())
         .filter(_min_price_filter(db))
     )
 
@@ -71,6 +79,62 @@ def get_listing(listing_id: int, db: Session = Depends(get_db)):
     if row is None:
         raise HTTPException(status_code=404, detail="Annonce introuvable.")
     return row
+
+
+ACTIONS_CORRECTION = {"wrong_card", "set_price", "hide", "reset"}
+
+
+@router.post("/{listing_id}/correction", response_model=ListingOut)
+def correct_listing(
+    listing_id: int,
+    correction: ListingCorrection,
+    db: Session = Depends(get_db),
+):
+    """
+    Corriger a la main ce que l'identification automatique a rate.
+
+    Le verdict de l'utilisateur est DEFINITIF : les repassages automatiques
+    (rapprochement de prix, filtre de langue) ne reviennent jamais dessus.
+    C'est le point essentiel — sans ca, la correction serait effacee au
+    cycle suivant et l'utilisateur aurait travaille pour rien.
+    """
+    if correction.action not in ACTIONS_CORRECTION:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Action inconnue. Valeurs acceptees : {', '.join(sorted(ACTIONS_CORRECTION))}.",
+        )
+
+    listing = db.query(Listing).filter(Listing.id == listing_id).first()
+    if listing is None:
+        raise HTTPException(status_code=404, detail="Annonce introuvable.")
+
+    if correction.action == "set_price":
+        if correction.price is None or correction.price <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Indique un prix de marche superieur a 0.",
+            )
+        listing.manual_reference_price = correction.price
+        listing.manual_status = None
+    elif correction.action == "wrong_card":
+        listing.manual_status = "wrong_card"
+        listing.manual_reference_price = None
+    elif correction.action == "hide":
+        listing.manual_status = "hidden"
+    else:  # reset
+        listing.manual_status = None
+        listing.manual_reference_price = None
+
+    listing.manual_reviewed_at = None if correction.action == "reset" else datetime.utcnow()
+    db.commit()
+
+    # On recalcule tout de suite pour que l'ecran reflete la correction
+    # sans attendre le prochain cycle. Vision sautee : deja faite, et payante.
+    if correction.action != "hide":
+        _score_listing(db, listing, skip_vision=True)
+
+    db.refresh(listing)
+    return listing
 
 
 def _run_search_job(job: search_jobs.SearchJob):
@@ -127,6 +191,7 @@ def get_search_result(job_id: str, db: Session = Depends(get_db)):
             db.query(Listing)
             .filter(Listing.id.in_(job.listing_ids))
             .filter(Listing.status.notin_([ListingStatus.IGNORED, ListingStatus.UNAVAILABLE]))
+            .filter(_not_hidden_by_user())
             .filter(_min_price_filter(db))
             .order_by(nullslast(Listing.deal_score.desc()))
             .all()
