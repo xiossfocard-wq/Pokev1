@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from sqlalchemy.orm import Session
-from sqlalchemy import nullslast
+from sqlalchemy import nullslast, select
 
 from app.config import settings
 from app.collectors.cardmarket_prices import CardmarketPriceClient
@@ -684,7 +684,7 @@ def refilter_language(db: Session, limit: int = 2000) -> dict:
     return {"examined": len(listings), "excluded": exclues}
 
 
-def check_vinted_availability(db: Session, limit: int = 10) -> dict:
+def check_vinted_availability(db: Session, limit: int = 10, pool: int = 200) -> dict:
     """
     Verifie que les MEILLEURES annonces Vinted sont toujours en ligne, et
     masque celles qui ont disparu.
@@ -693,20 +693,33 @@ def check_vinted_availability(db: Session, limit: int = 10) -> dict:
     requete HTTP, avec 8 s de politesse entre chacune. Sur 1 200 annonces
     ce serait presque 3 heures par cycle - intenable, et discourtois. Or ce
     sont les annonces les mieux classees qu'on clique : ce sont donc elles
-    qui doivent etre vivantes. Une dizaine par cycle suffit a garder le
-    haut du dashboard propre, et la file tourne (les plus anciennement
-    verifiees passent en premier).
+    qui doivent etre vivantes. On prend donc les `pool` meilleures, et dans
+    ce vivier les `limit` moins recemment verifiees — de sorte que la file
+    tourne pour de bon et que le vivier entier soit couvert en une
+    vingtaine de cycles.
 
     Ne concerne que Vinted : eBay garde ses annonces terminees en ligne,
     leurs liens restent donc valides.
     """
-    listings = (
-        db.query(Listing)
-        .filter(
+    # Deux etages, et non un simple tri par score : trier uniquement par
+    # score ferait reverifier les 10 MEMES annonces a chaque cycle, sans
+    # jamais descendre plus bas. On constitue donc un vivier des
+    # `pool` meilleures annonces, puis on y prend les moins recemment
+    # verifiees — la file tourne vraiment, et le vivier entier est couvert
+    # en une vingtaine de cycles.
+    vivier = (
+        select(Listing.id)
+        .where(
             Listing.source == SourcePlatform.VINTED,
             Listing.status.notin_([ListingStatus.IGNORED, ListingStatus.UNAVAILABLE]),
         )
-        .order_by(nullslast(Listing.deal_score.desc()), Listing.last_seen_at.asc())
+        .order_by(nullslast(Listing.deal_score.desc()))
+        .limit(pool)
+    )
+    listings = (
+        db.query(Listing)
+        .filter(Listing.id.in_(vivier))
+        .order_by(Listing.last_seen_at.asc())
         .limit(limit)
         .all()
     )

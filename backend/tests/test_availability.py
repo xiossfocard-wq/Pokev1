@@ -13,6 +13,7 @@ un lien mort de temps en temps qu'une bonne affaire bien vivante effacee du
 dashboard sans explication.
 """
 import sys, os, unittest
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -24,13 +25,15 @@ from app.database import Base
 from app.models import Listing, ListingStatus, SourcePlatform
 
 
-def annonce(external_id, score, statut=ListingStatus.SCORED, source=SourcePlatform.VINTED):
+def annonce(external_id, score, statut=ListingStatus.SCORED,
+            source=SourcePlatform.VINTED, vue_il_y_a_h=0):
     return Listing(
         source=source, external_id=external_id,
         title=f"Carte Pokemon {external_id}", description="",
         url=f"https://www.vinted.fr/items/{external_id}-carte",
         price=12.0, shipping_price=0.0, currency="EUR", photo_urls=[],
         deal_score=score, status=statut,
+        last_seen_at=datetime.utcnow() - timedelta(hours=vue_il_y_a_h),
     )
 
 
@@ -61,9 +64,9 @@ class TestDisponibilite(unittest.TestCase):
         pipeline._vinted_scraper = self._vrai_scraper
         self.db.close()
 
-    def _lancer(self, reponses, limit=10):
+    def _lancer(self, reponses, limit=10, pool=200):
         pipeline._vinted_scraper = FauxScraper(reponses)
-        resultat = pipeline.check_vinted_availability(self.db, limit=limit)
+        resultat = pipeline.check_vinted_availability(self.db, limit=limit, pool=pool)
         return resultat, pipeline._vinted_scraper
 
     def test_annonce_disparue_masquee(self):
@@ -98,9 +101,9 @@ class TestDisponibilite(unittest.TestCase):
         rechargee = self.db.query(Listing).filter_by(external_id="incertaine").one()
         self.assertEqual(rechargee.status, ListingStatus.SCORED)
 
-    def test_les_mieux_classees_sont_verifiees_en_premier(self):
-        """Ce sont celles qu'on clique : ce sont donc elles qui doivent
-        etre vivantes."""
+    def test_seules_les_mieux_classees_sont_candidates(self):
+        """Verifier coute 8 s : on ne depense ces requetes que sur les
+        annonces qu'on est susceptible de cliquer."""
         self.db.add_all([
             annonce("faible", 10.0),
             annonce("forte", 95.0),
@@ -108,11 +111,26 @@ class TestDisponibilite(unittest.TestCase):
         ])
         self.db.commit()
 
-        _, faux = self._lancer({}, limit=2)
+        _, faux = self._lancer({}, limit=2, pool=2)
 
         self.assertEqual(len(faux.appels), 2)
-        self.assertIn("forte", faux.appels[0])
-        self.assertIn("moyenne", faux.appels[1])
+        self.assertNotIn("faible", " ".join(faux.appels))
+
+    def test_la_file_tourne_vraiment(self):
+        """Trier seulement par score ferait reverifier les MEMES annonces a
+        chaque cycle, sans jamais descendre. Dans le vivier des meilleures,
+        on prend donc les moins recemment verifiees."""
+        self.db.add_all([
+            annonce("verifiee-a-l-instant", 95.0, vue_il_y_a_h=0),
+            annonce("verifiee-hier", 90.0, vue_il_y_a_h=24),
+            annonce("verifiee-avant-hier", 85.0, vue_il_y_a_h=48),
+        ])
+        self.db.commit()
+
+        _, faux = self._lancer({}, limit=2)
+
+        self.assertIn("verifiee-avant-hier", faux.appels[0])
+        self.assertIn("verifiee-hier", faux.appels[1])
 
     def test_ebay_non_concerne(self):
         """eBay garde ses annonces terminees en ligne : leurs liens restent
