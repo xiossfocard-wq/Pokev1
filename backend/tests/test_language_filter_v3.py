@@ -99,6 +99,20 @@ class TestAnnoncesEtrangeresEcartees(unittest.TestCase):
         self.assertTrue(looks_non_french(titre))
         self.assertEqual(detect_language(titre).language, "en")
 
+    def test_racine_de_langue_declinee(self):
+        """Regression du 25/08/2026 : en passant d'une recherche par
+        sous-chaine a une recherche par mot entier, "japan" ne trouvait plus
+        "japanese". Une annonce "Dialga G LV79 japanese" passait donc au
+        travers. Les declarations de langue doivent matcher en PREFIXE."""
+        for titre in [
+            "Dialga G LV79 galactics conquest 065096 japanese",
+            "Pikachu japanese promo",
+            "Carta Pokemon italiano",
+            "Charizard germany edition",
+        ]:
+            with self.subTest(titre=titre):
+                self.assertTrue(looks_non_french(titre))
+
     def test_raison_expliquee(self):
         """Une annonce ecartee doit pouvoir etre expliquee, sinon elle
         disparait du dashboard sans que personne ne sache pourquoi."""

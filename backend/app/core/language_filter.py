@@ -49,7 +49,7 @@ _EXPLICIT_LANGUAGE = {
     "en": ["anglaise", "anglais", "english", "version us", "version anglaise",
            "import us", "import usa", "us version", "eng version",
            "english version"],
-    "ja": ["japonaise", "japonais", "japan", "jap.", "jap ", "jp version",
+    "ja": ["japonaise", "japonais", "japan", "jap", "jp version",
            "ver. jap", "ver jap"],
     "de": ["allemande", "allemand", "german", "deutsch"],
     "it": ["italienne", "italien", "italian", "italiana", "italiano"],
@@ -175,8 +175,24 @@ def _compile_words(words) -> re.Pattern:
     return re.compile(r"(?<![a-z0-9])(?:" + "|".join(escaped) + r")(?![a-z0-9])")
 
 
+def _compile_prefixes(words) -> re.Pattern:
+    """
+    Comme `_compile_words`, mais SANS frontière à droite : la terminaison
+    du mot est libre.
+
+    Indispensable pour les déclarations de langue, dont la racine se
+    décline : « japan » doit attraper « japanese » et « japanisch »,
+    « italian » doit attraper « italiano ». Sans ça, un titre comme
+    « Dialga G LV79 galactics conquest 065096 japanese » passait sans être
+    inquiété — régression introduite le 25/08/2026 en remplaçant la
+    recherche par sous-chaîne d'origine par une recherche par mot entier.
+    """
+    escaped = [re.escape(_strip_accents(w).lower()) for w in words]
+    return re.compile(r"(?<![a-z0-9])(?:" + "|".join(escaped) + r")")
+
+
 _EXPLICIT_PATTERNS = {
-    lang: _compile_words(words) for lang, words in _EXPLICIT_LANGUAGE.items()
+    lang: _compile_prefixes(words) for lang, words in _EXPLICIT_LANGUAGE.items()
 }
 _STRONG_PATTERNS = {
     lang: _compile_words(words) for lang, words in _STRONG_FOREIGN_MARKERS.items()
