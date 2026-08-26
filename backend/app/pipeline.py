@@ -33,6 +33,15 @@ logger = logging.getLogger(__name__)
 
 PRICE_CACHE_MAX_AGE = timedelta(days=1)
 
+# Plafond de score des annonces dont le prix de reference n'est PAS fiable.
+# Le score brut est ramene dans la bande 0-60 plutot que simplement coupe :
+# l'ordre entre ces annonces est conserve (qualite du texte, fiabilite du
+# vendeur et rarete continuent de les departager), mais aucune ne peut plus
+# passer devant une annonce dont le prix est verifie, ni franchir le seuil
+# de notification (70 par defaut). Un radar ne doit pas crier "pepite" sur
+# une annonce dont il est incapable d'etablir la valeur.
+UNCERTAIN_SCORE_CAP = 60.0
+
 _cardmarket_client = CardmarketPriceClient()
 _vinted_scraper = VintedScraper(request_delay_seconds=settings.vinted_request_delay_seconds)
 
@@ -262,11 +271,14 @@ def _score_listing(db: Session, listing: Listing, skip_vision: bool = False):
         listing.seller_reliability_score = seller_result.score
         listing.seller_reliability_detail = seller_result.detail
 
-    listing.deal_score = min(100.0, calculate_deal_score(
+    score_brut = min(100.0, calculate_deal_score(
         margin_score_0_100=margin_score,
         quality_blend=quality_blend,
         seller_score_0_100=listing.seller_reliability_score or 50.0,
     ) + appeal["appeal_bonus"])
+    listing.deal_score = (
+        round(score_brut * UNCERTAIN_SCORE_CAP / 100.0, 1) if prix_doute else score_brut
+    )
     listing.status = ListingStatus.SCORED
     listing.scored_at = datetime.utcnow()
     db.commit()

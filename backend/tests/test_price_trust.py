@@ -106,6 +106,46 @@ class TestMargeDouteuseExclueDuScore(BaseDeTest):
         # score au maximum.
         self.assertLess(listing.deal_score, 80)
 
+    def test_score_plafonne_quand_le_prix_est_inexploitable(self):
+        """Une annonce dont on ne sait pas etablir le prix ne doit jamais
+        flotter en haut du classement, meme avec un excellent vendeur et une
+        carte tres recherchee : le radar n'a rien a annoncer sur elle."""
+        self.db.add_all([
+            carte("pikachu-ex", "Pikachu Ex", f"SET{i} {i}", prix)
+            for i, prix in enumerate([2.0, 900.0, 1130.0], 1)
+        ])
+        listing = annonce("Carte Pokemon Pikachu ex neuve mint", 5.0, "plafond")
+        listing.seller_reliability_score = 100.0
+        self.db.add(listing)
+        self.db.commit()
+
+        _score_listing(self.db, listing, skip_vision=True)
+
+        self.assertTrue(listing.price_detail["uncertain"])
+        self.assertLessEqual(listing.deal_score, 60.0)
+        # Sous le seuil de notification par defaut : pas d'alerte sur une
+        # annonce qu'on est incapable de valoriser.
+        self.assertLess(listing.deal_score, 70.0)
+
+    def test_l_ordre_entre_annonces_douteuses_est_conserve(self):
+        """Le plafond ne doit pas ecraser toutes les annonces douteuses au
+        meme score : qualite et vendeur continuent de les departager."""
+        self.db.add_all([
+            carte("pikachu-ex", "Pikachu Ex", f"SET{i} {i}", prix)
+            for i, prix in enumerate([2.0, 900.0, 1130.0], 1)
+        ])
+        bonne = annonce("Carte Pokemon Pikachu ex neuve mint", 5.0, "bonne")
+        bonne.seller_reliability_score = 100.0
+        mauvaise = annonce("Carte Pokemon Pikachu ex abimee pliee", 5.0, "mauvaise")
+        mauvaise.seller_reliability_score = 10.0
+        self.db.add_all([bonne, mauvaise])
+        self.db.commit()
+
+        _score_listing(self.db, bonne, skip_vision=True)
+        _score_listing(self.db, mauvaise, skip_vision=True)
+
+        self.assertGreater(bonne.deal_score, mauvaise.deal_score)
+
     def test_prix_fiable_compte_toujours_dans_le_score(self):
         """Meme annonce, mais un code carte explicite rend le rapprochement
         sur : la marge doit alors compter normalement."""
