@@ -25,6 +25,10 @@ class ListingStatus(str, enum.Enum):
                                         # faisait disparaître du dashboard aussitôt scorée)
     IGNORED = "ignored"                # exclusion délibérée (ex: langue non française) —
                                         # celle-ci reste masquée du dashboard, à raison
+    UNAVAILABLE = "unavailable"        # l'annonce n'existe plus chez le vendeur (vendue ou
+                                        # supprimée). Masquée : cliquer dessus menait sur une
+                                        # page d'erreur Vinted, signalé par l'utilisateur le
+                                        # 25/08/2026
     REMOVED = "removed"                # annonce disparue lors d'un scan ultérieur
 
 

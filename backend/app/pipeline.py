@@ -684,6 +684,53 @@ def refilter_language(db: Session, limit: int = 2000) -> dict:
     return {"examined": len(listings), "excluded": exclues}
 
 
+def check_vinted_availability(db: Session, limit: int = 10) -> dict:
+    """
+    Verifie que les MEILLEURES annonces Vinted sont toujours en ligne, et
+    masque celles qui ont disparu.
+
+    Pourquoi seulement les meilleures : verifier chaque annonce coute une
+    requete HTTP, avec 8 s de politesse entre chacune. Sur 1 200 annonces
+    ce serait presque 3 heures par cycle - intenable, et discourtois. Or ce
+    sont les annonces les mieux classees qu'on clique : ce sont donc elles
+    qui doivent etre vivantes. Une dizaine par cycle suffit a garder le
+    haut du dashboard propre, et la file tourne (les plus anciennement
+    verifiees passent en premier).
+
+    Ne concerne que Vinted : eBay garde ses annonces terminees en ligne,
+    leurs liens restent donc valides.
+    """
+    listings = (
+        db.query(Listing)
+        .filter(
+            Listing.source == SourcePlatform.VINTED,
+            Listing.status.notin_([ListingStatus.IGNORED, ListingStatus.UNAVAILABLE]),
+        )
+        .order_by(nullslast(Listing.deal_score.desc()), Listing.last_seen_at.asc())
+        .limit(limit)
+        .all()
+    )
+
+    disparues, verifiees = 0, 0
+    for listing in listings:
+        online = _vinted_scraper.is_listing_online(listing.url)
+        if online is None:
+            continue  # doute : on ne masque rien
+        verifiees += 1
+        if online:
+            listing.last_seen_at = datetime.utcnow()
+        else:
+            listing.status = ListingStatus.UNAVAILABLE
+            disparues += 1
+    db.commit()
+
+    logger.info(
+        "Disponibilite Vinted : %d annonce(s) verifiee(s), %d disparue(s)",
+        verifiees, disparues,
+    )
+    return {"checked": verifiees, "gone": disparues, "examined": len(listings)}
+
+
 def run_full_check(db: Session):
     logger.info("=== Debut du cycle de verification ===")
 
@@ -724,5 +771,15 @@ def run_full_check(db: Session):
         except Exception as exc:
             db.rollback()
             logger.error("Repassage du filtre de langue echoue (%s)", exc)
+
+    # Les annonces les mieux classees sont celles qu'on clique : on verifie
+    # qu'elles sont toujours en ligne, pour ne pas envoyer l'utilisateur sur
+    # une page d'erreur Vinted.
+    if settings.vinted_enabled:
+        try:
+            check_vinted_availability(db)
+        except Exception as exc:
+            db.rollback()
+            logger.error("Verification de disponibilite echouee (%s)", exc)
 
     logger.info("=== Fin du cycle de verification ===")

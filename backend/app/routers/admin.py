@@ -3,7 +3,10 @@ from typing import Optional
 
 from app.config import settings
 from app.database import SessionLocal
-from app.pipeline import run_full_check, rescore_unpriced_listings, refilter_language
+from app.pipeline import (
+    run_full_check, rescore_unpriced_listings, refilter_language,
+    check_vinted_availability,
+)
 from app.core.language_filter import detect_language
 from app.collectors.vinted_scraper import VintedScraper
 from app.collectors.zebradex_prices import ZebraDexClient
@@ -79,6 +82,20 @@ def refilter_language_now(limit: int = Query(2000, ge=1, le=10000)):
     db = SessionLocal()
     try:
         return {"status": "ok", **refilter_language(db, limit=limit)}
+    finally:
+        db.close()
+
+
+@router.post("/check-availability")
+def check_availability_now(limit: int = Query(10, ge=1, le=60)):
+    """
+    Verifie que les meilleures annonces Vinted sont toujours en ligne et
+    masque celles qui ont disparu. Lent par construction : 8 s de politesse
+    entre chaque verification.
+    """
+    db = SessionLocal()
+    try:
+        return {"status": "ok", **check_vinted_availability(db, limit=limit)}
     finally:
         db.close()
 

@@ -43,7 +43,7 @@ def list_listings(
 ):
     query = (
         db.query(Listing)
-        .filter(Listing.status != ListingStatus.IGNORED)
+        .filter(Listing.status.notin_([ListingStatus.IGNORED, ListingStatus.UNAVAILABLE]))
         .filter(_min_price_filter(db))
     )
 
@@ -126,7 +126,7 @@ def get_search_result(job_id: str, db: Session = Depends(get_db)):
         rows = (
             db.query(Listing)
             .filter(Listing.id.in_(job.listing_ids))
-            .filter(Listing.status != ListingStatus.IGNORED)
+            .filter(Listing.status.notin_([ListingStatus.IGNORED, ListingStatus.UNAVAILABLE]))
             .filter(_min_price_filter(db))
             .order_by(nullslast(Listing.deal_score.desc()))
             .all()

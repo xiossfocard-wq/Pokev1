@@ -424,6 +424,37 @@ class VintedScraper:
             raw=raw,
         )
 
+    def is_listing_online(self, item_url: str) -> Optional[bool]:
+        """
+        True si l'annonce existe encore, False si Vinted repond 404, None si
+        on ne peut pas conclure (blocage, erreur reseau, statut inattendu).
+
+        Le None est important : en cas de doute on ne masque RIEN. Il vaut
+        mieux laisser un lien mort de temps en temps que faire disparaitre
+        une bonne affaire bien vivante parce que Vinted nous a bloques.
+
+        Passe par les memes garde-fous que le reste du scraper : robots.txt
+        verifie, delai entre requetes respecte.
+        """
+        if not robots_compliance.is_allowed(item_url, session=self.session):
+            logger.warning("Vinted: robots.txt interdit la verification de %s", item_url)
+            return None
+
+        self._wait_for_slot()
+        try:
+            resp = self.session.get(item_url, timeout=20, allow_redirects=True)
+        except requests.RequestException as exc:
+            logger.info("Vinted: verification impossible pour %s (%s)", item_url, exc)
+            self._last_request_ts = time.time()
+            return None
+        self._last_request_ts = time.time()
+
+        if resp.status_code == 404:
+            return False
+        if resp.status_code == 200:
+            return True
+        return None
+
     def fetch_item_detail(self, item_url: str) -> Optional[VintedListing]:
         """
         Récupère la fiche détaillée d'une annonce (description complète,
