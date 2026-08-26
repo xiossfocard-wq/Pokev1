@@ -124,6 +124,29 @@ class TestDisponibilite(unittest.TestCase):
 
         self.assertEqual(faux.appels, [])
 
+    def test_ecriture_apres_chaque_annonce(self):
+        """La passe doit conserver ce qu'elle a deja trouve, meme si elle
+        est interrompue. C'est aussi ce qui garde la connexion Neon
+        vivante : sans ca, 5 minutes d'interrogation de Vinted sans une
+        seule ecriture faisaient tomber le commit final en erreur 500."""
+        self.db.add_all([annonce("morte-1", 90.0), annonce("morte-2", 80.0)])
+        self.db.commit()
+
+        commits = []
+        vrai_commit = self.db.commit
+
+        def commit_espionne():
+            commits.append(len(commits) + 1)
+            return vrai_commit()
+
+        self.db.commit = commit_espionne
+        try:
+            self._lancer({"morte-1": False, "morte-2": False})
+        finally:
+            self.db.commit = vrai_commit
+
+        self.assertGreaterEqual(len(commits), 2, "un commit par annonce attendu")
+
     def test_annonces_deja_masquees_ignorees(self):
         self.db.add_all([
             annonce("etrangere", 80.0, statut=ListingStatus.IGNORED),

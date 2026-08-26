@@ -86,18 +86,27 @@ def refilter_language_now(limit: int = Query(2000, ge=1, le=10000)):
         db.close()
 
 
-@router.post("/check-availability")
-def check_availability_now(limit: int = Query(10, ge=1, le=60)):
-    """
-    Verifie que les meilleures annonces Vinted sont toujours en ligne et
-    masque celles qui ont disparu. Lent par construction : 8 s de politesse
-    entre chaque verification.
-    """
+def _check_availability_with_own_session(limit: int):
     db = SessionLocal()
     try:
-        return {"status": "ok", **check_vinted_availability(db, limit=limit)}
+        check_vinted_availability(db, limit=limit)
     finally:
         db.close()
+
+
+@router.post("/check-availability")
+def check_availability_now(background_tasks: BackgroundTasks, limit: int = Query(10, ge=1, le=200)):
+    """
+    Verifie que les meilleures annonces Vinted sont toujours en ligne et
+    masque celles qui ont disparu.
+
+    Lance en tache de fond : 8 s de politesse par annonce, soit plus de
+    cinq minutes des 40 annonces. Faire attendre la reponse HTTP aussi
+    longtemps la faisait echouer (meme raison que la recherche ciblee, voir
+    app/services/search_jobs.py). Suivre l'avancement dans les logs Render.
+    """
+    background_tasks.add_task(_check_availability_with_own_session, limit)
+    return {"status": f"verification de {limit} annonce(s) lancee en arriere-plan"}
 
 
 @router.post("/refresh-series-catalog")

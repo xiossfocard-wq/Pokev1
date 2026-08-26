@@ -711,18 +711,41 @@ def check_vinted_availability(db: Session, limit: int = 10) -> dict:
         .all()
     )
 
+    # On retient (id, url) plutot que les objets : entre deux verifications
+    # il s'ecoule 8 s, et on commite au fil de l'eau — les objets seraient
+    # expires a chaque tour.
+    cibles = [(listing.id, listing.url) for listing in listings]
+
     disparues, verifiees = 0, 0
-    for listing in listings:
-        online = _vinted_scraper.is_listing_online(listing.url)
+    for listing_id, url in cibles:
+        online = _vinted_scraper.is_listing_online(url)
         if online is None:
             continue  # doute : on ne masque rien
+
+        listing = db.query(Listing).filter(Listing.id == listing_id).first()
+        if listing is None:
+            continue
+
         verifiees += 1
         if online:
             listing.last_seen_at = datetime.utcnow()
         else:
             listing.status = ListingStatus.UNAVAILABLE
             disparues += 1
-    db.commit()
+
+        # Un commit par annonce, et NON un seul a la fin. Chaque
+        # verification prend 8 s (politesse envers Vinted) : une passe de
+        # 40 annonces laisserait la connexion Neon inactive plus de cinq
+        # minutes, Neon la fermerait, et le commit final partirait en
+        # erreur 500 — exactement ce qui s'est produit le 25/08/2026, meme
+        # famille de panne que le commit 88fa2dc. Commiter au fil de l'eau
+        # garde la connexion vivante et conserve le travail deja fait si la
+        # passe est interrompue.
+        try:
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            logger.error("Disponibilite : ecriture echouee sur %s (%s)", listing_id, exc)
 
     logger.info(
         "Disponibilite Vinted : %d annonce(s) verifiee(s), %d disparue(s)",
