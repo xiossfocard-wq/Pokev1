@@ -58,23 +58,37 @@ frontend/  Next.js 14 (App Router) + Tailwind
   pour déclencher un cycle manuellement (utile en debug, et pour
   l'hébergement 100% gratuit — voir plus bas).
 
-**Tests** : `backend/tests/` — 67 tests unitaires sur toute la logique pure
-(marge, score, matching, parsing eBay/Vinted/Cardmarket/ZebraDex,
-robots.txt, vision/OCR avec l'appel API mocké). Lancer avec :
+**Tests** : `backend/tests/` — 217 tests. Lancer avec :
 
 ```bash
 cd backend
+pip install -r requirements.txt -r requirements-dev.txt --break-system-packages
 python3 -m unittest discover -s tests -v
 ```
 
-Ce qui n'est **pas** testé en conditions réelles : les routes FastAPI, la
-persistance SQLAlchemy, et le scheduler — l'environnement dans lequel ce
-projet a été développé n'a pas d'accès réseau sortant ni FastAPI/Next.js
-installés, donc impossible d'y faire tourner le serveur complet. La
-logique métier (ce qui décide *si* une annonce est une bonne affaire) est
-testée ; la plomberie (est-ce que le serveur démarre, est-ce que la route
-répond) reste à vérifier à ton premier lancement — je reste disponible
-pour déboguer à partir des erreurs que tu me copieras-colleras.
+Ils couvrent deux niveaux :
+
+- **la logique pure** (marge, score, matching, parsing
+  eBay/Vinted/Cardmarket/ZebraDex, robots.txt, filtre de langue,
+  corrections manuelles, vision/OCR avec l'appel API mocké) ;
+- **l'API elle-même** (`tests/test_api_routes.py`) : le serveur démarre
+  pour de vrai, les routes sont montées aux bons chemins, les annonces se
+  sérialisent en JSON, et les codes d'erreur sont ceux annoncés (404 sur
+  annonce inconnue, 400 sur action de correction invalide). Ce module a
+  besoin de `httpx` (dans `requirements-dev.txt`) ; sans lui il est sauté
+  proprement et le reste de la suite tourne quand même.
+
+**Vérifié à la main le 02/09/2026**, en plus de la suite : le backend
+démarre (`init_db` + rattrapage de colonnes + scheduler), les 18 routes
+répondent, et le frontend compile (`next build`, vérification de types
+comprise, 3 pages générées).
+
+Ce qui reste **non testé en conditions réelles** : tout ce qui touche au
+réseau sortant — collecte eBay et Vinted, Cardmarket, ZebraDex,
+notifications — et le déclenchement périodique du scheduler. Ces
+chemins-là ne peuvent être validés que sur ton installation, avec de
+vraies clés : je reste disponible pour déboguer à partir des erreurs que
+tu me copieras-colleras.
 
 ## Lancer en local
 
