@@ -187,3 +187,47 @@ git push -u origin main
 5. Déployer selon la section ci-dessus.
 
 Je reste disponible pour déboguer à partir de tes retours (logs, erreurs, captures d'écran).
+
+## Sécurité des dépendances (frontend)
+
+Next.js 14.2.5, la version d'origine, traînait des failles classées
+**critiques** (contournement d'autorisation dans le middleware,
+empoisonnement de cache). Le projet est passé à **Next 14.2.35**, la
+dernière version corrigée de la même série : c'est un correctif de patch,
+sans changement d'API, et le build passe à l'identique.
+
+`package-lock.json` est désormais versionné. Sans lui, Vercel et Render
+réinstallaient les dépendances à leur guise à chaque déploiement, et rien
+ne garantissait que la version corrigée soit bien celle déployée.
+
+Il reste des alertes classées **hautes** sur `next` (`npm audit`). Elles ne
+sont corrigées qu'à partir de Next 16, soit **deux versions majeures plus
+loin** — une migration à part entière, pas une mise à jour. Je ne l'ai pas
+faite d'office. Voici de quoi décider, sans enjoliver :
+
+- **La plupart ne s'appliquent pas ici** : ni middleware, ni Server
+  Actions, ni rewrites, ni i18n dans ce projet (vérifié). Restent trois
+  pages qui lisent une API.
+- **Sauf celles sur l'optimiseur d'images, qui elles s'appliquent** :
+  `components/ListingCard.tsx` utilise `next/image`, et `next.config.js`
+  déclare des `remotePatterns` pour les CDN Vinted et eBay. Les alertes
+  visant l'Image Optimizer (déni de service, cache disque non borné) sont
+  donc dans le périmètre réel du projet.
+- **Ce qui les atténue** : ces trois-là visent les déploiements
+  *auto-hébergés*. Sur Vercel, l'optimisation d'images tourne sur leur
+  infrastructure, pas sur un serveur à toi qu'on pourrait saturer. Si un
+  jour tu héberges le frontend ailleurs, elles redeviennent à prendre au
+  sérieux.
+- Enfin, le dashboard n'a **aucune authentification** et n'affiche aucune
+  donnée personnelle : un contournement d'autorisation n'a rien à
+  contourner.
+
+Conclusion : rien d'urgent tant que le frontend est sur Vercel, à
+reconsidérer si tu changes d'hébergeur.
+
+À refaire de temps en temps, dans `frontend/` :
+
+```bash
+npm audit            # état des alertes
+npm update next      # reste dans la série 14.x, sans risque de rupture
+```

@@ -16,6 +16,7 @@ node_modules/
 .next/
 out/
 .vercel/
+next-env.d.ts
 
 # OS / éditeurs
 .DS_Store
