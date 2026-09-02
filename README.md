@@ -58,23 +58,37 @@ frontend/  Next.js 14 (App Router) + Tailwind
   pour déclencher un cycle manuellement (utile en debug, et pour
   l'hébergement 100% gratuit — voir plus bas).
 
-**Tests** : `backend/tests/` — 67 tests unitaires sur toute la logique pure
-(marge, score, matching, parsing eBay/Vinted/Cardmarket/ZebraDex,
-robots.txt, vision/OCR avec l'appel API mocké). Lancer avec :
+**Tests** : `backend/tests/` — 217 tests. Lancer avec :
 
 ```bash
 cd backend
+pip install -r requirements.txt -r requirements-dev.txt --break-system-packages
 python3 -m unittest discover -s tests -v
 ```
 
-Ce qui n'est **pas** testé en conditions réelles : les routes FastAPI, la
-persistance SQLAlchemy, et le scheduler — l'environnement dans lequel ce
-projet a été développé n'a pas d'accès réseau sortant ni FastAPI/Next.js
-installés, donc impossible d'y faire tourner le serveur complet. La
-logique métier (ce qui décide *si* une annonce est une bonne affaire) est
-testée ; la plomberie (est-ce que le serveur démarre, est-ce que la route
-répond) reste à vérifier à ton premier lancement — je reste disponible
-pour déboguer à partir des erreurs que tu me copieras-colleras.
+Ils couvrent deux niveaux :
+
+- **la logique pure** (marge, score, matching, parsing
+  eBay/Vinted/Cardmarket/ZebraDex, robots.txt, filtre de langue,
+  corrections manuelles, vision/OCR avec l'appel API mocké) ;
+- **l'API elle-même** (`tests/test_api_routes.py`) : le serveur démarre
+  pour de vrai, les routes sont montées aux bons chemins, les annonces se
+  sérialisent en JSON, et les codes d'erreur sont ceux annoncés (404 sur
+  annonce inconnue, 400 sur action de correction invalide). Ce module a
+  besoin de `httpx` (dans `requirements-dev.txt`) ; sans lui il est sauté
+  proprement et le reste de la suite tourne quand même.
+
+**Vérifié à la main le 02/09/2026**, en plus de la suite : le backend
+démarre (`init_db` + rattrapage de colonnes + scheduler), les 18 routes
+répondent, et le frontend compile (`next build`, vérification de types
+comprise, 3 pages générées).
+
+Ce qui reste **non testé en conditions réelles** : tout ce qui touche au
+réseau sortant — collecte eBay et Vinted, Cardmarket, ZebraDex,
+notifications — et le déclenchement périodique du scheduler. Ces
+chemins-là ne peuvent être validés que sur ton installation, avec de
+vraies clés : je reste disponible pour déboguer à partir des erreurs que
+tu me copieras-colleras.
 
 ## Lancer en local
 
@@ -173,3 +187,47 @@ git push -u origin main
 5. Déployer selon la section ci-dessus.
 
 Je reste disponible pour déboguer à partir de tes retours (logs, erreurs, captures d'écran).
+
+## Sécurité des dépendances (frontend)
+
+Next.js 14.2.5, la version d'origine, traînait des failles classées
+**critiques** (contournement d'autorisation dans le middleware,
+empoisonnement de cache). Le projet est passé à **Next 14.2.35**, la
+dernière version corrigée de la même série : c'est un correctif de patch,
+sans changement d'API, et le build passe à l'identique.
+
+`package-lock.json` est désormais versionné. Sans lui, Vercel et Render
+réinstallaient les dépendances à leur guise à chaque déploiement, et rien
+ne garantissait que la version corrigée soit bien celle déployée.
+
+Il reste des alertes classées **hautes** sur `next` (`npm audit`). Elles ne
+sont corrigées qu'à partir de Next 16, soit **deux versions majeures plus
+loin** — une migration à part entière, pas une mise à jour. Je ne l'ai pas
+faite d'office. Voici de quoi décider, sans enjoliver :
+
+- **La plupart ne s'appliquent pas ici** : ni middleware, ni Server
+  Actions, ni rewrites, ni i18n dans ce projet (vérifié). Restent trois
+  pages qui lisent une API.
+- **Sauf celles sur l'optimiseur d'images, qui elles s'appliquent** :
+  `components/ListingCard.tsx` utilise `next/image`, et `next.config.js`
+  déclare des `remotePatterns` pour les CDN Vinted et eBay. Les alertes
+  visant l'Image Optimizer (déni de service, cache disque non borné) sont
+  donc dans le périmètre réel du projet.
+- **Ce qui les atténue** : ces trois-là visent les déploiements
+  *auto-hébergés*. Sur Vercel, l'optimisation d'images tourne sur leur
+  infrastructure, pas sur un serveur à toi qu'on pourrait saturer. Si un
+  jour tu héberges le frontend ailleurs, elles redeviennent à prendre au
+  sérieux.
+- Enfin, le dashboard n'a **aucune authentification** et n'affiche aucune
+  donnée personnelle : un contournement d'autorisation n'a rien à
+  contourner.
+
+Conclusion : rien d'urgent tant que le frontend est sur Vercel, à
+reconsidérer si tu changes d'hébergeur.
+
+À refaire de temps en temps, dans `frontend/` :
+
+```bash
+npm audit            # état des alertes
+npm update next      # reste dans la série 14.x, sans risque de rupture
+```

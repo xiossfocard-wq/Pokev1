@@ -59,7 +59,18 @@ def list_listings(
         try:
             query = query.filter(Listing.source == SourcePlatform(source))
         except ValueError:
-            pass
+            # Avant, une source inconnue etait ignoree en silence et la
+            # requete rendait TOUTES les annonces. Le filtre semblait donc
+            # applique alors qu'il ne l'etait pas : demander « Vinted
+            # seulement » et recevoir aussi du eBay, sans le moindre signe
+            # que le filtre avait ete rejete. Rendre des donnees fausses
+            # sans le dire est pire qu'une erreur : on refuse explicitement.
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Source inconnue : « {0} ». Valeurs acceptees : {1}."
+                ).format(source, ", ".join(sorted(plateforme.value for plateforme in SourcePlatform))),
+            )
 
     if min_score is not None:
         query = query.filter(Listing.deal_score >= min_score)
