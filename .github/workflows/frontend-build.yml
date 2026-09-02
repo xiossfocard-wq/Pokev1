@@ -1,0 +1,49 @@
+name: Frontend build
+
+# Le frontend n'était vérifié nulle part : une erreur de types ou un import
+# cassé n'apparaissait qu'au déploiement Vercel, une fois poussé sur main.
+# `next build` fait aussi la vérification TypeScript, donc ce seul job
+# couvre compilation et typage.
+
+on:
+  push:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-build.yml"
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-build.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Installer les dépendances
+        working-directory: frontend
+        # `npm ci` installe EXACTEMENT le package-lock.json versionné, là où
+        # `npm install` est libre de réactualiser les versions. C'est ce qui
+        # garantit que la CI teste bien ce qui sera déployé.
+        run: npm ci
+
+      - name: Compiler (build + vérification des types)
+        working-directory: frontend
+        run: npm run build
+
+      - name: Alertes de sécurité des dépendances
+        working-directory: frontend
+        # Volontairement NON bloquant. Des alertes peuvent apparaître sur des
+        # dépendances dont le correctif n'existe que dans une version majeure
+        # suivante (c'est le cas de `next` aujourd'hui, voir README >
+        # "Sécurité des dépendances") : les rendre bloquantes figerait la CI
+        # au rouge sans que rien de raisonnable puisse être fait dans
+        # l'immédiat. On les affiche pour qu'elles soient vues, sans bloquer.
+        continue-on-error: true
+        run: npm audit --audit-level=high

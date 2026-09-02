@@ -4,9 +4,11 @@ on:
   push:
     paths:
       - "backend/**"
+      - ".github/workflows/backend-tests.yml"
   pull_request:
     paths:
       - "backend/**"
+      - ".github/workflows/backend-tests.yml"
 
 jobs:
   test:
@@ -16,9 +18,41 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
       - name: Installer les dépendances
         working-directory: backend
-        run: pip install -r requirements.txt
+        # requirements-dev.txt n'est pas un luxe ici : sans httpx, les tests
+        # d'API (tests/test_api_routes.py) se SAUTENT au lieu d'échouer, et
+        # la CI affichait un vert rassurant qui ne vérifiait rien.
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
       - name: Lancer les tests
         working-directory: backend
         run: python -m unittest discover -s tests -v
+
+      - name: Vérifier que les tests d'API ont bien tourné
+        working-directory: backend
+        # Un test sauté ne fait pas échouer unittest : la suite entière peut
+        # être verte alors que la partie qui vérifie que le serveur démarre
+        # n'a jamais été exécutée. C'est précisément le piège dans lequel
+        # cette CI est tombée. On échoue donc explicitement si ces tests-là
+        # sont sautés, quelle qu'en soit la raison.
+        run: |
+          python - <<'PY'
+          import sys, unittest
+
+          suite = unittest.defaultTestLoader.loadTestsFromName("tests.test_api_routes")
+          resultat = unittest.TextTestRunner(verbosity=1).run(suite)
+
+          if resultat.skipped:
+              print()
+              print("ÉCHEC : les tests d'API ont été sautés au lieu de tourner.")
+              print("Raison rapportée :", resultat.skipped[0][1])
+              print("Cause la plus probable : httpx absent (requirements-dev.txt).")
+              sys.exit(1)
+
+          if not resultat.wasSuccessful():
+              sys.exit(1)
+
+          print(f"{resultat.testsRun} tests d'API réellement exécutés.")
+          PY

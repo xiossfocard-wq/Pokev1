@@ -83,6 +83,18 @@ démarre (`init_db` + rattrapage de colonnes + scheduler), les 18 routes
 répondent, et le frontend compile (`next build`, vérification de types
 comprise, 3 pages générées).
 
+**En intégration continue** (`.github/workflows/`) : `backend-tests.yml`
+lance la suite à chaque push touchant `backend/`, et `frontend-build.yml`
+compile le frontend (vérification TypeScript comprise) à chaque push
+touchant `frontend/` — auparavant une erreur de types n'apparaissait qu'au
+déploiement Vercel.
+
+Le workflow backend contient une étape qui peut surprendre : elle échoue si
+les tests d'API sont **sautés**. Un test sauté ne fait pas échouer unittest,
+si bien que la CI affichait `OK` alors qu'elle n'installait pas `httpx` et
+n'exécutait donc aucun de ces tests. Un vert qui ne vérifie rien est plus
+dangereux qu'un rouge : cette étape rend le cas impossible à ignorer.
+
 Ce qui reste **non testé en conditions réelles** : tout ce qui touche au
 réseau sortant — collecte eBay et Vinted, Cardmarket, ZebraDex,
 notifications — et le déclenchement périodique du scheduler. Ces
