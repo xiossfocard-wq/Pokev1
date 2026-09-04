@@ -229,8 +229,21 @@ def _score_listing(db: Session, listing: Listing, skip_vision: bool = False):
     # annonces qui ne précisent rien) — s'applique même si le titre seul
     # n'avait rien détecté. On ne rejette que sur un signal net (pas de
     # français), pas sur une lecture vide/incertaine.
+    #
+    # `manual_reviewed_at` protège ici la même chose que dans le filtre sur
+    # le titre plus haut, et que dans refilter_language : une annonce que
+    # l'utilisateur a examinée lui-même n'est plus écartée automatiquement.
+    # Ce garde-fou manquait à ce seul endroit sur les trois. Le cas n'était
+    # pas atteignable en pratique — les deux appelants qui repassent sur des
+    # annonces existantes sautent la vision, donc vision_result y vaut None,
+    # et une annonce toute neuve n'a par définition pas encore été examinée.
+    # Mais l'invariant ne tenait que par la façon dont on appelle cette
+    # fonction, pas par ce qu'elle garantit : le jour où une relance de
+    # l'analyse photo passerait ici, le verdict de l'utilisateur serait
+    # effacé en silence.
     if (
         settings.french_only
+        and not listing.manual_reviewed_at
         and vision_result
         and vision_result.printed_language
         and vision_result.printed_language not in ("français", "francais", "french")

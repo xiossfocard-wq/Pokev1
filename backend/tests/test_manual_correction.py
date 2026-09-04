@@ -12,6 +12,8 @@ automatiques. Si le cycle suivant reecrivait par-dessus, l'utilisateur
 aurait travaille pour rien, et ne ferait plus confiance a la fonction.
 """
 import sys, os, unittest
+from datetime import datetime
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -25,6 +27,8 @@ from app.pipeline import _score_listing, rescore_unpriced_listings, refilter_lan
 from app.routers.listings import correct_listing, _not_hidden_by_user
 from app.schemas import ListingCorrection
 from app.services import price_index
+from app.vision.quality_vision import VisionQualityResult
+from app import pipeline
 
 
 def carte(name_slug, display_name, card_code, price):
@@ -171,6 +175,113 @@ class TestCorrectionManuelle(unittest.TestCase):
 
         self.db.refresh(etrangere)
         self.assertNotEqual(etrangere.status, ListingStatus.IGNORED)
+
+
+def _lecture_vision(langue: str) -> VisionQualityResult:
+    """Une lecture vision plausible, dont seule la langue imprimee compte
+    pour ces tests."""
+    return VisionQualityResult(
+        score=70.0,
+        centering="centrage correct",
+        corners="coins nets",
+        surface="surface propre",
+        confidence="high",
+        caveats="",
+        printed_name="Pikachu",
+        printed_set_number="058/165",
+        printed_language=langue,
+        ocr_confidence="high",
+    )
+
+
+class TestVerdictUtilisateurEtFiltreLangue(unittest.TestCase):
+    """Le verdict de l'utilisateur est cense etre DEFINITIF : aucun
+    repassage automatique ne doit ecarter une annonce qu'il a examinee.
+
+    Trois endroits peuvent ecarter une annonce pour cause de langue :
+    le filtre sur le titre, le filtre sur ce que la vision a lu sur la
+    carte, et refilter_language. Les trois sont verifies ici, ensemble,
+    parce que l'invariant ne vaut que si AUCUN ne l'enfreint — le
+    troisieme ne le respectait pas."""
+
+    def setUp(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(bind=engine)
+        self.db = sessionmaker(bind=engine)()
+        price_index._slug_cache = []
+        price_index._slug_cache_at = None
+
+        self.listing = Listing(
+            source=SourcePlatform.VINTED, external_id="examinee",
+            title="Carte Pokemon Pikachu", description="",
+            url="https://www.vinted.fr/items/examinee", price=20.0,
+            shipping_price=0.0, currency="EUR", photo_urls=["https://exemple.test/1.jpg"],
+            seller_reliability_score=50.0,
+            # L'utilisateur a tranche lui-meme sur cette annonce.
+            manual_reviewed_at=datetime(2026, 9, 1, 12, 0, 0),
+            manual_reference_price=30.0,
+        )
+        self.db.add(self.listing)
+        self.db.commit()
+
+    def tearDown(self):
+        self.db.close()
+
+    def test_le_filtre_sur_le_titre_ne_touche_pas_une_annonce_examinee(self):
+        self.listing.title = "Pokemon card japanese Pikachu"
+        self.db.commit()
+
+        with mock.patch.object(pipeline.settings, "french_only", True), \
+                mock.patch.object(pipeline.settings, "anthropic_api_key", None):
+            pipeline._score_listing(self.db, self.listing)
+
+        self.assertNotEqual(self.listing.status, ListingStatus.IGNORED)
+
+    def test_le_filtre_vision_ne_touche_pas_une_annonce_examinee(self):
+        """Regression. Ce filtre-la etait le seul des trois a ne pas
+        verifier manual_reviewed_at : une relance de l'analyse photo sur une
+        annonce corrigee aurait efface le verdict de l'utilisateur."""
+        lecture_etrangere = _lecture_vision(langue="japonais")
+
+        with mock.patch.object(pipeline.settings, "french_only", True), \
+                mock.patch.object(pipeline.settings, "anthropic_api_key", "cle-de-test"), \
+                mock.patch.object(pipeline, "analyze_card_photos", return_value=lecture_etrangere):
+            pipeline._score_listing(self.db, self.listing)
+
+        self.assertNotEqual(
+            self.listing.status, ListingStatus.IGNORED,
+            "le filtre de langue par la vision a ecarte une annonce examinee",
+        )
+
+    def test_le_filtre_vision_ecarte_toujours_une_annonce_non_examinee(self):
+        """Le garde-fou ne doit pas desactiver le filtre pour tout le monde."""
+        non_examinee = Listing(
+            source=SourcePlatform.VINTED, external_id="jamais-vue",
+            title="Carte Pokemon Pikachu", description="",
+            url="https://www.vinted.fr/items/jamais-vue", price=20.0,
+            shipping_price=0.0, currency="EUR", photo_urls=["https://exemple.test/2.jpg"],
+            seller_reliability_score=50.0,
+        )
+        self.db.add(non_examinee)
+        self.db.commit()
+
+        lecture_etrangere = _lecture_vision(langue="japonais")
+
+        with mock.patch.object(pipeline.settings, "french_only", True), \
+                mock.patch.object(pipeline.settings, "anthropic_api_key", "cle-de-test"), \
+                mock.patch.object(pipeline, "analyze_card_photos", return_value=lecture_etrangere):
+            pipeline._score_listing(self.db, non_examinee)
+
+        self.assertEqual(non_examinee.status, ListingStatus.IGNORED)
+
+    def test_refilter_language_ne_touche_pas_une_annonce_examinee(self):
+        self.listing.title = "Pokemon card japanese Pikachu"
+        self.db.commit()
+
+        with mock.patch.object(pipeline.settings, "french_only", True):
+            pipeline.refilter_language(self.db)
+
+        self.assertNotEqual(self.listing.status, ListingStatus.IGNORED)
 
 
 if __name__ == "__main__":
