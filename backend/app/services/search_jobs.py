@@ -45,7 +45,8 @@ logger = logging.getLogger(__name__)
 # rapport au temps de lecture d'un resultat par l'utilisateur.
 JOB_RETENTION = timedelta(minutes=30)
 
-# Garde-fou memoire : au-dela, on purge les plus anciens meme non expires.
+# Garde-fou memoire : au-dela, on purge les jobs TERMINES les plus anciens,
+# meme non expires. Jamais un job en attente ou en cours (voir _purge_locked).
 MAX_JOBS = 50
 
 STATUS_PENDING = "pending"
@@ -100,24 +101,36 @@ class SearchJobStore:
         """Une meme recherche relancee pendant qu'elle tourne encore ne cree
         pas un second job (sinon on doublerait la charge sur Vinted pour
         rien) : on renvoie celui deja en cours."""
-        key = (query or "").strip().lower()
         with self._lock:
-            for job in self._jobs.values():
-                if job.query.strip().lower() == key and not job.is_finished:
-                    return job
+            return self._find_active_locked(query)
+
+    def _find_active_locked(self, query: str) -> Optional[SearchJob]:
+        """Idem, mais suppose le verrou deja pris par l'appelant."""
+        cle = (query or "").strip().lower()
+        for job in self._jobs.values():
+            if job.query.strip().lower() == cle and not job.is_finished:
+                return job
         return None
 
     # -- ecriture --------------------------------------------------------
 
     def submit(self, query: str, worker) -> SearchJob:
         """Cree un job et le met en file. `worker(job)` sera appele dans un
-        thread de fond ; il doit remplir job.listing_ids."""
-        existing = self.find_active_for_query(query)
-        if existing is not None:
-            return existing
+        thread de fond ; il doit remplir job.listing_ids.
 
+        Recherche du doublon, purge et insertion se font sous UN SEUL verrou.
+        Auparavant la recherche de doublon prenait le verrou pour elle seule
+        puis le relachait avant l'insertion : deux appels simultanes sur la
+        meme requete (deux onglets, ou la touche Entree doublee) pouvaient
+        tous deux ne rien trouver et creer chacun leur job. Vinted etait
+        alors interroge deux fois pour la meme chose, ce que la deduplication
+        existe precisement pour eviter.
+        """
         job = SearchJob(uuid.uuid4().hex[:12], (query or "").strip())
         with self._lock:
+            existant = self._find_active_locked(query)
+            if existant is not None:
+                return existant
             self._purge_locked()
             self._jobs[job.id] = job
         self._executor.submit(self._run, job, worker)
@@ -139,18 +152,52 @@ class SearchJobStore:
             job.finished_at = datetime.utcnow()
 
     def _purge_locked(self):
-        now = datetime.utcnow()
-        expired = [
+        """Purge les jobs TERMINES : d'abord les expires, puis les plus
+        anciens si le magasin deborde.
+
+        Un job non termine n'est JAMAIS purge, et c'est tout l'objet de cette
+        methode. La purge de debordement retirait auparavant les plus anciens
+        par date de creation ; or il n'y a qu'un seul worker, donc le plus
+        ancien est justement celui qui tourne encore. La recherche de
+        l'utilisateur disparaissait du magasin en cours de route :
+        GET /search/{id} repondait « Recherche inconnue ou expiree » alors
+        qu'elle tournait toujours, et la relancer creait un second job qui
+        tapait une deuxieme fois sur Vinted — exactement ce que ce module
+        est cense eviter.
+        """
+        maintenant = datetime.utcnow()
+
+        expires = [
             jid for jid, job in self._jobs.items()
-            if job.finished_at and now - job.finished_at > JOB_RETENTION
+            if job.finished_at and maintenant - job.finished_at > JOB_RETENTION
         ]
-        for jid in expired:
+        for jid in expires:
             self._jobs.pop(jid, None)
 
+        if len(self._jobs) < MAX_JOBS:
+            return
+
+        a_liberer = len(self._jobs) - MAX_JOBS + 1
+        termines = sorted(
+            (job for job in self._jobs.values() if job.is_finished),
+            key=lambda job: job.created_at,
+        )
+        for job in termines[:a_liberer]:
+            self._jobs.pop(job.id, None)
+
         if len(self._jobs) >= MAX_JOBS:
-            oldest = sorted(self._jobs.values(), key=lambda j: j.created_at)
-            for job in oldest[: len(self._jobs) - MAX_JOBS + 1]:
-                self._jobs.pop(job.id, None)
+            # Rien de plus a liberer sans sacrifier une recherche vivante. On
+            # laisse le magasin depasser le plafond : un job en attente pese
+            # quelques centaines d'octets, une recherche perdue coute a
+            # l'utilisateur une attente pour rien et a Vinted un second
+            # passage. Le depassement est signale pour rester visible.
+            logger.warning(
+                "File de recherches : %d jobs, dont %d non termines, au-dela "
+                "du plafond de %d. Aucune recherche vivante n'est purgee.",
+                len(self._jobs),
+                sum(1 for job in self._jobs.values() if not job.is_finished),
+                MAX_JOBS,
+            )
 
 
 store = SearchJobStore()

@@ -58,7 +58,7 @@ frontend/  Next.js 14 (App Router) + Tailwind
   pour déclencher un cycle manuellement (utile en debug, et pour
   l'hébergement 100% gratuit — voir plus bas).
 
-**Tests** : `backend/tests/` — 217 tests. Lancer avec :
+**Tests** : `backend/tests/` — 220 tests. Lancer avec :
 
 ```bash
 cd backend
