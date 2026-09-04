@@ -56,3 +56,54 @@ jobs:
 
           print(f"{resultat.testsRun} tests d'API réellement exécutés.")
           PY
+
+  docker:
+    name: Image Docker (l'artefact déployé sur Render)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Construire l'image
+        working-directory: backend
+        # Render déploie CETTE image (render.yaml > runtime: docker). Elle
+        # n'était construite nulle part avant ce job : un Dockerfile cassé ne
+        # se voyait qu'au déploiement, une fois poussé sur main.
+        run: docker build -t pokemon-deal-hunter-backend:ci .
+
+      - name: Démarrer le conteneur et vérifier qu'il répond
+        # Construire ne suffit pas : une image peut se construire et ne pas
+        # démarrer (module absent du COPY, chemin de base non inscriptible,
+        # uvicorn qui ne trouve pas app.main). On la fait donc réellement
+        # tourner et on interroge /api/health, comme le ferait Render.
+        run: |
+          docker run -d --name backend-ci -p 8000:8000 \
+            -e DATABASE_URL="sqlite:////tmp/ci.db" \
+            pokemon-deal-hunter-backend:ci
+
+          echo "Attente du démarrage d'uvicorn..."
+          for tentative in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/api/health > /tmp/sante.json 2>/dev/null; then
+              echo "Réponse obtenue après $tentative tentative(s) :"
+              cat /tmp/sante.json
+              echo
+              grep -q '"status":"ok"' /tmp/sante.json || {
+                echo "ÉCHEC : /api/health répond mais pas ce qui est attendu."
+                exit 1
+              }
+              echo "Le conteneur démarre et répond correctement."
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "ÉCHEC : le conteneur n'a pas répondu en 60 s. Journaux :"
+          docker logs backend-ci
+          exit 1
+
+      - name: Journaux du conteneur (en cas d'échec)
+        if: failure()
+        run: docker logs backend-ci || true
+
+      - name: Arrêter le conteneur
+        if: always()
+        run: docker rm -f backend-ci || true
