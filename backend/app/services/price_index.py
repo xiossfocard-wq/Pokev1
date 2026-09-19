@@ -98,13 +98,49 @@ def refresh_series_catalog(db: Session) -> int:
     return added
 
 
+# Le catalogue des series n'etait redecouvert QUE lorsqu'il etait vide,
+# c'est-a-dire une seule fois dans la vie de l'application. Les extensions
+# sorties ensuite n'apparaissaient donc jamais : constate le 19/09/2026,
+# trois series manquaient. Redecouverte quotidienne desormais.
+CATALOG_REFRESH_INTERVAL = timedelta(hours=24)
+_CATALOG_REFRESHED_KEY = "zebradex_catalog_refreshed_at"
+
+
+def _catalog_needs_refresh(db: Session) -> bool:
+    from app.models import AppSettings
+
+    if db.query(ZebraDexSeriesState).count() == 0:
+        return True
+    row = db.query(AppSettings).filter_by(key=_CATALOG_REFRESHED_KEY).first()
+    if row is None or not row.value:
+        return True
+    try:
+        last = datetime.fromisoformat(str(row.value))
+    except ValueError:
+        return True
+    return datetime.utcnow() - last > CATALOG_REFRESH_INTERVAL
+
+
+def _mark_catalog_refreshed(db: Session) -> None:
+    from app.models import AppSettings
+
+    stamp = datetime.utcnow().isoformat()
+    row = db.query(AppSettings).filter_by(key=_CATALOG_REFRESHED_KEY).first()
+    if row is None:
+        db.add(AppSettings(key=_CATALOG_REFRESHED_KEY, value=stamp))
+    else:
+        row.value = stamp
+    db.commit()
+
+
 def sync_series_batch(db: Session, batch_size: int = 6) -> dict:
     """
     Synchronise `batch_size` series : d'abord celles jamais synchronisees,
     puis les plus anciennes. Retourne un resume pour les logs / l'API admin.
     """
-    if db.query(ZebraDexSeriesState).count() == 0:
+    if _catalog_needs_refresh(db):
         refresh_series_catalog(db)
+        _mark_catalog_refreshed(db)
 
     pending = (
         db.query(ZebraDexSeriesState)
