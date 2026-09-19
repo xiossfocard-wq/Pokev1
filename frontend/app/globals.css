@@ -10,22 +10,71 @@
 
 html {
   color-scheme: dark;
+  scroll-behavior: smooth;
 }
 
 body {
   background-color: #0b0d12;
   color: #ededef;
+  /* Léger dégradé de fond : donne de la profondeur sans image, et sépare
+     visuellement la barre fixe du contenu qui défile dessous. */
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(232, 146, 46, 0.08), transparent 60%),
+    linear-gradient(#0b0d12, #0b0d12);
+  background-attachment: fixed;
 }
 
 /* Focus clavier toujours visible, y compris sur les cartes/liens custom */
 :focus-visible {
   outline: 2px solid #e8922e;
   outline-offset: 2px;
+  border-radius: 4px;
 }
+
+/* Les chiffres s'alignent en colonne : prix, marges, scores. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Squelettes de chargement : un balayage discret plutôt qu'un
+   « Chargement… » qui vide l'écran. */
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #1a1d26 25%, #252934 50%, #1a1d26 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+/* Le point « collecte récente » respire doucement : un seul mouvement sur
+   toute la page, là où il porte une information (le radar est vivant). */
+@keyframes breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(95, 190, 141, 0.55); }
+  50%      { box-shadow: 0 0 0 5px rgba(95, 190, 141, 0); }
+}
+
+.live-dot {
+  animation: breathe 2.4s ease-out infinite;
+}
+
+/* Barre de défilement discrète, dans les tons du thème. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #343a48 transparent;
+}
+
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: #343a48; border-radius: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
 
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.001ms !important;
     transition-duration: 0.001ms !important;
   }
+  html { scroll-behavior: auto; }
 }
