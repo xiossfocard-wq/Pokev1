@@ -1,10 +1,24 @@
 # Pokémon Deal Hunter
 
+Deux outils complémentaires sur la même base de données, qui répondent à
+deux questions différentes.
+
+**1. Explorer le catalogue** (`/explorer`) — *quelle carte vaut la peine ?*
+Chercher parmi toutes les cartes connues par **thème** (la ligne de
+Dracaufeu, les évolutions d'Évoli, les légendaires…), par **type de carte**
+(Illustration Rare, Full Art, Gold…), par **budget** et par **tendance**,
+avec le **visuel de chaque carte**. Les cartes en vogue sont classées sur la
+variation 7 jours, en pourcentage.
+
+**2. Chasser les bonnes affaires** (`/`) — *où l'acheter au bon prix ?*
 Surveillance des annonces Vinted et eBay (cartes Pokémon FR), comparées à
 des prix de référence (Cardmarket + ZebraDex), avec un score de "bonne
 affaire" combinant marge estimée, qualité indicative (photos + texte) et
 fiabilité vendeur. Notifications Telegram/email au-dessus d'un seuil
-configurable, dashboard web trié par score/marge/date.
+configurable, dashboard trié par score/marge/date.
+
+On repère une carte intéressante dans l'explorateur, on la traque ensuite
+dans les annonces.
 
 ## ⚠️ À lire avant de lancer : limites légales du scraping
 
@@ -58,7 +72,111 @@ frontend/  Next.js 14 (App Router) + Tailwind
   pour déclencher un cycle manuellement (utile en debug, et pour
   l'hébergement 100% gratuit — voir plus bas).
 
-**Tests** : `backend/tests/` — 224 tests. Lancer avec :
+## Explorer le catalogue : ce qui est solide et ce qui ne l'est pas
+
+### Les thèmes
+
+`backend/app/services/card_themes.py` classe chaque carte dans deux familles
+de thèmes, qui se cumulent :
+
+- **par sujet** : Pikachu & sa famille, ligne de Dracaufeu, Évoli et ses huit
+  évolutions, starters de Kanto, oiseaux légendaires, légendaires, dragons,
+  spectres, chouchous du public ;
+- **par type de carte** : Illustration Rare, Secret/Special Illustration
+  Rare, Full Art, Gold & Rainbow, mécaniques ex / V-VMAX-VSTAR / GX.
+
+« Dracaufeu ex Illustration Rare » appartient donc à la fois à
+`ligne-dracaufeu`, `illustration-rare` et `mecanique-ex` : ce sont trois
+façons distinctes de chercher la même carte.
+
+C'est une **heuristique sur le nom**, pas une base de données Pokémon
+exhaustive. Les noms français sont prioritaires (la source publie en
+français) avec les noms anglais en alias. Un thème raté n'enlève rien à la
+carte, qui reste trouvable par la recherche libre. Pour ajouter un thème :
+compléter `card_themes.py`, puis `POST /api/admin/recompute-card-themes`
+pour rattraper les cartes déjà en base — sinon le nouveau thème resterait
+vide jusqu'à la resynchronisation complète du catalogue, qui prend des jours.
+
+### Les tendances : deux choses très différentes
+
+**La variation 7 jours est une vraie donnée**, publiée par ZebraDex et déjà
+collectée pour chaque carte. C'est elle qui alimente « en vogue cette
+semaine », disponible immédiatement.
+
+Le classement se fait **en pourcentage, pas en euros**. Un classement en
+euros ne dirait rien d'autre que « les cartes chères bougent de plus gros
+montants » : +12 € sur une carte à 400 € est du bruit, +12 € sur une carte à
+8 € est un triplement.
+
+**La tendance de fond, elle, part de zéro.** La source ne publie qu'un prix
+instantané : il n'existe aucun historique à récupérer, et le passé ne se
+reconstitue pas après coup. Le projet constitue donc le sien, à raison d'un
+relevé par carte et par jour (`card_price_snapshots`, tâche planifiée à
+03:00, ou `POST /api/admin/snapshot-card-prices` à la main). **Chaque jour
+où ce relevé ne tourne pas est un trou définitif dans la courbe.**
+
+### Les « prédictions », et pourquoi elles sont prudentes
+
+Tant que l'historique compte moins de 5 relevés étalés sur moins de 7 jours,
+l'API rend `projection.prix_projete_eur = null` et dit pourquoi. C'est
+volontaire : un prix projeté calculé sur deux relevés est un chiffre
+inventé, et un chiffre inventé affiché à côté de vrais prix est lu comme un
+vrai prix.
+
+Au-delà de ce seuil, ce qui est rendu est une **extrapolation linéaire**,
+pas une prévision : elle prolonge la pente récente en supposant que rien ne
+change. Sur des cartes à collectionner, une réimpression, un résultat de
+tournoi ou une vidéo virale peuvent tout retourner en une semaine. Le `r²`
+dit à quel point les relevés passés s'alignent réellement sur cette droite,
+et l'avertissement est porté jusqu'à l'interface. À lire comme une tendance
+prolongée, jamais comme une valeur future.
+
+### Les visuels — ⚠️ la seule partie non vérifiée
+
+ZebraDex ne publie pas d'image exploitable. Les visuels viennent donc de
+**TCGdex** (`backend/app/collectors/card_images.py`), une API publique,
+ouverte, documentée, avec localisation française et sans clé. C'est un usage
+prévu par la source : aucune des réserves juridiques ci-dessus ne s'y
+applique.
+
+**Ce code n'a pas pu être testé contre l'API réelle.** L'environnement de
+développement n'a pas d'accès réseau sortant vers `api.tcgdex.net` ni
+`assets.tcgdex.net` : la politique réseau refuse ces hôtes. Le parsing est
+donc écrit d'après la forme documentée de l'API, et volontairement tolérant
+(plusieurs formes de réponse acceptées, plusieurs noms de champ essayés,
+toute réponse inattendue journalisée au lieu de lever). Sa logique est
+testée hors réseau, mais la forme réelle des réponses ne l'est pas.
+
+Si aucun visuel ne remonte : `GET /api/admin/debug-card-images?nom=Dracaufeu`
+rend la réponse brute, à comparer à ce que le parsing attend — même démarche
+que `debug-vinted` et `debug-zebradex`. Copie-la-moi et j'ajuste.
+
+Deux limites assumées, même quand l'API répond :
+
+- le rapprochement se fait **par nom**, les deux sources ne partageant
+  aucune clé. Une carte rééditée dans plusieurs séries peut recevoir
+  l'illustration d'une autre édition. Acceptable pour un visuel de repérage,
+  ça ne le serait pas pour un prix ;
+- l'enrichissement est **progressif** (quelques dizaines de cartes par
+  passage, toutes les 30 minutes) pour ne pas marteler l'API. Sur un gros
+  catalogue, les visuels se remplissent sur plusieurs heures. Une carte sans
+  image s'affiche avec un cadre explicite plutôt que d'être masquée.
+
+### Routes
+
+| Route | Usage |
+|---|---|
+| `GET /api/cards` | Recherche filtrée : `q`, `theme`, `rarity`, `series`, `price_min`, `price_max`, `trend`, `with_image`, `sort_by`, `order`, `limit`, `offset` |
+| `GET /api/cards/themes` | Thèmes avec nombre de cartes et fourchette de prix |
+| `GET /api/cards/filters` | Valeurs réellement présentes en base, pour les listes déroulantes |
+| `GET /api/cards/trending` | Plus fortes variations 7 jours, en pourcentage |
+| `GET /api/cards/{id}` | Fiche : thèmes, historique, tendance de fond, projection |
+| `POST /api/admin/snapshot-card-prices` | Relevé de prix du jour (rattrapage manuel) |
+| `POST /api/admin/enrich-card-images` | Complète les visuels manquants |
+| `POST /api/admin/recompute-card-themes` | Rattrape les thèmes après un ajout |
+| `GET /api/admin/debug-card-images` | Réponse brute de l'API d'images |
+
+**Tests** : `backend/tests/` — 301 tests. Lancer avec :
 
 ```bash
 cd backend
@@ -71,7 +189,11 @@ Ils couvrent deux niveaux :
 - **la logique pure** (marge, score, matching, parsing
   eBay/Vinted/Cardmarket/ZebraDex, robots.txt, filtre de langue,
   corrections manuelles, vision/OCR avec l'appel API mocké) ;
-- **l'API elle-même** (`tests/test_api_routes.py`) : le serveur démarre
+- **le catalogue** (classement thématique, tendances, relevés de prix,
+  refus de projeter sur un historique trop court, parsing des visuels
+  testé hors réseau) ;
+- **les deux API** (`tests/test_api_routes.py`,
+  `tests/test_card_catalog_api.py`) : le serveur démarre
   pour de vrai, les routes sont montées aux bons chemins, les annonces se
   sérialisent en JSON, et les codes d'erreur sont ceux annoncés (404 sur
   annonce inconnue, 400 sur action de correction invalide). Ce module a

@@ -48,6 +48,7 @@ from app.matching.title_parser import (
     extract_set_number, extract_variant,
 )
 from app.models import MarketCardPrice, ZebraDexSeriesState
+from app.services.card_themes import encoder_themes, themes_de_la_carte
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +160,11 @@ def _upsert_card_price(db: Session, card) -> None:
         variation_7d_eur=card.variation_7d_eur,
         source="zebradex",
         updated_at=datetime.utcnow(),
+        # Les themes sont recalcules a chaque passage plutot que figes a la
+        # creation : les listes de card_themes.py evoluent, et une carte
+        # synchronisee avant l'ajout d'un theme doit le rejoindre au
+        # passage suivant sans intervention.
+        theme_slugs=encoder_themes(themes_de_la_carte(card.name, card.rarity)),
     )
     if existing:
         for key, value in values.items():

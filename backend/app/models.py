@@ -2,7 +2,8 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, Enum, Float, ForeignKey, Integer, String, Text, JSON,
+    Boolean, Column, Date, DateTime, Enum, Float, ForeignKey, Integer, String,
+    Text, JSON, UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 
@@ -189,3 +190,48 @@ class MarketCardPrice(Base):
 
     source = Column(String(32), default="zebradex")
     updated_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    # --- Exploration par theme (voir services/card_themes.py) ------------
+    # Slugs encadres de virgules (",pikachu,dragons,") pour que le filtre
+    # SQL `LIKE '%,pikachu,%'` soit exact. Champ texte plutot que table de
+    # jointure : portable SQLite/Postgres, et aucune migration pour ce
+    # volume. Recalcule a chaque synchronisation de la carte.
+    theme_slugs = Column(String(512), nullable=True, index=True)
+
+    # --- Visuel de la carte ----------------------------------------------
+    # ZebraDex ne publie pas d'image : elle vient d'une source distincte
+    # (voir collectors/card_images.py). `image_checked_at` est renseigne
+    # meme quand aucune image n'a ete trouvee, pour ne pas reinterroger la
+    # meme carte indefiniment.
+    image_url = Column(String(1024), nullable=True)
+    image_source = Column(String(32), nullable=True)
+    image_checked_at = Column(DateTime, nullable=True, index=True)
+
+
+class CardPriceSnapshot(Base):
+    """
+    Un releve de prix par carte et par jour : c'est ce qui rend une
+    tendance de fond possible.
+
+    Pourquoi une table a part plutot qu'une colonne de plus : la source ne
+    publie qu'un prix instantane et une variation 7 jours. Sans accumuler
+    nous-memes, il n'y a aucun moyen de repondre a « cette carte monte-t-elle
+    depuis trois mois ». Et cet historique ne peut pas etre reconstitue
+    apres coup : il n'existe qu'a partir du jour ou on commence a le garder.
+
+    Un seul releve par carte et par jour (contrainte d'unicite) : relancer
+    la capture plusieurs fois dans la journee met a jour le releve du jour
+    au lieu d'empiler des doublons qui fausseraient la regression.
+    """
+    __tablename__ = "card_price_snapshots"
+    __table_args__ = (
+        UniqueConstraint("name_slug", "card_code", "captured_on",
+                         name="uq_snapshot_carte_jour"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    name_slug = Column(String(256), nullable=False, index=True)
+    card_code = Column(String(32), nullable=True, index=True)
+    price_eur = Column(Float, nullable=False)
+    captured_on = Column(Date, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

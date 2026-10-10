@@ -246,3 +246,192 @@ export async function searchListings(
       "Réessaie dans un moment."
   );
 }
+
+// ---------------------------------------------------------------------------
+// Catalogue de cartes (nouvelle direction du 10/10/2026)
+//
+// Ces appels partent du CATALOGUE (quelles cartes existent, a quel prix,
+// dans quel theme, lesquelles montent), la ou fetchListings part des
+// ANNONCES Vinted/eBay. Les deux cohabitent : on repere ici une carte qui
+// monte, on la traque ensuite dans les annonces.
+// ---------------------------------------------------------------------------
+
+export type TrendDirection = "hausse" | "baisse" | "stable" | "inconnu";
+export type TrendIntensity = "forte" | "moderee" | "faible" | "inconnu";
+
+export interface Trend7d {
+  variation_eur: number | null;
+  variation_pct: number | null;
+  direction: TrendDirection;
+  intensite: TrendIntensity;
+  label: string;
+}
+
+export interface CatalogCard {
+  id: number;
+  card_code: string | null;
+  name_slug: string;
+  display_name: string;
+  series_name: string | null;
+  rarity: string | null;
+  price_eur: number;
+  price_low_eur: number | null;
+  price_high_eur: number | null;
+  // Rappel porte depuis le backend : la fourchette vient de la volatilite
+  // recente, ce ne sont PAS des extremes de ventes conclues.
+  price_range_is_derived: boolean;
+  themes: string[];
+  image_url: string | null;
+  image_source: string | null;
+  trend_7d: Trend7d;
+  updated_at: string | null;
+}
+
+export interface CardTheme {
+  slug: string;
+  label: string;
+  description: string;
+  famille: "sujet" | "type";
+  card_count: number;
+  price_min_eur: number | null;
+  price_max_eur: number | null;
+  price_avg_eur: number | null;
+}
+
+export interface CardFilterValues {
+  rarities: string[];
+  series: string[];
+  price_min_eur: number | null;
+  price_max_eur: number | null;
+  themes: { slug: string; label: string; famille: "sujet" | "type" }[];
+  total_cards: number;
+}
+
+export interface CardSearchResult {
+  total: number;
+  limite: number;
+  decalage: number;
+  cartes: CatalogCard[];
+}
+
+export type CardSortField = "prix" | "nom" | "variation" | "maj";
+
+export interface CardSearchParams {
+  q?: string;
+  theme?: string;
+  rarity?: string;
+  series?: string;
+  priceMin?: number;
+  priceMax?: number;
+  trend?: "hausse" | "baisse" | "toutes";
+  withImage?: boolean;
+  sortBy?: CardSortField;
+  order?: SortOrder;
+  limit?: number;
+  offset?: number;
+}
+
+export function searchCards(params: CardSearchParams): Promise<CardSearchResult> {
+  const qs = new URLSearchParams();
+  if (params.q) qs.set("q", params.q);
+  if (params.theme) qs.set("theme", params.theme);
+  if (params.rarity) qs.set("rarity", params.rarity);
+  if (params.series) qs.set("series", params.series);
+  if (params.priceMin !== undefined) qs.set("price_min", String(params.priceMin));
+  if (params.priceMax !== undefined) qs.set("price_max", String(params.priceMax));
+  if (params.trend) qs.set("trend", params.trend);
+  if (params.withImage !== undefined) qs.set("with_image", String(params.withImage));
+  if (params.sortBy) qs.set("sort_by", params.sortBy);
+  if (params.order) qs.set("order", params.order);
+  if (params.limit !== undefined) qs.set("limit", String(params.limit));
+  if (params.offset !== undefined) qs.set("offset", String(params.offset));
+  return apiFetch<CardSearchResult>(`/api/cards?${qs.toString()}`);
+}
+
+export function fetchCardThemes(): Promise<{ themes: CardTheme[] }> {
+  return apiFetch<{ themes: CardTheme[] }>("/api/cards/themes");
+}
+
+export function fetchCardFilters(): Promise<CardFilterValues> {
+  return apiFetch<CardFilterValues>("/api/cards/filters");
+}
+
+export function fetchTrendingCards(params: {
+  direction?: "hausse" | "baisse";
+  priceMin?: number;
+  priceMax?: number;
+  theme?: string;
+  limit?: number;
+}): Promise<{
+  direction: string;
+  count: number;
+  cartes: CatalogCard[];
+  source_note: string;
+}> {
+  const qs = new URLSearchParams();
+  if (params.direction) qs.set("direction", params.direction);
+  if (params.priceMin !== undefined) qs.set("price_min", String(params.priceMin));
+  if (params.priceMax !== undefined) qs.set("price_max", String(params.priceMax));
+  if (params.theme) qs.set("theme", params.theme);
+  if (params.limit !== undefined) qs.set("limit", String(params.limit));
+  return apiFetch(`/api/cards/trending?${qs.toString()}`);
+}
+
+export interface CardTrendHistory {
+  points: number;
+  jours_couverts: number;
+  variation_pct: number | null;
+  pente_eur_par_jour: number | null;
+  r2: number | null;
+  fiabilite: "insuffisant" | "faible" | "moyenne" | "bonne";
+  avertissement: string;
+}
+
+export interface CardProjection {
+  horizon_jours: number;
+  // null tant que l'historique est insuffisant. C'est voulu : un prix
+  // projete sur deux releves serait un chiffre invente.
+  prix_projete_eur: number | null;
+  fiabilite: string;
+  avertissement: string;
+}
+
+export interface CatalogCardDetail extends CatalogCard {
+  themes_detail: {
+    slug: string;
+    label: string;
+    description: string;
+    famille: string;
+  }[];
+  history: { captured_on: string; price_eur: number }[];
+  trend_history: CardTrendHistory;
+  projection: CardProjection;
+}
+
+export function fetchCardDetail(
+  cardId: number,
+  horizonJours = 30
+): Promise<CatalogCardDetail> {
+  return apiFetch<CatalogCardDetail>(
+    `/api/cards/${cardId}?horizon_jours=${horizonJours}`
+  );
+}
+
+export function triggerCardImageEnrichment(
+  limit = 40
+): Promise<{ examined: number; found: number; not_found: number }> {
+  return apiFetch(`/api/admin/enrich-card-images?limit=${limit}`, { method: "POST" });
+}
+
+export function triggerThemeRecompute(): Promise<{ examined: number; updated: number }> {
+  return apiFetch("/api/admin/recompute-card-themes", { method: "POST" });
+}
+
+export function triggerPriceSnapshot(): Promise<{
+  captured_on: string;
+  examined: number;
+  created: number;
+  updated: number;
+}> {
+  return apiFetch("/api/admin/snapshot-card-prices", { method: "POST" });
+}

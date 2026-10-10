@@ -18,13 +18,14 @@ from app.collectors.cardmarket_prices import CardmarketPriceClient
 from app.collectors.ebay_browse import EbayBrowseClient
 from app.collectors.vinted_scraper import VintedScraper, VintedBlockedError
 from app.core.language_filter import looks_non_french
-from app.models import Listing, SourcePlatform, ListingStatus, PriceReference, NotificationSent
+from app.models import Listing, SourcePlatform, ListingStatus, PriceReference, NotificationSent, MarketCardPrice
 from app.scoring.margin import calculate_margin, normalize_margin_ratio
 from app.scoring.quality_text import analyze_text_quality
 from app.scoring.card_appeal import detect_card_appeal
 from app.services.price_index import find_price_for_listing, sync_series_batch
 from app.scoring.deal_score import calculate_deal_score, QualityBlend
 from app.scoring.seller_reliability import score_ebay_seller, score_vinted_seller
+from app.collectors.card_images import ClientImagesCartes
 from app.vision.quality_vision import analyze_card_photos
 from app.notifications.telegram import send_telegram_message, format_deal_alert
 from app.notifications.email_notif import send_email_notification, format_deal_alert_html
@@ -836,6 +837,59 @@ def check_vinted_availability(db: Session, limit: int = 10, pool: int = 200) -> 
         verifiees, disparues,
     )
     return {"checked": verifiees, "gone": disparues, "examined": len(listings)}
+
+
+def enrich_card_images(db: Session, limit: int = 40) -> dict:
+    """Complete progressivement le visuel des cartes du catalogue.
+
+    Progressif et non bloquant, pour la meme raison que la synchronisation
+    ZebraDex : quelques dizaines de cartes par passage plutot qu'un gros job
+    qui depasserait les limites d'un hebergement gratuit. Le catalogue
+    compte des milliers de cartes, les images se remplissent sur plusieurs
+    cycles.
+
+    `image_checked_at` est renseigne MEME quand aucune image n'est trouvee.
+    Sans ca, les cartes introuvables seraient reinterrogees a chaque
+    passage et bloqueraient la file : les memes echecs pour toujours, et
+    aucune nouvelle carte servie.
+    """
+    cartes = (
+        db.query(MarketCardPrice)
+        .filter(MarketCardPrice.image_url.is_(None))
+        .order_by(MarketCardPrice.image_checked_at.asc().nullsfirst(),
+                  MarketCardPrice.price_eur.desc())
+        .limit(limit)
+        .all()
+    )
+
+    if not cartes:
+        return {"examined": 0, "found": 0, "not_found": 0}
+
+    client = ClientImagesCartes()
+    trouvees, introuvables = 0, 0
+
+    for carte in cartes:
+        try:
+            image = client.chercher_image(carte.display_name, carte.card_code)
+        except Exception as exc:  # noqa: BLE001 - une source distante ne doit pas casser le cycle
+            logger.warning("Images: recherche echouee pour '%s' (%s)",
+                           carte.display_name, exc)
+            image = None
+
+        carte.image_checked_at = datetime.utcnow()
+        if image is not None:
+            carte.image_url = image.image_url
+            carte.image_source = image.source
+            trouvees += 1
+        else:
+            introuvables += 1
+
+    db.commit()
+    logger.info(
+        "Images: %d carte(s) examinee(s), %d visuel(s) trouve(s), %d sans image",
+        len(cartes), trouvees, introuvables,
+    )
+    return {"examined": len(cartes), "found": trouvees, "not_found": introuvables}
 
 
 def run_full_check(db: Session):

@@ -5,7 +5,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.pipeline import (
     run_full_check, rescore_unpriced_listings, refilter_language,
-    check_vinted_availability,
+    check_vinted_availability, enrich_card_images,
 )
 from app.core.language_filter import detect_language
 from app.collectors.vinted_scraper import VintedScraper
@@ -13,6 +13,8 @@ from app.collectors.zebradex_prices import ZebraDexClient
 from app.services.price_index import (
     sync_series_batch, refresh_series_catalog, index_stats, find_price_for_listing,
 )
+from app.collectors.card_images import ClientImagesCartes
+from app.services import card_catalog
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -171,3 +173,71 @@ def debug_zebradex(series_url: Optional[str] = None):
     listant les series. Avec `series_url` : teste le parsing d'une serie.
     """
     return ZebraDexClient().diagnostic_fetch(series_url=series_url)
+
+# --------------------------------------------------------------------------
+# Catalogue de cartes (exploration par theme / tendances / visuels)
+# --------------------------------------------------------------------------
+
+
+@router.post("/snapshot-card-prices")
+def snapshot_card_prices(limit: Optional[int] = Query(None, ge=1)):
+    """Enregistre le releve de prix du jour pour tout le catalogue.
+
+    A declencher une fois par jour. C'est la SEULE facon d'avoir un jour un
+    historique : la source ne publie qu'un prix instantane, et le passe ne
+    se reconstitue pas apres coup. Chaque jour ou cet appel n'a pas lieu est
+    un trou definitif dans la courbe.
+
+    Le scheduler l'appelle automatiquement, cette route sert au rattrapage
+    manuel et au premier amorcage.
+    """
+    db = SessionLocal()
+    try:
+        return card_catalog.enregistrer_releve_du_jour(db, limite=limit)
+    finally:
+        db.close()
+
+
+@router.post("/enrich-card-images")
+def enrich_card_images_now(limit: int = Query(40, ge=1, le=200)):
+    """Complete le visuel des cartes qui n'en ont pas encore.
+
+    Progressif a dessein : quelques dizaines par appel, pour ne pas marteler
+    l'API ni depasser les limites d'un hebergement gratuit. A relancer
+    plusieurs fois pour couvrir un gros catalogue.
+    """
+    db = SessionLocal()
+    try:
+        return enrich_card_images(db, limit=limit)
+    finally:
+        db.close()
+
+
+@router.post("/recompute-card-themes")
+def recompute_card_themes(limit: int = Query(5000, ge=1, le=50000)):
+    """Recalcule les themes des cartes deja en base.
+
+    Necessaire au premier deploiement (les cartes synchronisees avant que
+    les themes existent n'en portent aucun) et apres chaque ajout de theme.
+    Sans ce rattrapage, un nouveau theme resterait vide jusqu'a la
+    resynchronisation complete du catalogue, qui prend des jours au rythme
+    impose a ZebraDex.
+    """
+    db = SessionLocal()
+    try:
+        return card_catalog.recalculer_themes(db, limite=limit)
+    finally:
+        db.close()
+
+
+@router.get("/debug-card-images")
+def debug_card_images(nom: str = Query("Dracaufeu")):
+    """Reponse BRUTE de l'API d'images, pour comparer a ce que le parsing
+    attend.
+
+    Ce parsing n'a pas pu etre verifie contre l'API reelle : l'environnement
+    de developpement n'a pas d'acces sortant vers api.tcgdex.net. Si aucune
+    image ne remonte, c'est par ici qu'il faut passer — meme demarche que
+    debug-vinted et debug-zebradex.
+    """
+    return ClientImagesCartes().diagnostic(nom)

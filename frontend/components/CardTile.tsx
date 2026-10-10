@@ -1,0 +1,114 @@
+"use client";
+
+import Image from "next/image";
+import { CatalogCard } from "@/lib/api";
+
+/**
+ * Une carte du catalogue, avec son visuel.
+ *
+ * L'image est le point de depart de la demande : « je veux voir l'image de
+ * chaque carte dans la recherche ». Toutes les cartes n'en ont pas encore
+ * (l'enrichissement est progressif, et certaines restent introuvables) : on
+ * affiche alors un cadre explicite plutot que de masquer la carte. Un
+ * catalogue de prix sans visuel reste utile ; un catalogue amoindri parce
+ * qu'une image manque ne l'est pas.
+ */
+
+const COULEURS_TENDANCE: Record<string, string> = {
+  hausse: "text-moss-400 border-moss-500/40 bg-moss-500/10",
+  baisse: "text-rust-400 border-rust-500/40 bg-rust-500/10",
+  stable: "text-parchment-100/60 border-ink-600 bg-ink-800",
+  inconnu: "text-parchment-100/40 border-ink-700 bg-ink-900",
+};
+
+function FlecheTendance({ direction }: { direction: string }) {
+  if (direction === "hausse") return <span aria-hidden>▲</span>;
+  if (direction === "baisse") return <span aria-hidden>▼</span>;
+  if (direction === "stable") return <span aria-hidden>●</span>;
+  return <span aria-hidden>·</span>;
+}
+
+export default function CardTile({
+  carte,
+  onSelect,
+}: {
+  carte: CatalogCard;
+  onSelect?: (carte: CatalogCard) => void;
+}) {
+  const tendance = carte.trend_7d;
+  const couleur = COULEURS_TENDANCE[tendance.direction] ?? COULEURS_TENDANCE.inconnu;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect?.(carte)}
+      className="group flex flex-col overflow-hidden rounded-md border border-ink-700 bg-ink-900 text-left transition-colors hover:border-ember-500/60"
+    >
+      <div className="relative aspect-[63/88] w-full bg-ink-950">
+        {carte.image_url ? (
+          <Image
+            src={carte.image_url}
+            alt={carte.display_name}
+            fill
+            sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 200px"
+            className="object-contain"
+            unoptimized
+          />
+        ) : (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-1 p-2 text-center">
+            <span className="text-2xl opacity-30" aria-hidden>
+              ▭
+            </span>
+            <span className="text-[10px] leading-tight text-parchment-100/35">
+              Visuel pas encore récupéré
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-1 flex-col gap-1.5 p-2.5">
+        <p className="font-display text-sm leading-tight text-parchment-100">
+          {carte.display_name}
+        </p>
+
+        <p className="text-[11px] text-parchment-100/45">
+          {carte.card_code ? `${carte.card_code} · ` : ""}
+          {carte.series_name ?? "Série inconnue"}
+        </p>
+
+        {carte.rarity && (
+          <p className="text-[11px] text-ember-400/80">{carte.rarity}</p>
+        )}
+
+        <div className="mt-auto flex items-end justify-between gap-2 pt-1.5">
+          <div>
+            <p className="font-mono text-base text-parchment-100">
+              {carte.price_eur.toFixed(2)} €
+            </p>
+            {carte.price_low_eur !== null && carte.price_high_eur !== null && (
+              // Titre au survol : la fourchette est derivee de la volatilite
+              // recente, pas des ventes conclues. Le dire la ou le chiffre
+              // est lu, pas seulement dans une note de bas de page.
+              <p
+                className="font-mono text-[10px] text-parchment-100/35"
+                title="Fourchette dérivée de la volatilité récente, pas des ventes réellement conclues"
+              >
+                {carte.price_low_eur.toFixed(2)} – {carte.price_high_eur.toFixed(2)} €
+              </p>
+            )}
+          </div>
+
+          <span
+            className={`shrink-0 rounded-sm border px-1.5 py-0.5 font-mono text-[10px] ${couleur}`}
+            title={tendance.label}
+          >
+            <FlecheTendance direction={tendance.direction} />{" "}
+            {tendance.variation_pct !== null
+              ? `${tendance.variation_pct > 0 ? "+" : ""}${tendance.variation_pct.toFixed(1)} %`
+              : "—"}
+          </span>
+        </div>
+      </div>
+    </button>
+  );
+}

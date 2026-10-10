@@ -43,6 +43,13 @@ _COLONNES_AJOUTEES = {
         ("manual_reference_price", "DOUBLE PRECISION"),
         ("manual_reviewed_at", "TIMESTAMP"),
     ],
+    # Exploration du catalogue par theme + visuel de la carte (10/10/2026).
+    "market_card_prices": [
+        ("theme_slugs", "VARCHAR(512)"),
+        ("image_url", "VARCHAR(1024)"),
+        ("image_source", "VARCHAR(32)"),
+        ("image_checked_at", "TIMESTAMP"),
+    ],
 }
 
 

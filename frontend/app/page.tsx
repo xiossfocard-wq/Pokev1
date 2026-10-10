@@ -174,6 +174,12 @@ export default function DashboardPage() {
             {checking ? "Vérification…" : "Vérifier maintenant"}
           </button>
           <Link
+            href="/explorer"
+            className="rounded-sm border border-ink-700 bg-ink-800 px-3 py-1.5 text-xs text-parchment-100 transition-colors hover:border-ember-500"
+          >
+            Explorer le catalogue
+          </Link>
+          <Link
             href="/settings"
             className="rounded-sm border border-ink-700 bg-ink-800 px-3 py-1.5 text-xs text-parchment-100 transition-colors hover:border-ember-500"
           >
