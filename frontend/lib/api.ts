@@ -225,13 +225,16 @@ function fetchSearchJob(jobId: string): Promise<SearchJob> {
  */
 export async function searchListings(
   query: string,
-  onProgress?: (message: string) => void
+  onProgress?: (message: string) => void,
+  signal?: AbortSignal
 ): Promise<Listing[]> {
   const job = await startSearch(query);
   const deadline = Date.now() + SEARCH_MAX_WAIT_MS;
 
   let current = job;
   while (Date.now() < deadline) {
+    // La page a ete quittee : on arrete de sonder, sans erreur bruyante.
+    if (signal?.aborted) throw new DOMException("Recherche annulée", "AbortError");
     if (current.status === "done") return current.listings ?? [];
     if (current.status === "error") {
       throw new Error(current.error || "La recherche a echoue cote serveur.");

@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { correctListing, type CorrectionAction, type Listing } from "@/lib/api";
+import type { Listing } from "@/lib/api";
 import DealScoreBadge from "./DealScoreBadge";
+import CorrectionPanel from "./CorrectionPanel";
 
 function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso + "Z").getTime();
@@ -39,11 +40,17 @@ const CONDITION_STYLES: Record<string, string> = {
   DMG: "bg-rust-500/30 text-rust-400",
 };
 
-const CONFIDENCE_LABEL: Record<string, string> = {
-  high: "Prix fiable — carte identifiée précisément",
-  medium: "Prix probable — identification partielle",
-  low: "Prix incertain — nom seul, plusieurs séries possibles",
-  manual: "Prix que tu as corrigé toi-même",
+/**
+ * Langage visuel de la fiabilité, lisible d'un coup d'œil sur toute la
+ * liste : un point plein = prix sûr, demi = probable, creux = incertain.
+ * La couleur seule ne suffit pas (daltonisme) : la forme porte aussi
+ * l'information.
+ */
+const CONFIDENCE: Record<string, { label: string; dot: string; text: string }> = {
+  manual: { label: "Prix corrigé par toi", dot: "bg-ember-400 ring-2 ring-ember-400/30", text: "text-ember-400" },
+  high: { label: "Prix fiable", dot: "bg-moss-400", text: "text-moss-400" },
+  medium: { label: "Prix probable", dot: "bg-ember-400/60 ring-1 ring-ember-400", text: "text-ember-400" },
+  low: { label: "Prix incertain", dot: "bg-transparent ring-1 ring-rust-400", text: "text-rust-400" },
 };
 
 export default function ListingCard({
@@ -53,71 +60,42 @@ export default function ListingCard({
   listing: Listing;
   onChanged?: (updated: Listing) => void;
 }) {
-  const [enCours, setEnCours] = useState(false);
-  const [saisiePrix, setSaisiePrix] = useState(false);
-  const [prixTape, setPrixTape] = useState("");
-  const [erreurCorrection, setErreurCorrection] = useState<string | null>(null);
-
-  async function corriger(action: CorrectionAction, price?: number) {
-    setEnCours(true);
-    setErreurCorrection(null);
-    try {
-      const maj = await correctListing(listing.id, action, price);
-      setSaisiePrix(false);
-      setPrixTape("");
-      onChanged?.(maj);
-    } catch (err) {
-      setErreurCorrection(err instanceof Error ? err.message : String(err));
-    } finally {
-      setEnCours(false);
-    }
-  }
-
-  function validerPrix() {
-    const valeur = Number(prixTape.replace(",", "."));
-    if (!Number.isFinite(valeur) || valeur <= 0) {
-      setErreurCorrection("Entre un prix supérieur à 0, par exemple 42,50");
-      return;
-    }
-    corriger("set_price", valeur);
-  }
-
+  // Sur mobile il n'y a pas de survol : un bouton toujours visible ouvre le
+  // panneau. Sur ordinateur, le survol suffit et le bouton reste discret.
+  const [panelOpen, setPanelOpen] = useState(false);
   const photo = listing.photo_urls?.[0];
-  const marginPositive = (listing.margin_net ?? 0) > 0;
-  const hasNoPrice = listing.reference_price === null;
-  const hasRange = listing.price_low_eur != null && listing.price_high_eur != null;
-  const confidence = listing.price_match_confidence;
   const detail = listing.price_detail;
-  const priceWarning = detail?.warning ?? null;
-  const ambiguousCount = detail?.candidates_count ?? 0;
-  const spread = detail?.price_spread_eur ?? 0;
-  const minPrice = detail?.candidates_min_eur ?? null;
-  const maxPrice = detail?.candidates_max_eur ?? null;
+  const confidence = listing.price_match_confidence;
+  const meta = confidence ? CONFIDENCE[confidence] : null;
+  const uncertain = detail?.uncertain === true;
+  const marginPositive = (listing.margin_net ?? 0) > 0;
+  const reviewed = listing.manual_reviewed_at !== null;
+  const hasNoPrice = listing.reference_price === null;
+  // L'URL vient de donnees collectees sur des sites tiers : on ne rend un
+  // lien que si le schema est http(s), jamais javascript: ni data:.
+  const safeUrl = /^https?:\/\//i.test(listing.url) ? listing.url : undefined;
+
   const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(
     listing.title + " pokemon carte prix"
   )}`;
-  // Cardmarket exige l'extension exacte dans l'URL d'une fiche produit, et
-  // elle est indevinable depuis un titre Vinted (voir la note dans
-  // collectors/cardmarket_prices.py). On pointe donc vers leur RECHERCHE,
-  // qui elle marche toujours, en partant du nom de la carte retenue quand
-  // on en a un — sinon du titre de l'annonce.
-  const corrigeParToi = listing.manual_reviewed_at !== null;
-  const cardmarketQuery = detail?.matched_card || listing.title;
+  // Cardmarket exige l'extension exacte dans l'URL d'une fiche produit,
+  // indevinable depuis un titre Vinted : on pointe vers leur recherche.
   const cardmarketUrl = `https://www.cardmarket.com/fr/Pokemon/Products/Search?searchString=${encodeURIComponent(
-    cardmarketQuery
+    detail?.matched_card || listing.title
   )}`;
 
   return (
-    <article className="group relative overflow-hidden rounded-lg border border-ink-700 bg-ink-800/80 transition-all hover:border-ember-500/50 hover:bg-ink-800">
+    <article className="group relative overflow-hidden rounded-lg border border-ink-700 bg-ink-800/70 transition-colors hover:border-ember-500/40 hover:bg-ink-800">
       <a
-        href={listing.url}
+        href={safeUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex gap-3 p-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ember-500"
+        aria-disabled={safeUrl ? undefined : true}
+        className="flex gap-3 p-3"
       >
         <div className="relative h-24 w-[68px] shrink-0 overflow-hidden rounded-md bg-ink-700 ring-1 ring-ink-600">
           {photo ? (
-            <Image src={photo} alt="" fill sizes="68px" className="object-cover" unoptimized />
+            <Image src={photo} alt={`Photo de l'annonce : ${listing.title}`} fill sizes="68px" className="object-cover" unoptimized />
           ) : (
             <div className="flex h-full items-center justify-center px-1 text-center text-[9px] text-ink-600">
               pas de photo
@@ -133,44 +111,31 @@ export default function ListingCard({
           <div className="mt-1.5 flex flex-wrap gap-1">
             {listing.condition_tier && (
               <span
-                className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                  CONDITION_STYLES[listing.condition_tier] ?? "bg-ink-700 text-ink-600"
-                }`}
-                title="État déduit du texte de l'annonce (NM > LP > MP > HP > DMG)"
+                className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${CONDITION_STYLES[listing.condition_tier] ?? "bg-ink-700 text-ink-600"}`}
+                title="État déduit du texte de l'annonce"
               >
                 {listing.condition_tier}
               </span>
             )}
             {listing.rarity_tier && (
-              <span
-                className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                  RARITY_STYLES[listing.rarity_tier] ?? "bg-ember-500/15 text-ember-400"
-                }`}
-              >
+              <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${RARITY_STYLES[listing.rarity_tier] ?? "bg-ember-500/15 text-ember-400"}`}>
                 {listing.rarity_tier}
               </span>
             )}
             {listing.is_vintage && (
-              <span className="rounded bg-moss-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-moss-400">
-                Vintage
-              </span>
+              <span className="rounded bg-moss-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-moss-400">Vintage</span>
             )}
-            {listing.is_popular_pokemon && (
-              <span className="rounded bg-ink-700 px-1.5 py-0.5 text-[10px] font-semibold text-parchment-100">
-                Populaire
-              </span>
-            )}
-            {corrigeParToi && (
+            {reviewed && (
               <span
                 className="rounded bg-ember-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-ember-400"
-                title="Tu as corrigé cette annonce à la main — l'identification automatique ne revient plus dessus."
+                title="Tu as corrigé cette annonce à la main — l'automatique ne revient plus dessus."
               >
                 Corrigé par toi
               </span>
             )}
           </div>
 
-          <div className="mt-2 flex flex-wrap items-baseline gap-x-2 font-mono text-xs">
+          <div className="tabular mt-2 flex flex-wrap items-baseline gap-x-2 font-mono text-xs">
             <span className="text-lg font-bold leading-none text-parchment-100">
               {formatEur(listing.price)}
             </span>
@@ -180,17 +145,13 @@ export default function ListingCard({
             {listing.margin_net !== null && (
               <span
                 className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${
-                  detail?.uncertain
+                  uncertain
                     ? "bg-ink-700 text-ink-600 line-through decoration-ink-600/60"
                     : marginPositive
                     ? "bg-moss-500/20 text-moss-400"
                     : "bg-rust-500/15 text-rust-400"
                 }`}
-                title={
-                  detail?.uncertain
-                    ? "Marge calculée sur un prix de référence incertain — elle ne compte pas dans le score. Survole la carte pour voir pourquoi."
-                    : undefined
-                }
+                title={uncertain ? "Marge calculée sur un prix incertain — elle ne compte pas dans le score." : undefined}
               >
                 {marginPositive ? "+" : ""}
                 {formatEur(listing.margin_net)}
@@ -199,72 +160,40 @@ export default function ListingCard({
           </div>
 
           {hasNoPrice ? (
-            <p className="mt-1.5 text-[11px] text-ink-600">
-              Prix marché introuvable — l&apos;index se construit encore, ou carte non identifiée
+            <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-ink-600">
+              <span className="inline-block h-2 w-2 rounded-full ring-1 ring-ink-600" />
+              Prix marché introuvable
             </p>
           ) : (
-            <div className="mt-1.5 space-y-0.5">
-              <div className="flex items-baseline gap-1.5 font-mono text-[11px]">
-                <span className="text-ink-600">marché</span>
-                <span className="font-semibold text-parchment-100">
-                  {formatEur(listing.reference_price)}
+            <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-[11px]">
+              {meta && <span className={`inline-block h-2 w-2 rounded-full ${meta.dot}`} />}
+              <span className="text-ink-600">marché</span>
+              <span className="tabular font-mono font-semibold text-parchment-100">
+                {formatEur(listing.reference_price)}
+              </span>
+              {meta && (
+                <span className={meta.text} title={detail?.reason ?? undefined}>
+                  · {meta.label}
+                  {detail?.matched_card && confidence !== "manual" ? ` · ${detail.matched_card}` : ""}
                 </span>
-                {hasRange && (
-                  <span
-                    className="text-ink-600"
-                    title="Fourchette dérivée de la volatilité sur 7 jours — ce n'est pas un historique de ventes conclues"
-                  >
-                    ({formatEur(listing.price_low_eur)}–{formatEur(listing.price_high_eur)})
-                  </span>
-                )}
-              </div>
-              {confidence && (
-                <p
-                  className={`text-[10px] ${
-                    confidence === "high"
-                      ? "text-moss-400"
-                      : confidence === "medium"
-                      ? "text-ember-400"
-                      : "text-rust-400"
-                  }`}
-                  title={listing.price_detail?.reason ?? undefined}
-                >
-                  {CONFIDENCE_LABEL[confidence] ?? confidence}
-                  {listing.price_detail?.matched_card
-                    ? ` · ${listing.price_detail.matched_card}`
-                    : ""}
-                </p>
               )}
+            </p>
+          )}
 
-              {/* Combien de cartes homonymes ont dû être départagées, et sur
-                  quelle amplitude de prix. Sans ça, un prix médian calculé
-                  entre 3 € et 250 € s'affiche avec le même aplomb qu'un prix
-                  sûr. */}
-              {ambiguousCount > 1 && (
-                <p className="text-[10px] text-ink-600">
-                  {ambiguousCount} cartes portent ce nom
-                  {spread > 0 && minPrice !== null &&
-                    ` (de ${formatEur(minPrice)} à ${formatEur(maxPrice)})`}
-                  {" "}— prix médian retenu
-                </p>
-              )}
-
-              {priceWarning && (
-                <p className="mt-1 rounded-sm border border-rust-500/40 bg-rust-500/10 px-1.5 py-1 text-[10px] leading-snug text-rust-400">
-                  ⚠ {priceWarning}
-                </p>
-              )}
-            </div>
+          {detail?.warning && (
+            <p className="mt-1.5 rounded-md border border-rust-500/40 bg-rust-500/10 px-2 py-1 text-[10px] leading-snug text-rust-400">
+              ⚠ {detail.warning}
+            </p>
           )}
 
           <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 text-[11px] text-ink-600">
             {listing.quality_vision_score !== null ? (
               <span title="Estimation depuis les photos — pas un grading professionnel">
-                photo ~{Math.round(listing.quality_vision_score)}/100*
+                photo ~{Math.round(listing.quality_vision_score)}/100
               </span>
             ) : listing.quality_text_score !== null ? (
               <span title="Estimation depuis le texte de l'annonce uniquement">
-                texte ~{Math.round(listing.quality_text_score)}/100*
+                texte ~{Math.round(listing.quality_text_score)}/100
               </span>
             ) : null}
             {listing.seller_reliability_score !== null && (
@@ -277,170 +206,25 @@ export default function ListingCard({
         <DealScoreBadge score={listing.deal_score} />
       </a>
 
-      {/* Détail du marché, révélé au survol de la carte. En dehors du lien
-          principal : on ne peut pas imbriquer des liens dans un lien. */}
-      <div className="hidden border-t border-ink-700 bg-ink-900/50 px-3 py-2.5 group-focus-within:block group-hover:block">
-        {detail ? (
-          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
-            <dt className="text-ink-600">Carte retenue</dt>
-            <dd className="text-parchment-100">
-              {detail.matched_card}
-              {detail.matched_code && (
-                <span className="ml-1.5 font-mono text-ink-600">{detail.matched_code}</span>
-              )}
-            </dd>
+      {/* Sur mobile, pas de survol : une barre ouvre le panneau. Sur
+          ordinateur elle est masquée et le survol fait le travail. */}
+      <button
+        type="button"
+        onClick={() => setPanelOpen((o) => !o)}
+        aria-expanded={panelOpen}
+        className="flex w-full items-center justify-center gap-1.5 border-t border-ink-700 py-1.5 text-[11px] text-ink-600 transition-colors hover:text-ember-400 md:hidden"
+      >
+        {panelOpen ? "Fermer" : "Détail & corriger"}
+        <span aria-hidden="true">{panelOpen ? "⌃" : "⌄"}</span>
+      </button>
 
-            {detail.series_name && (
-              <>
-                <dt className="text-ink-600">Série</dt>
-                <dd className="text-parchment-100">{detail.series_name}</dd>
-              </>
-            )}
-
-            <dt className="text-ink-600">Prix marché</dt>
-            <dd className="font-mono text-parchment-100">
-              {formatEur(detail.price_eur)}
-              {hasRange && (
-                <span className="ml-1.5 text-ink-600">
-                  volatilité 7 j : {formatEur(listing.price_low_eur)}–
-                  {formatEur(listing.price_high_eur)}
-                </span>
-              )}
-            </dd>
-
-            {ambiguousCount > 1 && (
-              <>
-                <dt className="text-ink-600">Homonymes</dt>
-                <dd className="text-parchment-100">
-                  {ambiguousCount} cartes de ce nom
-                  {minPrice !== null && (
-                    <span className="font-mono text-ink-600">
-                      {" "}
-                      ({formatEur(minPrice)} → {formatEur(maxPrice)})
-                    </span>
-                  )}
-                </dd>
-              </>
-            )}
-
-            <dt className="text-ink-600">Pourquoi</dt>
-            <dd className="text-ink-600">{detail.reason}</dd>
-          </dl>
-        ) : (
-          <p className="text-[11px] text-ink-600">
-            Aucune carte de l&apos;index ne correspond à ce titre. L&apos;index de prix
-            se construit encore — ou le titre est trop vague pour identifier la carte.
-          </p>
-        )}
-
-        <div className="mt-2 flex flex-wrap gap-2 border-t border-ink-800 pt-2">
-          <a
-            href={cardmarketUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rounded-sm border border-ink-700 px-2 py-1 text-[10px] text-parchment-100 transition-colors hover:border-ember-500 hover:text-ember-400"
-          >
-            Vérifier sur Cardmarket ↗
-          </a>
-          <a
-            href={searchUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rounded-sm border border-ink-700 px-2 py-1 text-[10px] text-ink-600 transition-colors hover:border-ink-600 hover:text-parchment-100"
-          >
-            Recherche Google ↗
-          </a>
-        </div>
-
-        {/* Corrections manuelles. C'est toi qui as le dernier mot :
-            l'identification automatique ne reviendra jamais par-dessus. */}
-        <div className="mt-2 border-t border-ink-800 pt-2">
-          {corrigeParToi ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] text-ember-400">
-                {listing.manual_status === "wrong_card"
-                  ? "Tu as signalé que la carte ne correspond pas."
-                  : listing.manual_status === "hidden"
-                  ? "Tu as masqué cette annonce."
-                  : `Prix corrigé par toi : ${formatEur(listing.manual_reference_price)}.`}
-              </span>
-              <button
-                type="button"
-                disabled={enCours}
-                onClick={() => corriger("reset")}
-                className="rounded-sm border border-ink-700 px-2 py-1 text-[10px] text-ink-600 transition-colors hover:border-ink-600 hover:text-parchment-100 disabled:opacity-40"
-              >
-                Annuler ma correction
-              </button>
-            </div>
-          ) : saisiePrix ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="text-[10px] text-ink-600" htmlFor={`prix-${listing.id}`}>
-                Prix réel du marché
-              </label>
-              <input
-                id={`prix-${listing.id}`}
-                type="text"
-                inputMode="decimal"
-                autoFocus
-                value={prixTape}
-                onChange={(e) => setPrixTape(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") validerPrix();
-                  if (e.key === "Escape") setSaisiePrix(false);
-                }}
-                placeholder="42,50"
-                className="w-24 rounded-sm border border-ink-700 bg-ink-800 px-2 py-1 font-mono text-[11px] text-parchment-100 placeholder:text-ink-600 focus:border-ember-500 focus:outline-none"
-              />
-              <button
-                type="button"
-                disabled={enCours}
-                onClick={validerPrix}
-                className="rounded-sm border border-ember-500/50 bg-ember-500/10 px-2 py-1 text-[10px] text-ember-400 transition-colors hover:bg-ember-500/20 disabled:opacity-40"
-              >
-                Valider
-              </button>
-              <button
-                type="button"
-                onClick={() => setSaisiePrix(false)}
-                className="text-[10px] text-ink-600 underline transition-colors hover:text-parchment-100"
-              >
-                Annuler
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={enCours}
-                onClick={() => corriger("wrong_card")}
-                className="rounded-sm border border-ink-700 px-2 py-1 text-[10px] text-parchment-100 transition-colors hover:border-rust-500 hover:text-rust-400 disabled:opacity-40"
-              >
-                Ce n&apos;est pas la bonne carte
-              </button>
-              <button
-                type="button"
-                disabled={enCours}
-                onClick={() => setSaisiePrix(true)}
-                className="rounded-sm border border-ink-700 px-2 py-1 text-[10px] text-parchment-100 transition-colors hover:border-ember-500 hover:text-ember-400 disabled:opacity-40"
-              >
-                Corriger le prix
-              </button>
-              <button
-                type="button"
-                disabled={enCours}
-                onClick={() => corriger("hide")}
-                className="rounded-sm border border-ink-700 px-2 py-1 text-[10px] text-ink-600 transition-colors hover:border-ink-600 hover:text-parchment-100 disabled:opacity-40"
-              >
-                Masquer
-              </button>
-            </div>
-          )}
-
-          {erreurCorrection && (
-            <p className="mt-1.5 text-[10px] text-rust-400">{erreurCorrection}</p>
-          )}
-        </div>
+      <div className={panelOpen ? "block" : "hidden md:group-focus-within:block md:group-hover:block"}>
+        <CorrectionPanel
+          listing={listing}
+          cardmarketUrl={cardmarketUrl}
+          searchUrl={searchUrl}
+          onChanged={onChanged}
+        />
       </div>
     </article>
   );
