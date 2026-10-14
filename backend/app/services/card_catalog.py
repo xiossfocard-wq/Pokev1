@@ -18,12 +18,13 @@ import logging
 from datetime import date, datetime
 from typing import List, Optional
 
-from sqlalchemy import func
+from sqlalchemy import func, nullslast
 from sqlalchemy.orm import Session
 
 from app.models import CardPriceSnapshot, MarketCardPrice
 from app.services import card_themes
 from app.services.card_trends import tendance_7_jours
+from app.settings_service import load_app_settings
 
 logger = logging.getLogger(__name__)
 
@@ -350,6 +351,64 @@ def historique_de_la_carte(db: Session, name_slug: str,
         requete = requete.filter(CardPriceSnapshot.card_code == card_code)
     lignes = requete.order_by(CardPriceSnapshot.captured_on.asc()).all()
     return [(ligne.captured_on, ligne.price_eur) for ligne in lignes]
+
+
+def annonces_de_la_carte(db: Session, card_id: int, limite: int = 20) -> List[dict]:
+    """Annonces en vente pour CETTE carte, les meilleures affaires d'abord.
+
+    C'est ce qui relie les deux moities de l'app : on repere une carte dans
+    le catalogue, et on voit immediatement s'il y a quelque chose a prendre
+    en ce moment, sans retourner fouiller le dashboard.
+
+    Les memes exclusions que le dashboard s'appliquent — annonce ecartee,
+    disparue de chez le vendeur, masquee a la main, ou sous le seuil de prix
+    — pour qu'une annonce cachee d'un cote ne reapparaisse pas de l'autre.
+
+    Les PHOTOS DU VENDEUR sont rendues telles quelles. Pour decider
+    d'acheter, elles valent mieux qu'une illustration officielle : c'est
+    l'exemplaire reel qui est en vente, avec son centrage, ses bords et son
+    etat.
+    """
+    from app.models import Listing, ListingStatus  # local : evite un cycle
+
+    seuil = load_app_settings(db).get("min_listing_price") or 0.0
+
+    lignes = (
+        db.query(Listing)
+        .filter(Listing.matched_card_id == card_id)
+        .filter(Listing.status.notin_([ListingStatus.IGNORED, ListingStatus.UNAVAILABLE,
+                                       ListingStatus.REMOVED]))
+        .filter((Listing.manual_status.is_(None)) | (Listing.manual_status != "hidden"))
+        .filter(Listing.price > seuil)
+        .order_by(nullslast(Listing.deal_score.desc()))
+        .limit(limite)
+        .all()
+    )
+
+    return [
+        {
+            "id": ligne.id,
+            "source": ligne.source.value if ligne.source else None,
+            "title": ligne.title,
+            "url": ligne.url,
+            "price_eur": ligne.price,
+            "shipping_eur": ligne.shipping_price,
+            "total_eur": round((ligne.price or 0) + (ligne.shipping_price or 0), 2),
+            "deal_score": ligne.deal_score,
+            "margin_net_eur": ligne.margin_net,
+            "margin_ratio": ligne.margin_ratio,
+            "condition_tier": ligne.condition_tier,
+            "quality_text_score": ligne.quality_text_score,
+            "quality_vision_score": ligne.quality_vision_score,
+            "seller_username": ligne.seller_username,
+            "seller_reliability_score": ligne.seller_reliability_score,
+            # Les photos de l'exemplaire reellement en vente.
+            "photo_urls": ligne.photo_urls or [],
+            "price_match_confidence": ligne.price_match_confidence,
+            "first_seen_at": ligne.first_seen_at.isoformat() if ligne.first_seen_at else None,
+        }
+        for ligne in lignes
+    ]
 
 
 def recalculer_champs_derives(db: Session, limite: int = 5000) -> dict:

@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import CardListings from "@/components/CardListings";
 import { CatalogCardDetail, fetchCardDetail } from "@/lib/api";
 
 /**
- * Fiche d'une carte : visuel, prix, themes, tendance 7 jours, et tendance de
- * fond calculee sur l'historique qu'on constitue nous-memes.
+ * Fiche d'une carte : visuel, prix, themes, annonces en vente, tendance 7
+ * jours, et tendance de fond calculee sur l'historique qu'on constitue
+ * nous-memes.
  *
  * Le parti pris important est la PROJECTION. Tant que l'historique est trop
  * court, le backend rend `prix_projete_eur = null` et ce panneau explique
@@ -173,6 +175,8 @@ export default function CardDetailPanel({
                 </div>
               </div>
             )}
+
+            <CardListings cardId={carte.id} />
 
             <div className="border-t border-ink-700 pt-3">
               <h3 className="mb-1 text-[11px] uppercase tracking-wide text-parchment-100/40">

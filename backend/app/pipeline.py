@@ -153,6 +153,8 @@ def _resolve_reference_price(db: Session, listing: Listing) -> tuple:
             "series_name": None,
             "matched_card": "Prix saisi par toi",
             "matched_code": None,
+            "matched_card_id": None,
+            "matched_name_slug": None,
             "confidence": "manual",
             "reason": "prix de marche que tu as corrige toi-meme",
             "source": "manuel",
@@ -287,6 +289,7 @@ def _score_listing(db: Session, listing: Listing, skip_vision: bool = False):
         listing.price_high_eur = None
         listing.price_match_confidence = None
         listing.price_detail = None
+        listing.matched_card_id = None
         listing.deal_score = None
         listing.status = ListingStatus.NO_PRICE_MATCH
         listing.scored_at = datetime.utcnow()
@@ -300,6 +303,7 @@ def _score_listing(db: Session, listing: Listing, skip_vision: bool = False):
         listing.price_low_eur = price_detail.get("price_low_eur")
         listing.price_high_eur = price_detail.get("price_high_eur")
         listing.price_match_confidence = price_detail.get("confidence")
+        listing.matched_card_id = price_detail.get("matched_card_id")
         # La rarete officielle ZebraDex est plus fiable que la detection
         # par mots-cles du titre : elle a la priorite quand disponible.
         if price_detail.get("rarity"):
@@ -852,10 +856,18 @@ def enrich_card_images(db: Session, limit: int = 40) -> dict:
     Sans ca, les cartes introuvables seraient reinterrogees a chaque
     passage et bloqueraient la file : les memes echecs pour toujours, et
     aucune nouvelle carte servie.
+
+    Les cartes SANS code sont ecartees de la file. L'adresse de
+    l'illustration se deduit du code et de rien d'autre (voir
+    collectors/card_images.py) : les garder reviendrait a leur reserver des
+    places dans un lot de taille fixe pour un echec garanti, au detriment
+    des cartes qu'on peut reellement servir.
     """
     cartes = (
         db.query(MarketCardPrice)
         .filter(MarketCardPrice.image_url.is_(None))
+        .filter(MarketCardPrice.card_code.isnot(None))
+        .filter(MarketCardPrice.card_code != "")
         .order_by(MarketCardPrice.image_checked_at.asc().nullsfirst(),
                   MarketCardPrice.price_eur.desc())
         .limit(limit)

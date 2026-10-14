@@ -83,6 +83,14 @@ class Listing(Base):
     price_low_eur = Column(Float, nullable=True)
     price_high_eur = Column(Float, nullable=True)
     price_match_confidence = Column(String(16), nullable=True)  # high|medium|low
+
+    # Lien vers la carte du catalogue retenue par le rapprochement.
+    # Il n'existait que dans le JSON `price_detail`, donc impossible a
+    # joindre : on ne pouvait pas demander « quelles annonces pour CETTE
+    # carte », qui est pourtant la question qu'on se pose en achetant.
+    matched_card_id = Column(
+        Integer, ForeignKey("market_card_prices.id"), nullable=True, index=True
+    )
     price_detail = Column(JSON, nullable=True)
 
     status = Column(Enum(ListingStatus, native_enum=False), default=ListingStatus.NEW, index=True)

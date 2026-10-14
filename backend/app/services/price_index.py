@@ -267,6 +267,10 @@ class PriceMatch:
             "series_name": self.row.series_name,
             "matched_card": self.row.display_name,
             "matched_code": self.row.card_code,
+            # Identifiant de la carte retenue : c'est lui qui permet de
+            # relier une annonce a sa fiche catalogue.
+            "matched_card_id": self.row.id,
+            "matched_name_slug": self.row.name_slug,
             "confidence": self.confidence,
             "reason": self.reason,
             "source": self.row.source,

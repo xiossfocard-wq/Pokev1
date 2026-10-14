@@ -157,9 +157,9 @@ dit à quel point les relevés passés s'alignent réellement sur cette droite,
 et l'avertissement est porté jusqu'à l'interface. À lire comme une tendance
 prolongée, jamais comme une valeur future.
 
-### ⚠️ Trois réglages à renseigner avant que la collecte serve à quelque chose
+### ⚠️ Quatre réglages à renseigner avant que la collecte serve à quelque chose
 
-Le projet ne vise **que** One Piece. Trois valeurs dépendent de sources que
+Le projet ne vise **que** One Piece. Ces valeurs dépendent de sources que
 l'environnement de développement ne peut pas joindre, et aucune n'a donc pu
 être vérifiée.
 
@@ -168,6 +168,7 @@ l'environnement de développement ne peut pas joindre, et aucune n'a donc pu
 | `VINTED_BRAND_ID` | vide | Facultatif mais recommandé. Ouvre une annonce One Piece sur vinted.fr, suis le lien de la marque, relève le nombre dans `/brand/<id>-<nom>`. |
 | `ZEBRADEX_TCG_SLUG` | `one-piece` | Confirme avec `GET /api/admin/debug-zebradex` : la réponse indique le marqueur cherché et s'il a été trouvé. |
 | `CARDMARKET_GAME_PATH` | `OnePiece` | Vérifie le segment dans l'URL d'une carte One Piece sur cardmarket.com. |
+| `CARD_IMAGE_BASE_URL` | liste officielle du jeu | Confirme avec `GET /api/admin/debug-card-images?code=OP01-001` : la réponse donne le code HTTP de chaque adresse essayée. |
 
 Le filtre de marque Vinted mérite une explication. Il était **figé sur
 l'identifiant Pokémon** : chaque recherche restait filtrée sur cette marque
@@ -177,41 +178,91 @@ filtre de marque n'est appliqué : la recherche se fait sur le seul texte,
 moins précise mais juste. Mieux vaut trop d'annonces que les annonces d'un
 autre jeu.
 
-### Les visuels — ⚠️ la seule partie non vérifiée
+### Les visuels — ⚠️ format d'adresse non vérifié
 
-ZebraDex ne publie pas d'image exploitable. Les visuels viennent donc de
-**TCGdex** (`backend/app/collectors/card_images.py`), une API publique,
-ouverte, documentée et sans clé. C'est un usage prévu par la source : aucune
-des réserves juridiques ci-dessus ne s'y applique.
+ZebraDex ne publie pas d'image exploitable. Les visuels viennent donc de la
+**liste officielle du jeu** (`backend/app/collectors/card_images.py`).
 
-⚠️ **TCGdex est une API Pokémon.** Elle a été intégrée quand le projet visait
-ce jeu. Sa couverture One Piece — si elle existe — n'a pas pu être vérifiée,
-l'hôte étant injoignable depuis l'environnement de développement. Si elle ne
-couvre pas One Piece, il faudra une autre source d'illustrations ; le reste
-du catalogue fonctionne sans, les cartes s'affichant avec un cadre vide.
+**Par le code de la carte, pas par son nom.** C'est le point important.
+L'illustration de `OP01-120` vit à une adresse qui se déduit directement de
+ce code : `<base>/OP01-120.png`. Pas de recherche, pas d'API, pas
+d'ambiguïté. La version précédente de ce collecteur interrogeait TCGdex en
+cherchant **par nom** — doublement faux : TCGdex est une API Pokémon qui ne
+connaît pas One Piece, et une quarantaine de cartes s'appellent « Luffy »,
+donc même en couvrant le jeu elle aurait pu rendre le visuel d'une autre
+carte sous un prix. Afficher la mauvaise image est pire que n'en afficher
+aucune : c'est l'image qu'on regarde pour décider d'acheter.
 
-**Ce code n'a pas pu être testé contre l'API réelle.** L'environnement de
-développement n'a pas d'accès réseau sortant vers `api.tcgdex.net` ni
-`assets.tcgdex.net` : la politique réseau refuse ces hôtes. Le parsing est
-donc écrit d'après la forme documentée de l'API, et volontairement tolérant
-(plusieurs formes de réponse acceptées, plusieurs noms de champ essayés,
-toute réponse inattendue journalisée au lieu de lever). Sa logique est
-testée hors réseau, mais la forme réelle des réponses ne l'est pas.
+**Chaque adresse est vérifiée avant d'être enregistrée.** Construire une URL
+ne prouve pas qu'elle existe. Le collecteur fait une requête de contrôle
+(`HEAD`, avec repli sur `GET` si l'hôte refuse `HEAD`) et n'enregistre que si
+la réponse est **bien une image** — statut 200 *et* type de contenu
+`image/*`. Un 200 qui rend une page HTML d'erreur, piège classique, est
+rejeté. Conséquence assumée : quand la vérification ne peut pas aboutir,
+aucune image n'est enregistrée et l'interface affiche le cadre vide prévu
+pour ça, plutôt qu'un cadre cassé.
 
-Si aucun visuel ne remonte : `GET /api/admin/debug-card-images?nom=Luffy`
-rend la réponse brute, à comparer à ce que le parsing attend — même démarche
-que `debug-vinted` et `debug-zebradex`. Copie-la-moi et j'ajuste.
+⚠️ **Le format d'adresse n'a pas pu être vérifié.** La politique réseau de
+l'environnement de développement refuse `en.onepiece-cardgame.com`, comme
+tous les hôtes de données de cartes. Le format est donc écrit d'après la
+forme publique connue — et reste **réglable sans toucher au code** :
 
-Deux limites assumées, même quand l'API répond :
+```bash
+CARD_IMAGE_BASE_URL=https://…/images/cardlist/card   # backend
+NEXT_PUBLIC_CARD_IMAGE_HOST=autre-hote.example       # frontend, si l'hôte change
+```
 
-- le rapprochement se fait **par nom**, les deux sources ne partageant
-  aucune clé. Une carte rééditée dans plusieurs séries peut recevoir
-  l'illustration d'une autre édition. Acceptable pour un visuel de repérage,
-  ça ne le serait pas pour un prix ;
+Le réglage frontend n'est pas un oubli : `next/image` refuse tout hôte absent
+de `next.config.js`. Changer la base côté backend sans renseigner l'hôte côté
+frontend casserait l'affichage, et le lien entre les deux serait très
+difficile à retrouver.
+
+Si aucun visuel ne remonte : `GET /api/admin/debug-card-images?code=OP01-001`
+rend le **détail de chaque tentative** — code HTTP et type de contenu. La
+réponse dit s'il s'agit d'un 404 (format à corriger), d'un 403 (hôte qui
+refuse les requêtes automatisées) ou d'une panne réseau. Copie-la-moi et
+j'ajuste. Même démarche que `debug-vinted` et `debug-zebradex`.
+
+Trois comportements à connaître :
+
+- les **illustrations alternatives** (*parallel*, *manga*, *alt art*) sont
+  servies sous le même code suffixé `_p1`, `_p2`. Quand le nom de la carte
+  annonce une alternative, ces variantes sont essayées **en premier** : c'est
+  bien cette illustration-là qui est en vente au prix affiché ;
+- une carte **sans code** ne génère aucune requête et sort de la file
+  d'enrichissement. Aucune adresse n'est déductible pour elle, et la garder
+  reviendrait à lui réserver des places, dans un lot de taille fixe, pour un
+  échec garanti ;
 - l'enrichissement est **progressif** (quelques dizaines de cartes par
-  passage, toutes les 30 minutes) pour ne pas marteler l'API. Sur un gros
-  catalogue, les visuels se remplissent sur plusieurs heures. Une carte sans
-  image s'affiche avec un cadre explicite plutôt que d'être masquée.
+  passage, toutes les 30 minutes). Sur un gros catalogue, les visuels se
+  remplissent sur plusieurs heures, les cartes les plus chères d'abord.
+
+### Les bonnes affaires dans la fiche carte
+
+Les deux moitiés de l'app sont reliées. Le catalogue sert à repérer une
+carte ; la fiche de cette carte montre **ce qui est en vente maintenant**,
+sans repasser par le tableau de bord.
+
+`Listing.matched_card_id` est la colonne qui rend ce lien possible. Le
+rapprochement annonce → carte existait déjà, mais **seulement à l'intérieur
+d'un blob JSON** (`price_detail`), donc impossible à joindre en SQL : on ne
+pouvait pas demander « les annonces de cette carte ». La colonne est
+maintenant renseignée à l'enregistrement et indexée.
+
+`GET /api/cards/{id}/listings` applique **les mêmes exclusions que le tableau
+de bord** — annonces ignorées, indisponibles, retirées, masquées à la main,
+sous le prix plancher — et trie par score d'affaire décroissant. Deux vues
+qui se contrediraient sur ce qui est « en vente » seraient pires qu'une
+seule.
+
+Les photos affichées sont celles **du vendeur**, pas l'illustration
+officielle. C'est volontaire : pour décider d'acheter, ce qui compte est
+l'exemplaire réel, son centrage, ses bords, son état. L'illustration
+officielle est en haut de la fiche et sert à identifier la carte, pas à juger
+la marchandise. Chaque annonce affiche le prix, le port, le total, le score
+d'affaire, la marge nette estimée, l'état, la fiabilité du vendeur, et
+signale un **rapprochement incertain** quand il l'est — ce dernier point
+compte : un score flatteur sur une carte mal identifiée est un piège.
 
 ### Routes
 
@@ -222,12 +273,13 @@ Deux limites assumées, même quand l'API répond :
 | `GET /api/cards/filters` | Valeurs réellement présentes en base, pour les listes déroulantes |
 | `GET /api/cards/trending` | Plus fortes variations 7 jours, en pourcentage |
 | `GET /api/cards/{id}` | Fiche : thèmes, historique, tendance de fond, projection |
+| `GET /api/cards/{id}/listings` | Annonces en vente pour cette carte, photos du vendeur incluses |
 | `POST /api/admin/snapshot-card-prices` | Relevé de prix du jour (rattrapage manuel) |
 | `POST /api/admin/enrich-card-images` | Complète les visuels manquants |
 | `POST /api/admin/recompute-card-fields` | Rattrape les thèmes et la clé de recherche (à lancer une fois après le déploiement) |
-| `GET /api/admin/debug-card-images` | Réponse brute de l'API d'images |
+| `GET /api/admin/debug-card-images` | Détail de chaque adresse d'image essayée pour un code |
 
-**Tests** : `backend/tests/` — 301 tests. Lancer avec :
+**Tests** : `backend/tests/` — 368 tests. Lancer avec :
 
 ```bash
 cd backend
@@ -395,7 +447,8 @@ faite d'office. Voici de quoi décider, sans enjoliver :
   pages qui lisent une API.
 - **Sauf celles sur l'optimiseur d'images, qui elles s'appliquent** :
   `components/ListingCard.tsx` utilise `next/image`, et `next.config.js`
-  déclare des `remotePatterns` pour les CDN Vinted et eBay. Les alertes
+  déclare des `remotePatterns` pour les CDN Vinted et eBay ainsi que pour
+  l'hôte des illustrations officielles. Les alertes
   visant l'Image Optimizer (déni de service, cache disque non borné) sont
   donc dans le périmètre réel du projet.
 - **Ce qui les atténue** : ces trois-là visent les déploiements

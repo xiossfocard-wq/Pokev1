@@ -57,7 +57,7 @@ def carte(nom, prix, rarete=None, serie="Romance Dawn", code=None,
         theme_slugs=encoder_themes(themes_de_la_carte(nom, rarete)),
         search_key=cle_de_recherche(nom, code),
         image_url=image,
-        image_source="tcgdex" if image else None,
+        image_source="onepiece-cardgame" if image else None,
     )
 
 
@@ -356,3 +356,112 @@ class TestCatalogueHttp(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipIf(TestClient is None, _raison_saut or "")
+class TestAnnoncesDeLaCarte(unittest.TestCase):
+    """Le pont entre les deux moities de l'app : depuis une carte du
+    catalogue, voir ce qui est en vente maintenant.
+
+    Ce qui compte ici : le lien annonce -> carte doit etre un vrai lien
+    joignable (il ne vivait que dans un JSON), les exclusions du dashboard
+    doivent s'appliquer a l'identique, et les photos du VENDEUR doivent
+    etre rendues — c'est l'exemplaire reel qu'on achete.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        init_db()
+        cls.client = TestClient(app)
+
+    def setUp(self):
+        from app.models import Listing, ListingStatus, SourcePlatform
+        self.Listing, self.ListingStatus, self.Source = Listing, ListingStatus, SourcePlatform
+
+        self.db = SessionLocal()
+        self.db.query(Listing).delete()
+        self.db.query(MarketCardPrice).delete()
+        self.db.commit()
+
+        self.luffy = carte("Monkey D. Luffy", 400.0, "Secret Rare", code="OP01-120")
+        self.zoro = carte("Roronoa Zoro", 180.0, "Super Rare", code="OP01-025")
+        self.db.add_all([self.luffy, self.zoro])
+        self.db.commit()
+        self.db.refresh(self.luffy)
+        self.db.refresh(self.zoro)
+
+    def tearDown(self):
+        self.db.close()
+
+    def _annonce(self, ext, carte_id, prix, score, **surcharges):
+        valeurs = dict(
+            source=self.Source.VINTED, external_id=ext,
+            title="Carte One Piece", url=f"https://exemple.test/{ext}",
+            price=prix, shipping_price=2.0,
+            photo_urls=[f"https://exemple.test/{ext}-1.jpg"],
+            status=self.ListingStatus.SCORED, deal_score=score,
+            margin_net=50.0, matched_card_id=carte_id,
+        )
+        valeurs.update(surcharges)
+        ligne = self.Listing(**valeurs)
+        self.db.add(ligne)
+        self.db.commit()
+        return ligne
+
+    def test_seules_les_annonces_de_cette_carte_remontent(self):
+        self._annonce("a", self.luffy.id, 120.0, 88.0)
+        self._annonce("b", self.zoro.id, 60.0, 70.0)
+
+        corps = self.client.get(f"/api/cards/{self.luffy.id}/listings").json()
+        self.assertEqual(corps["count"], 1)
+        self.assertEqual(corps["listings"][0]["id"],
+                         self.db.query(self.Listing).filter_by(external_id="a").one().id)
+        self.assertEqual(corps["display_name"], "Monkey D. Luffy")
+
+    def test_les_meilleures_affaires_d_abord(self):
+        self._annonce("moyenne", self.luffy.id, 200.0, 62.0)
+        self._annonce("excellente", self.luffy.id, 110.0, 91.0)
+
+        corps = self.client.get(f"/api/cards/{self.luffy.id}/listings").json()
+        scores = [a["deal_score"] for a in corps["listings"]]
+        self.assertEqual(scores, sorted(scores, reverse=True))
+
+    def test_les_photos_du_vendeur_sont_rendues(self):
+        """Pour decider d'acheter, c'est l'exemplaire reel qu'on regarde."""
+        self._annonce("photo", self.luffy.id, 130.0, 80.0,
+                      photo_urls=["https://exemple.test/1.jpg", "https://exemple.test/2.jpg"])
+        corps = self.client.get(f"/api/cards/{self.luffy.id}/listings").json()
+        self.assertEqual(len(corps["listings"][0]["photo_urls"]), 2)
+
+    def test_le_total_port_compris_est_calcule(self):
+        """Le prix affiche sur l'annonce n'est pas ce qu'on paie."""
+        self._annonce("port", self.luffy.id, 100.0, 80.0, shipping_price=4.5)
+        corps = self.client.get(f"/api/cards/{self.luffy.id}/listings").json()
+        self.assertEqual(corps["listings"][0]["total_eur"], 104.5)
+
+    def test_une_annonce_masquee_a_la_main_reste_masquee_ici(self):
+        """Une annonce cachee d'un cote ne doit pas reapparaitre de l'autre."""
+        self._annonce("cachee", self.luffy.id, 120.0, 88.0, manual_status="hidden")
+        corps = self.client.get(f"/api/cards/{self.luffy.id}/listings").json()
+        self.assertEqual(corps["count"], 0)
+
+    def test_une_annonce_disparue_chez_le_vendeur_est_exclue(self):
+        self._annonce("vendue", self.luffy.id, 120.0, 88.0,
+                      status=self.ListingStatus.UNAVAILABLE)
+        corps = self.client.get(f"/api/cards/{self.luffy.id}/listings").json()
+        self.assertEqual(corps["count"], 0)
+
+    def test_une_annonce_ecartee_est_exclue(self):
+        self._annonce("ecartee", self.luffy.id, 120.0, 88.0,
+                      status=self.ListingStatus.IGNORED)
+        corps = self.client.get(f"/api/cards/{self.luffy.id}/listings").json()
+        self.assertEqual(corps["count"], 0)
+
+    def test_une_carte_sans_annonce_rend_une_liste_vide(self):
+        """Pas une erreur : la plupart des cartes n'ont rien en vente."""
+        reponse = self.client.get(f"/api/cards/{self.zoro.id}/listings")
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(reponse.json()["count"], 0)
+
+    def test_carte_inconnue_rend_404(self):
+        self.assertEqual(self.client.get("/api/cards/999999/listings").status_code, 404)

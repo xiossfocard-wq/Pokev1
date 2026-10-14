@@ -44,9 +44,9 @@ class Settings:
     )
 
     # --- Jeu cible --------------------------------------------------------
-    # Le projet suit UN jeu de cartes a la fois. Ces trois reglages sont les
-    # seuls endroits qui le nomment : les changer suffit a viser un autre
-    # jeu, sans toucher au code.
+    # Le projet suit UN jeu de cartes a la fois : One Piece. Les reglages de
+    # ce bloc sont les seuls endroits qui le nomment, donc les changer suffit
+    # a viser un autre jeu sans toucher au code.
     #
     # `zebradex_tcg_slug` est le segment de l'URL ZebraDex
     # (/fr/tcg/<slug>/...). Il etait fige en dur jusqu'au 14/10/2026.
@@ -58,8 +58,6 @@ class Settings:
     zebradex_tcg_slug: str = field(
         default_factory=lambda: os.environ.get("ZEBRADEX_TCG_SLUG", "one-piece")
     )
-    # Segment du jeu dans les URL Cardmarket (/en/<jeu>/...). Il valait
-    # "Pokemon" en dur dans le collecteur.
     # Identifiant de marque Vinted, optionnel. Vide = aucun filtre de marque,
     # la recherche se fait sur le seul texte. Voir vinted_scraper.py : il
     # valait l'identifiant Pokemon en dur, ce qui empechait toute remontee
@@ -67,11 +65,36 @@ class Settings:
     vinted_brand_id: Optional[str] = field(
         default_factory=lambda: os.environ.get("VINTED_BRAND_ID") or None
     )
+    # Segment du jeu dans les URL Cardmarket (/en/<jeu>/...). Il valait
+    # "Pokemon" en dur dans le collecteur.
     cardmarket_game_path: str = field(
         default_factory=lambda: os.environ.get("CARDMARKET_GAME_PATH", "OnePiece")
     )
     ebay_search_keywords: str = field(
         default_factory=lambda: os.environ.get("EBAY_SEARCH_KEYWORDS", "one piece carte francais")
+    )
+
+    # --- Illustrations des cartes -----------------------------------------
+    # Le visuel d'une carte One Piece se deduit de son code :
+    # OP01-120 -> <base>/OP01-120.png. Voir collectors/card_images.py, qui
+    # explique pourquoi on passe par le code et pas par le nom.
+    #
+    # ATTENTION : ce format n'a PAS pu etre verifie — la politique reseau de
+    # l'environnement de developpement refuse en.onepiece-cardgame.com. D'ou
+    # ce reglage : GET /api/admin/debug-card-images rend le code HTTP de
+    # chaque adresse essayee, et cette base se corrige sans toucher au code.
+    card_image_base_url: str = field(
+        default_factory=lambda: os.environ.get(
+            "CARD_IMAGE_BASE_URL",
+            "https://en.onepiece-cardgame.com/images/cardlist/card",
+        )
+    )
+    # Verifier chaque adresse (HEAD) avant de l'enregistrer en base. A
+    # laisser VRAI : sans ca, une base mal reglee remplit l'interface de
+    # cadres casses, ce qui est pire que l'absence de visuel puisque
+    # l'utilisateur regarde justement l'image pour decider d'acheter.
+    card_image_verify: bool = field(
+        default_factory=lambda: _get_bool("CARD_IMAGE_VERIFY", True)
     )
 
     # --- eBay (Browse API) ---

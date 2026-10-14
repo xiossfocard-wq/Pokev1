@@ -234,13 +234,16 @@ def recompute_card_fields(limit: int = Query(5000, ge=1, le=50000)):
 
 
 @router.get("/debug-card-images")
-def debug_card_images(nom: str = Query("Dracaufeu")):
-    """Reponse BRUTE de l'API d'images, pour comparer a ce que le parsing
-    attend.
+def debug_card_images(code: str = Query("OP01-001"), nom: str = Query("")):
+    """Detail de CHAQUE adresse essayee pour un code de carte : code HTTP et
+    type de contenu.
 
-    Ce parsing n'a pas pu etre verifie contre l'API reelle : l'environnement
-    de developpement n'a pas d'acces sortant vers api.tcgdex.net. Si aucune
-    image ne remonte, c'est par ici qu'il faut passer — meme demarche que
-    debug-vinted et debug-zebradex.
+    Le format d'adresse n'a pas pu etre verifie contre l'hote reel :
+    l'environnement de developpement n'a pas d'acces sortant vers
+    en.onepiece-cardgame.com. Si aucune image ne remonte, c'est par ici
+    qu'il faut passer — la reponse dit s'il s'agit d'un 404 (format
+    d'adresse a corriger via CARD_IMAGE_BASE_URL), d'un 403 (hote qui
+    refuse) ou d'une erreur reseau. Meme demarche que debug-vinted et
+    debug-zebradex.
     """
-    return ClientImagesCartes().diagnostic(nom)
+    return ClientImagesCartes().diagnostic(code, nom)

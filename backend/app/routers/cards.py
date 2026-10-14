@@ -132,6 +132,30 @@ def cartes_en_vogue(
     }
 
 
+@router.get("/{card_id}/listings")
+def annonces_de_la_carte(card_id: int, limit: int = Query(20, ge=1, le=100),
+                         db: Session = Depends(get_db)):
+    """Annonces en vente pour cette carte, meilleures affaires d'abord.
+
+    Relie les deux moities de l'app : on repere une carte ici, et on voit
+    s'il y a quelque chose a prendre maintenant. Les photos rendues sont
+    celles du vendeur, donc de l'exemplaire reel — ce qu'il faut regarder
+    avant d'acheter, bien plus qu'une illustration officielle.
+    """
+    carte = db.query(MarketCardPrice).filter(MarketCardPrice.id == card_id).first()
+    if carte is None:
+        raise HTTPException(status_code=404, detail="Carte introuvable.")
+
+    annonces = card_catalog.annonces_de_la_carte(db, card_id, limite=limit)
+    return {
+        "card_id": card_id,
+        "display_name": carte.display_name,
+        "reference_price_eur": carte.price_eur,
+        "count": len(annonces),
+        "listings": annonces,
+    }
+
+
 @router.get("/{card_id}")
 def detail_carte(card_id: int, horizon_jours: int = Query(30, ge=1, le=365),
                  db: Session = Depends(get_db)):

@@ -438,3 +438,47 @@ export function triggerPriceSnapshot(): Promise<{
 }> {
   return apiFetch("/api/admin/snapshot-card-prices", { method: "POST" });
 }
+
+// ---------------------------------------------------------------------------
+// Le pont entre les deux moitiés : les annonces en vente pour une carte du
+// catalogue. On repère une carte, on voit s'il y a quelque chose à prendre
+// maintenant, sans retourner fouiller le dashboard.
+// ---------------------------------------------------------------------------
+
+export interface CardListing {
+  id: number;
+  source: ListingSource | null;
+  title: string;
+  url: string;
+  price_eur: number;
+  shipping_eur: number | null;
+  total_eur: number;
+  deal_score: number | null;
+  margin_net_eur: number | null;
+  margin_ratio: number | null;
+  condition_tier: string | null;
+  quality_text_score: number | null;
+  quality_vision_score: number | null;
+  seller_username: string | null;
+  seller_reliability_score: number | null;
+  // Photos du VENDEUR : l'exemplaire réellement en vente, avec son centrage,
+  // ses bords et son état. C'est ce qu'on regarde avant d'acheter.
+  photo_urls: string[];
+  price_match_confidence: string | null;
+  first_seen_at: string | null;
+}
+
+export interface CardListingsResult {
+  card_id: number;
+  display_name: string;
+  reference_price_eur: number;
+  count: number;
+  listings: CardListing[];
+}
+
+export function fetchCardListings(
+  cardId: number,
+  limit = 20
+): Promise<CardListingsResult> {
+  return apiFetch<CardListingsResult>(`/api/cards/${cardId}/listings?limit=${limit}`);
+}
