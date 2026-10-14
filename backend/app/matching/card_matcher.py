@@ -10,7 +10,7 @@ slugification) plutôt que de prétendre à une reconnaissance fiable.
 
 Pistes d'amélioration concrètes pour la suite (à faire une fois le reste
 du pipeline validé en conditions réelles) :
-- Intégrer l'API gratuite pokemontcg.io (ou tcgdex.dev) pour résoudre plus
+- Intégrer une API de cartes One Piece pour résoudre plus
   finement nom + set + numéro à partir du texte libre.
 - Maintenir un dictionnaire de correspondance manuel pour les cartes que
   tu suis le plus souvent (rapide à faire, très fiable).
@@ -26,17 +26,16 @@ from typing import Optional
 #
 # Le nom du JEU doit en faire partie : presque toutes les annonces le citent,
 # et sans lui le nom deviné devenait « One-Piece-Monkey » au lieu de
-# « Monkey-D-Luffy ». Pokémon y figurait déjà ; One Piece a été ajouté avec
-# le changement de jeu, ainsi que le vocabulaire de rareté qui lui est propre
-# (SEC, SR, alternative, manga rare…), pour la même raison.
+# « Monkey-D-Luffy ». Le vocabulaire de rareté propre au jeu (SEC, SR,
+# alternative, manga rare…) y figure pour la même raison.
 NOISE_WORDS = {
     # vocabulaire d'annonce, commun à tous les jeux
     "carte", "cartes", "fr", "français", "francaise", "francais",
     "vf", "tbe", "be", "occasion", "vente", "vend", "lot", "lots", "vintage",
     "rare", "holo", "reverse", "shiny", "edition", "édition", "1ere", "1ère",
     "neuve", "neuf", "mint", "nm", "the", "card", "trading", "tcg", "booster",
-    # noms de jeu
-    "pokemon", "pokémon", "one", "piece", "onepiece",
+    # nom du jeu
+    "one", "piece", "onepiece",
     # raretés et traitements One Piece
     "sec", "sr", "ur", "alt", "alternative", "parallele", "parallèle",
     "parallel", "manga", "leader", "promo", "full", "art",
@@ -82,7 +81,7 @@ def guess_card_from_title(title: str) -> Optional[CardMatch]:
         return None
 
     # Heuristique simple : les 1 à 3 premiers mots "significatifs" sont
-    # généralement le nom du Pokémon (+ variante ex/vmax/gx).
+    # généralement le nom du personnage (+ traitement SR/SEC/alt).
     candidate_words = words[:3]
     card_name_guess = " ".join(candidate_words)
     card_slug = slugify_card_name(card_name_guess)

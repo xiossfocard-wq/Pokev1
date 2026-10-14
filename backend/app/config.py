@@ -49,7 +49,7 @@ class Settings:
     # jeu, sans toucher au code.
     #
     # `zebradex_tcg_slug` est le segment de l'URL ZebraDex
-    # (/fr/tcg/<slug>/...). Il valait "pokemon" en dur jusqu'au 14/10/2026.
+    # (/fr/tcg/<slug>/...). Il etait fige en dur jusqu'au 14/10/2026.
     # ATTENTION : la couverture One Piece de ZebraDex n'a PAS pu etre
     # verifiee — l'environnement de developpement n'a pas d'acces sortant
     # vers zebradex.fr. Confirmer avec GET /api/admin/debug-zebradex avant
@@ -57,6 +57,18 @@ class Settings:
     tcg_nom: str = field(default_factory=lambda: os.environ.get("TCG_NAME", "One Piece"))
     zebradex_tcg_slug: str = field(
         default_factory=lambda: os.environ.get("ZEBRADEX_TCG_SLUG", "one-piece")
+    )
+    # Segment du jeu dans les URL Cardmarket (/en/<jeu>/...). Il valait
+    # "Pokemon" en dur dans le collecteur.
+    # Identifiant de marque Vinted, optionnel. Vide = aucun filtre de marque,
+    # la recherche se fait sur le seul texte. Voir vinted_scraper.py : il
+    # valait l'identifiant Pokemon en dur, ce qui empechait toute remontee
+    # d'annonces One Piece.
+    vinted_brand_id: Optional[str] = field(
+        default_factory=lambda: os.environ.get("VINTED_BRAND_ID") or None
+    )
+    cardmarket_game_path: str = field(
+        default_factory=lambda: os.environ.get("CARDMARKET_GAME_PATH", "OnePiece")
     )
     ebay_search_keywords: str = field(
         default_factory=lambda: os.environ.get("EBAY_SEARCH_KEYWORDS", "one piece carte francais")

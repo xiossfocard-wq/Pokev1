@@ -39,6 +39,10 @@ def get_db():
 # de colonne nullable, passer a Alembic.
 _COLONNES_AJOUTEES = {
     "listings": [
+        # Renommage du 14/10/2026 : is_popular_pokemon -> is_popular_character.
+        # L'ancienne colonne reste en base sans gener (nullable, plus lue) ;
+        # la nouvelle est ajoutee ici pour les bases deja deployees.
+        ("is_popular_character", "BOOLEAN"),
         ("manual_status", "VARCHAR(16)"),
         ("manual_reference_price", "DOUBLE PRECISION"),
         ("manual_reviewed_at", "TIMESTAMP"),

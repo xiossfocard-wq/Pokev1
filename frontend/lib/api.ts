@@ -71,7 +71,7 @@ export interface Listing {
   deal_score: number | null;
   rarity_tier: string | null;
   is_vintage: boolean;
-  is_popular_pokemon: boolean;
+  is_popular_character: boolean;
   status: string;
   first_seen_at: string;
   last_seen_at: string;

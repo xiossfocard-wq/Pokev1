@@ -48,6 +48,8 @@ from typing import Optional
 
 import requests
 
+from app.config import settings
+
 from app.core import robots_compliance
 
 logger = logging.getLogger(__name__)
@@ -100,7 +102,23 @@ COOLDOWN_SECONDS_AFTER_BLOCK = 30 * 60
 # l'unité" (par opposition aux lots) est 4875. À revérifier si le scraper
 # cesse à nouveau de remonter des résultats pertinents.
 TRADING_CARDS_SINGLES_CATALOG_ID = 4875
-POKEMON_BRAND_ID = 191646
+
+# Identifiant de MARQUE Vinted, ajoute a la recherche quand il est connu.
+#
+# Il valait 191646 (Pokemon) en dur : avec le passage a One Piece, chaque
+# recherche restait donc filtree sur la marque Pokemon et ne pouvait
+# remonter QUE des cartes Pokemon. C'etait le defaut le plus grave de la
+# bascule, et il etait silencieux.
+#
+# L'identifiant One Piece n'a pas pu etre releve : vinted.fr est injoignable
+# depuis l'environnement de developpement. Par defaut, AUCUN filtre de
+# marque n'est applique — la recherche se fait alors sur le seul texte
+# (VINTED_SEARCH_TEXT), ce qui est moins precis mais JUSTE. Mieux vaut trop
+# d'annonces que les annonces d'un autre jeu.
+#
+# Pour le renseigner : ouvrir une annonce One Piece sur vinted.fr, suivre le
+# lien de la marque, et relever le nombre dans l'URL /brand/<id>-<nom>.
+# Puis VINTED_BRAND_ID=<id>.
 
 
 @dataclass
@@ -233,9 +251,9 @@ class VintedScraper:
                 found.extend(VintedScraper._walk_for_items(value))
         return found
 
-    def diagnostic_fetch(self, search_text: str = "carte pokemon") -> dict:
+    def diagnostic_fetch(self, search_text: Optional[str] = None) -> dict:
         """
-        Fait exactement la même requête que search_pokemon_listings, mais
+        Fait exactement la même requête que search_card_listings, mais
         retourne des infos de diagnostic au lieu d'essayer de parser des
         annonces. Utilisé via GET /api/admin/debug-vinted quand l'extraction
         échoue en prod, pour obtenir un vrai échantillon de HTML sans avoir
@@ -366,19 +384,21 @@ class VintedScraper:
         }
 
     def _search_path(self, search_text: str, sort_order: str = "newest_first") -> str:
-        return (
+        chemin = (
             f"/catalog/{TRADING_CARDS_SINGLES_CATALOG_ID}"
             f"?search_text={requests.utils.quote(search_text)}"
-            f"&brand_ids[]={POKEMON_BRAND_ID}"
             f"&order={sort_order}"
         )
+        if settings.vinted_brand_id:
+            chemin += f"&brand_ids[]={settings.vinted_brand_id}"
+        return chemin
 
-    def search_pokemon_listings(
-        self, search_text: str = "carte pokemon", per_page: int = 48, sort_order: str = "newest_first"
+    def search_card_listings(
+        self, search_text: Optional[str] = None, per_page: int = 48, sort_order: str = "newest_first"
     ) -> list:
         """
         Récupère les annonces du catalogue de recherche Vinted pour les
-        cartes Pokémon, via parsing HTML direct (_parse_catalog_html).
+        cartes du jeu visé, via parsing HTML direct (_parse_catalog_html).
         Retourne une liste vide (avec log d'avertissement) si rien n'est
         extrait plutôt que de faire planter le pipeline.
 

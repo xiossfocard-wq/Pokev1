@@ -90,9 +90,9 @@ class EbayBrowseClient:
         self._token_expires_at = time.time() + payload.get("expires_in", 7200)
         return self._access_token
 
-    def search_pokemon_listings(
+    def search_card_listings(
         self,
-        keywords: str = "pokemon carte",
+        keywords: str = "one piece carte",
         limit: int = 50,
         offset: int = 0,
         min_price: Optional[float] = None,
@@ -100,7 +100,7 @@ class EbayBrowseClient:
         sort_by_newest: bool = True,
     ) -> list:
         """
-        Recherche des annonces actives de cartes Pokémon.
+        Recherche des annonces actives de cartes One Piece.
 
         NB: la Browse API ne propose pas de tri "date de mise en ligne"
         universel documenté de façon garantie sur tous les marketplaces ;

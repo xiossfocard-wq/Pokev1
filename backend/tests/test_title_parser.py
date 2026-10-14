@@ -48,10 +48,10 @@ class TestExtractNameCandidates(unittest.TestCase):
         self.assertNotIn("ex", extract_name_candidates("Dracaufeu ex holo"))
 
     def test_noise_words_excluded_as_single(self):
-        candidates = extract_name_candidates("carte pokemon Pikachu holo rare")
-        self.assertIn("pikachu", candidates)
-        self.assertNotIn("carte", candidates)
-        self.assertNotIn("pokemon", candidates)
+        candidates = extract_name_candidates("carte one piece Zoro holo rare")
+        self.assertIn("zoro", candidates)
+        for bruit in ("carte", "one", "piece", "holo", "rare"):
+            self.assertNotIn(bruit, candidates, f"« {bruit} » n'est pas un nom de carte")
 
     def test_accents_normalized(self):
         self.assertIn("salameche", extract_name_candidates("Salamèche brillante"))

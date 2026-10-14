@@ -60,19 +60,19 @@ class TestEditionPrecoce(unittest.TestCase):
 class TestPopularite(unittest.TestCase):
     def test_les_personnages_phares_sont_reconnus(self):
         for nom in ["Luffy", "Zoro", "Trafalgar Law", "Shanks", "Mihawk", "Portgas D. Ace"]:
-            self.assertTrue(detect_card_appeal(f"Carte {nom} OP01")["is_popular_pokemon"], nom)
+            self.assertTrue(detect_card_appeal(f"Carte {nom} OP01")["is_popular_character"], nom)
 
     def test_les_graphies_francaises_anciennes_comptent(self):
-        self.assertTrue(detect_card_appeal("Carte Zorro")["is_popular_pokemon"])
+        self.assertTrue(detect_card_appeal("Carte Zorro")["is_popular_character"])
 
     def test_un_personnage_secondaire_ne_declenche_rien(self):
         r = detect_card_appeal("Carte One Piece personnage obscur")
-        self.assertFalse(r["is_popular_pokemon"])
-        self.assertIsNone(r["popular_pokemon_matched"])
+        self.assertFalse(r["is_popular_character"])
+        self.assertIsNone(r["popular_character_matched"])
 
     def test_le_personnage_reconnu_est_rendu(self):
         r = detect_card_appeal("Monkey D. Luffy Leader")
-        self.assertEqual(r["popular_pokemon_matched"], "luffy")
+        self.assertEqual(r["popular_character_matched"], "luffy")
 
 
 class TestBonus(unittest.TestCase):

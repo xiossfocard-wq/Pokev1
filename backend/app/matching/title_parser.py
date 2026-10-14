@@ -53,7 +53,7 @@ NOT_CODE_PREFIXES = {
 TITLE_NOISE = {
     # Le nom du JEU est du bruit : presque toutes les annonces le citent, et
     # sans lui les candidats devenaient « one-piece-monkey-luffy » au lieu de
-    # « monkey-d-luffy ». Pokemon y figurait deja.
+    # « monkey-d-luffy ».
     "one", "piece", "onepiece", "tcg", "bandai",
     # Rarete et traitements propres a One Piece.
     "sec", "sr", "ur", "manga", "leader", "parallele", "parallel",
@@ -62,7 +62,7 @@ TITLE_NOISE = {
     # mais reste du remplissage : un groupe ne peut ni commencer ni finir par
     # lui, il ne peut que se trouver au milieu d'un nom.
     "d",
-    "carte", "cartes", "card", "cards", "pokemon", "lot", "lots", "holo",
+    "carte", "cartes", "card", "cards", "lot", "lots", "holo",
     "rare", "neuve", "neuf", "occasion", "fr", "francaise", "francais",
     "tres", "bon", "etat", "mint", "nm", "lp", "mp", "hp", "psa", "bgs",
     "cgc", "the", "de", "du", "des", "la", "le", "les", "un", "une", "et",
@@ -169,7 +169,7 @@ def extract_name_candidates(text: str) -> List[str]:
 
     Regles de bon sens pour ne pas noyer la requete SQL sous du bruit :
     - un groupe ne peut ni commencer ni finir par un mot de remplissage
-      ("carte pokemon ...", "... de") ;
+      ("carte one piece ...", "... de") ;
     - un groupe ne peut pas commencer par un suffixe de variante ("v-shiny"
       n'est pas un nom de carte, "dracaufeu-v" oui) ;
     - un groupe contenant un nombre est ecarte (le numero de set est traite

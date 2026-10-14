@@ -317,9 +317,9 @@ def find_price_for_listing(db: Session, title: str, description: str = "") -> Op
 def _normaliser_code(code: Optional[str]) -> str:
     """« OP01-120 », « OP01 120 » et « op01120 » designent la MEME carte.
 
-    Le separateur depend du jeu et de la source : Pokemon ecrit « PAF 232 »
-    avec une espace, One Piece ecrit « OP01-120 » avec un tiret, et les
-    vendeurs melangent les deux. Le parseur de titre, lui, normalise en
+    Le separateur depend de la source : One Piece ecrit « OP01-120 » avec un
+    tiret, d'autres catalogues separent par une espace, et les vendeurs
+    melangent les deux. Le parseur de titre, lui, normalise en
     espace. Comparer les chaines telles quelles faisait donc echouer le
     rapprochement par code sur TOUTES les cartes One Piece, en silence : le
     prix retombait sur un rapprochement par nom, beaucoup moins sur.

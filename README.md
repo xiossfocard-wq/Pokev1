@@ -157,6 +157,26 @@ dit à quel point les relevés passés s'alignent réellement sur cette droite,
 et l'avertissement est porté jusqu'à l'interface. À lire comme une tendance
 prolongée, jamais comme une valeur future.
 
+### ⚠️ Trois réglages à renseigner avant que la collecte serve à quelque chose
+
+Le projet ne vise **que** One Piece. Trois valeurs dépendent de sources que
+l'environnement de développement ne peut pas joindre, et aucune n'a donc pu
+être vérifiée.
+
+| Réglage | Défaut | À faire |
+|---|---|---|
+| `VINTED_BRAND_ID` | vide | Facultatif mais recommandé. Ouvre une annonce One Piece sur vinted.fr, suis le lien de la marque, relève le nombre dans `/brand/<id>-<nom>`. |
+| `ZEBRADEX_TCG_SLUG` | `one-piece` | Confirme avec `GET /api/admin/debug-zebradex` : la réponse indique le marqueur cherché et s'il a été trouvé. |
+| `CARDMARKET_GAME_PATH` | `OnePiece` | Vérifie le segment dans l'URL d'une carte One Piece sur cardmarket.com. |
+
+Le filtre de marque Vinted mérite une explication. Il était **figé sur
+l'identifiant Pokémon** : chaque recherche restait filtrée sur cette marque
+et ne pouvait donc remonter que des cartes Pokémon. C'était le défaut le plus
+grave du changement de jeu, et il était silencieux. Par défaut, plus aucun
+filtre de marque n'est appliqué : la recherche se fait sur le seul texte,
+moins précise mais juste. Mieux vaut trop d'annonces que les annonces d'un
+autre jeu.
+
 ### Les visuels — ⚠️ la seule partie non vérifiée
 
 ZebraDex ne publie pas d'image exploitable. Les visuels viennent donc de

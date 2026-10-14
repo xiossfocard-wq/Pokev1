@@ -27,7 +27,7 @@ class ListingOut(BaseModel):
     deal_score: Optional[float] = None
     rarity_tier: Optional[str] = None
     is_vintage: bool = False
-    is_popular_pokemon: bool = False
+    is_popular_character: bool = False
     condition_tier: Optional[str] = None
     price_low_eur: Optional[float] = None
     price_high_eur: Optional[float] = None

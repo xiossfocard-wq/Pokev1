@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Pokémon Deal Hunter API", lifespan=lifespan)
+app = FastAPI(title="One Piece Deal Hunter API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

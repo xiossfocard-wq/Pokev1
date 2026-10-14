@@ -1,5 +1,5 @@
 """
-Récupération du prix de référence Cardmarket pour une carte Pokémon FR.
+Récupération du prix de référence Cardmarket pour une carte One Piece FR.
 
 IMPORTANT — pourquoi on ne passe pas par l'API OAuth Cardmarket :
 L'API classique de Cardmarket est contractuellement réservée à la gestion
@@ -18,21 +18,21 @@ réel (plus rapide, moins de requêtes, un seul fichier/jour) :
    qu'une fois par jour.
 2. (implémenté ici aussi, `fetch_bulk_price_guide`, mais désactivé par
    défaut) Téléchargement du fichier "Price Guide" en masse depuis
-   https://www.cardmarket.com/en/Pokemon/Data/Price-Guide — Cardmarket a
+   https://www.cardmarket.com/en/OnePiece/Data/Price-Guide — Cardmarket a
    rendu ce fichier téléchargeable pour tous les jeux/tous les visiteurs
    (l'ancienne API OAuth pour ces données a même été dépréciée en
    conséquence). C'est la voie à privilégier.
 
    ⚠️ Vérification faite pendant le développement (août 2026, via un outil
    de fetch web, PAS depuis ce conteneur qui n'a pas d'accès réseau
-   sortant) : la page /en/Pokemon/Data (et /Price-Guide) renvoie un blocage
+   sortant) : la page /en/OnePiece/Data (et /Price-Guide) renvoie un blocage
    anti-bot lors d'un fetch automatisé simple. L'URL exacte du fichier
    téléchargeable (probablement un lien direct type
    https://downloads.s3.cardmarket.com/... vers un CSV, non confirmé) n'a
    donc pas pu être récupérée depuis ici. Étape manuelle nécessaire avant
-   d'activer cette voie : ouvre https://www.cardmarket.com/en/Pokemon/Data
+   d'activer cette voie : ouvre https://www.cardmarket.com/en/OnePiece/Data
    dans un vrai navigateur, accepte les cookies, clique-droit sur le lien
-   de téléchargement du "Price Guide" Pokémon → "Copier l'adresse du lien"
+   de téléchargement du "Price Guide" One Piece → "Copier l'adresse du lien"
    → colle cette URL dans `CARDMARKET_BULK_PRICE_GUIDE_URL` (.env). Une
    fois cette variable renseignée, `fetch_bulk_price_guide()` est
    utilisable ; sinon le pipeline continue d'utiliser le lookup carte par
@@ -51,17 +51,21 @@ from typing import Optional
 
 import requests
 
+from app.config import settings
+
 from app.core import robots_compliance
 from app.matching.card_matcher import slugify_card_name as _slugify_card_name
 
 logger = logging.getLogger(__name__)
 
-BASE_URL = "https://www.cardmarket.com/en/Pokemon/Products/Singles"
+# Section One Piece de Cardmarket. Le segment du jeu suit le reglage
+# central (settings.cardmarket_game_path) : il valait "Pokemon" en dur.
+BASE_URL = f"https://www.cardmarket.com/en/{settings.cardmarket_game_path}/Products/Singles"
 
 # Cardmarket demande d'être identifié par un User-Agent standard ; on ne
 # cherche pas à se faire passer pour autre chose qu'un script normal.
 DEFAULT_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; PokemonDealHunter/1.0; "
+    "User-Agent": "Mozilla/5.0 (compatible; OnePieceDealHunter/1.0; "
                   "+usage personnel non-commercial)",
     "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
 }
@@ -100,7 +104,7 @@ class CardmarketPriceClient:
     def build_product_url(self, expansion_slug: str, card_slug: str) -> str:
         """
         ex: expansion_slug="Base-Set", card_slug="Charizard"
-        -> https://www.cardmarket.com/en/Pokemon/Products/Singles/Base-Set/Charizard
+        -> https://www.cardmarket.com/en/OnePiece/Products/Singles/Romance-Dawn/Monkey-D-Luffy
         """
         return f"{BASE_URL}/{expansion_slug}/{card_slug}"
 

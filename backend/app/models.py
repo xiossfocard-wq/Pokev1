@@ -70,7 +70,10 @@ class Listing(Base):
 
     rarity_tier = Column(String(64), nullable=True)      # ex "Illustration Rare"
     is_vintage = Column(Boolean, default=False)
-    is_popular_pokemon = Column(Boolean, default=False)
+    # Renomme le 14/10/2026 avec le passage a One Piece : le champ parle
+    # d'un personnage, pas d'un Pokemon. L'ancienne colonne est rattrapee
+    # par _COLONNES_AJOUTEES (database.py).
+    is_popular_character = Column(Boolean, default=False)
     condition_tier = Column(String(8), nullable=True)     # "NM" | "LP" | "MP" | "HP" | "DMG"
 
     # Prix de reference detaille (voir services/price_index.py). La

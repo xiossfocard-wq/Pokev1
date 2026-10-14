@@ -12,7 +12,8 @@ sans requête par carte.
 Vérifications faites le 04/08/2026 sur de VRAIES pages (pas des suppositions) :
 - https://zebradex.fr/series liste 158 séries FR, de "Set de Base" (1999)
   à "Nuit Noire" (ME05), chacune avec une URL de la forme
-  /fr/tcg/pokemon/{bloc}/{code}/{slug-serie}/{id}
+  /fr/tcg/{jeu}/{bloc}/{code}/{slug-serie}/{id} — le segment {jeu} est
+  configurable (settings.zebradex_tcg_slug), « one-piece » par defaut
 - Une page série (ex Destinees de Paldea) liste ses 245 items, chacun avec :
   code carte (ex "PAF 232"), nom ("Mew ex"), prix ("419,31 EUR"), variation
   7 jours ("+9EUR"), et RARETE OFFICIELLE ("Special Illustration Rare").
@@ -357,14 +358,19 @@ class ZebraDexClient:
         by_links = self._parse_by_links(html)
         by_text = self._parse_by_text(html)
         idx = html.find("\u20ac")
-        raw_marker_idx = html.find("tcg/pokemon")
+        # Le marqueur suit le jeu vise. Il etait fige sur "tcg/pokemon",
+        # ce qui rendait ce diagnostic trompeur : il est justement l'outil
+        # qui doit dire si ZebraDex couvre le jeu qu'on vise.
+        marqueur = f"tcg/{settings.zebradex_tcg_slug}"
+        raw_marker_idx = html.find(marqueur)
         return {
             "ok": True,
             "url": url,
             "final_url_after_redirects": self._last_final_url,
             "status_code": self._last_status_code,
             "html_length": len(html),
-            "raw_marker_tcg_pokemon_found": raw_marker_idx != -1,
+            "marqueur_cherche": marqueur,
+            "marqueur_trouve": raw_marker_idx != -1,
             "sample_around_raw_marker": (
                 html[max(0, raw_marker_idx - 200): raw_marker_idx + 300]
                 if raw_marker_idx != -1 else None

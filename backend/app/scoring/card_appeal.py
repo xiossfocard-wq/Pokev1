@@ -48,7 +48,7 @@ _VINTAGE_KEYWORDS = [
 # sondages de la communauté One Piece — liste volontairement courte et
 # non-exhaustive, à ajuster si besoin plutôt qu'une prétention
 # d'exhaustivité. Les graphies françaises anciennes sont incluses.
-_POPULAR_POKEMON = [
+_PERSONNAGES_PHARES = [
     "luffy", "zoro", "zorro", "law", "trafalgar", "shanks", "mihawk",
     "ace", "portgas", "sabo", "nami", "robin", "sanji", "chopper",
     "yamato", "hancock", "boa", "katakuri", "doflamingo", "kaido",
@@ -57,7 +57,7 @@ _POPULAR_POKEMON = [
 ]
 
 _POPULAR_PATTERN = re.compile(
-    "|".join(rf"\b{re.escape(p)}\b" for p in _POPULAR_POKEMON), re.IGNORECASE
+    "|".join(rf"\b{re.escape(p)}\b" for p in _PERSONNAGES_PHARES), re.IGNORECASE
 )
 _VINTAGE_PATTERN = re.compile(
     "|".join(re.escape(k) for k in _VINTAGE_KEYWORDS), re.IGNORECASE
@@ -95,6 +95,6 @@ def detect_card_appeal(title: str, description: str = "") -> dict:
         "appeal_bonus": bonus,
         "rarity_tier": rarity_label,
         "is_vintage": is_vintage,
-        "is_popular_pokemon": is_popular,
-        "popular_pokemon_matched": popular_match.group(0).lower() if popular_match else None,
+        "is_popular_character": is_popular,
+        "popular_character_matched": popular_match.group(0).lower() if popular_match else None,
     }

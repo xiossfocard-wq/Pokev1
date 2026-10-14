@@ -199,7 +199,7 @@ def _score_listing(db: Session, listing: Listing, skip_vision: bool = False):
     appeal = detect_card_appeal(listing.title, listing.description)
     listing.rarity_tier = appeal["rarity_tier"]
     listing.is_vintage = appeal["is_vintage"]
-    listing.is_popular_pokemon = appeal["is_popular_pokemon"]
+    listing.is_popular_character = appeal["is_popular_character"]
 
     # NB coût : contrairement à la version précédente, l'analyse vision
     # tourne maintenant pour toute annonce avec photos dès que la clé est
@@ -398,7 +398,7 @@ def run_ebay_check(db: Session):
         use_sandbox=settings.ebay_use_sandbox,
     )
     try:
-        results = client.search_pokemon_listings(keywords=settings.ebay_search_keywords)
+        results = client.search_card_listings(keywords=settings.ebay_search_keywords)
     except Exception as exc:  # on isole les pannes d'une source de l'autre
         logger.error("eBay: cycle de collecte échoué (%s)", exc)
         return
@@ -450,10 +450,10 @@ def run_vinted_check(db: Session):
     # nouveau, vérifier avec /api/admin/debug-vinted en changeant le tri.
     results = []
     try:
-        results += _vinted_scraper.search_pokemon_listings(
+        results += _vinted_scraper.search_card_listings(
             search_text=settings.vinted_search_text, sort_order="newest_first"
         )
-        results += _vinted_scraper.search_pokemon_listings(
+        results += _vinted_scraper.search_card_listings(
             search_text=settings.vinted_search_text, sort_order="price_low_to_high"
         )
     except VintedBlockedError as exc:
@@ -535,7 +535,7 @@ def run_targeted_search(db: Session, query: str, limit: int = 60, on_progress=No
     if settings.vinted_enabled:
         progress("Recherche sur Vinted…")
         try:
-            vinted_results = _vinted_scraper.search_pokemon_listings(
+            vinted_results = _vinted_scraper.search_card_listings(
                 search_text=query, sort_order="newest_first"
             )
         except VintedBlockedError as exc:
@@ -593,7 +593,7 @@ def run_targeted_search(db: Session, query: str, limit: int = 60, on_progress=No
                 marketplace_id=settings.ebay_marketplace_id,
                 use_sandbox=settings.ebay_use_sandbox,
             )
-            ebay_results = client.search_pokemon_listings(keywords=f"{settings.tcg_nom} carte {query}")
+            ebay_results = client.search_card_listings(keywords=f"{settings.tcg_nom} carte {query}")
         except Exception as exc:
             logger.error("Recherche ciblee eBay echouee (%s)", exc)
             ebay_results = []

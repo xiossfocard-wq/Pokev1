@@ -39,7 +39,7 @@ class TestCardmarketPriceExtraction(unittest.TestCase):
 
     def test_build_product_url(self):
         url = self.client.build_product_url("Base-Set", "Charizard")
-        self.assertEqual(url, "https://www.cardmarket.com/en/Pokemon/Products/Singles/Base-Set/Charizard")
+        self.assertEqual(url, "https://www.cardmarket.com/en/OnePiece/Products/Singles/Base-Set/Charizard")
 
 
 BULK_CSV_SEMICOLON = (

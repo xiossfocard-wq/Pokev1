@@ -160,7 +160,8 @@ def test_language(title: str = Query(..., description="Titre d'annonce a tester"
 
 
 @router.get("/debug-vinted")
-def debug_vinted(search_text: str = "carte pokemon"):
+def debug_vinted(search_text: Optional[str] = None):
+    search_text = search_text or settings.vinted_search_text
     """Diagnostic lecture seule du scraper Vinted."""
     scraper = VintedScraper(request_delay_seconds=settings.vinted_request_delay_seconds)
     return scraper.diagnostic_fetch(search_text=search_text)
