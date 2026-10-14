@@ -358,7 +358,7 @@ class ZebraDexClient:
         by_links = self._parse_by_links(html)
         by_text = self._parse_by_text(html)
         idx = html.find("\u20ac")
-        # Le marqueur suit le jeu vise. Il etait fige sur "tcg/pokemon",
+        # Le marqueur suit le jeu vise, plutot que d'etre fige :
         # ce qui rendait ce diagnostic trompeur : il est justement l'outil
         # qui doit dire si ZebraDex couvre le jeu qu'on vise.
         marqueur = f"tcg/{settings.zebradex_tcg_slug}"

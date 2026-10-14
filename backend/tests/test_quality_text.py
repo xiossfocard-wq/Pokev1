@@ -9,14 +9,14 @@ from app.scoring.quality_text import analyze_text_quality
 
 class TestAnalyzeTextQuality(unittest.TestCase):
     def test_neutral_description(self):
-        result = analyze_text_quality("Dracaufeu 4/102", "Carte Pokémon à vendre")
+        result = analyze_text_quality("Luffy OP01-120", "Carte One Piece à vendre")
         self.assertEqual(result.score, 50.0)
         self.assertEqual(result.matched_positive, [])
         self.assertEqual(result.matched_negative, [])
 
     def test_positive_keywords_raise_score(self):
         result = analyze_text_quality(
-            "Dracaufeu PSA 10", "Carte near mint, jamais joué, sortie de booster"
+            "Luffy OP01-120 PSA 10", "Carte near mint, jamais joué, sortie de booster"
         )
         self.assertGreater(result.score, 50.0)
         self.assertIn("psa 10", result.matched_positive)
@@ -24,13 +24,13 @@ class TestAnalyzeTextQuality(unittest.TestCase):
 
     def test_negative_keywords_lower_score(self):
         result = analyze_text_quality(
-            "Pikachu Illustrator", "Attention rayure visible au dos, coin abimé"
+            "Shanks manga rare", "Attention rayure visible au dos, coin abimé"
         )
         self.assertLess(result.score, 50.0)
         self.assertIn("rayure", result.matched_negative)
 
     def test_negation_is_detected_and_not_counted_as_negative(self):
-        result = analyze_text_quality("Mewtwo", "Vendue sans rayure, sans défaut")
+        result = analyze_text_quality("Nico Robin", "Vendue sans rayure, sans défaut")
         self.assertEqual(result.matched_negative, [])
         self.assertIn("rayure", result.negated_negative)
         self.assertIn("défaut", result.negated_negative)

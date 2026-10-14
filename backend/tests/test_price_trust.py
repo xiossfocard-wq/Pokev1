@@ -58,10 +58,10 @@ class TestPrixMinimum(BaseDeTest):
     def setUp(self):
         super().setUp()
         self.db.add_all([
-            annonce("Pikachu ex", 0.50, "a"),
-            annonce("Pikachu ex", 1.00, "b"),
-            annonce("Pikachu ex", 1.50, "c"),
-            annonce("Dracaufeu V", 25.00, "d"),
+            annonce("Nami", 0.50, "a"),
+            annonce("Nami", 1.00, "b"),
+            annonce("Nami", 1.50, "c"),
+            annonce("Roronoa Zoro", 25.00, "d"),
         ])
         self.db.commit()
 
@@ -86,7 +86,7 @@ class TestPrixMinimum(BaseDeTest):
 
 class TestMargeDouteuseExclueDuScore(BaseDeTest):
     def test_prix_incertain_ne_gonfle_plus_le_score(self):
-        """Dix cartes "Pikachu ex" de 2 a 1130 EUR : la mediane retenue ne
+        """Dix cartes "Nami" de 2 a 1130 EUR : la mediane retenue ne
         veut rien dire, la marge qui en decoule non plus."""
         self.db.add_all([
             carte("monkey-d-luffy", "Monkey D. Luffy", f"OP0{i}-00{i}", prix)

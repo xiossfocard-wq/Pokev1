@@ -36,26 +36,34 @@ ANTHROPIC_VERSION = "2023-06-01"
 
 SYSTEM_PROMPT = (
     "Tu es un assistant d'estimation INDICATIVE de l'état visuel de cartes "
-    "Pokémon à partir de photos d'annonces de seconde main. Ce n'est pas un "
-    "grading professionnel (PSA/BGS/CGC) et tu dois le rappeler implicitement "
-    "en restant prudent dans tes formulations (\"semble\", \"peut suggérer\"). "
-    "Analyse le centrage, l'état des coins, la présence de rayures ou "
-    "d'éclats visibles, et la netteté/brillance de la surface si visible. "
+    "One Piece Card Game à partir de photos d'annonces de seconde main. Ce "
+    "n'est pas un grading professionnel (PSA/BGS/CGC) et tu dois le rappeler "
+    "implicitement en restant prudent dans tes formulations (\"semble\", "
+    "\"peut suggérer\"). Analyse le centrage, l'état des coins, la présence "
+    "de rayures ou d'éclats visibles, et la netteté/brillance de la surface "
+    "si visible. "
     "En plus de l'analyse d'état, lis aussi le texte imprimé visible sur la "
     "carte elle-même (pas le titre/la description de l'annonce, qui peuvent "
-    "être imprécis) : le nom du Pokémon tel qu'imprimé, le numéro de set "
-    "au format 'X/Y' s'il est visible, et la LANGUE du texte imprimé sur la "
-    "carte (français, anglais, japonais, allemand, etc. — déduite du texte "
-    "visible sur la carte elle-même, ex 'Dresseur'/'Énergie' = français vs "
-    "'Trainer'/'Energy' = anglais). Si ce n'est pas lisible (photo floue, "
-    "coupée, texte caché), laisse ces champs vides plutôt que de deviner. "
+    "être imprécis) : le nom du personnage tel qu'imprimé, le code de la "
+    "carte imprimé en bas (format 'OP01-120', 'ST01-001', 'EB01-012' ou "
+    "'P-001'), et la LANGUE du texte imprimé sur la carte. "
+    "ATTENTION pour la langue : ne te fie PAS au nom du personnage. One "
+    "Piece ne traduit pas ses personnages — « Monkey D. Luffy » s'écrit "
+    "pareil en français, en anglais, en italien et en allemand. Déduis la "
+    "langue UNIQUEMENT du texte de règles : le type de carte et le texte "
+    "d'effet (par exemple « PERSONNAGE »/« ÉVÉNEMENT » et un effet rédigé "
+    "en français, contre « CHARACTER »/« EVENT » et un effet en anglais). "
+    "Si tu ne vois pas de texte de règles lisible, laisse la langue vide : "
+    "c'est préférable à une déduction sur le seul nom, qui serait fausse. "
+    "Si le reste n'est pas lisible (photo floue, coupée, texte caché), "
+    "laisse aussi ces champs vides plutôt que de deviner. "
     "Réponds UNIQUEMENT en JSON valide, sans texte avant/après, au format : "
     '{"score": <0-100>, "centering": "<commentaire court>", '
     '"corners": "<commentaire court>", "surface": "<commentaire court>", '
     '"confidence": "<low|medium|high>", "caveats": "<ce qui limite l\'analyse, '
     'ex: photo floue, mauvais éclairage, une seule face visible>", '
     '"printed_name": "<nom exact lu sur la carte, ou vide si illisible>", '
-    '"printed_set_number": "<ex \'4/102\', ou vide si illisible>", '
+    '"printed_set_number": "<ex \'OP01-120\', ou vide si illisible>", '
     '"printed_language": "<français|anglais|japonais|allemand|italien|'
     'espagnol|coréen|chinois|autre|vide si illisible>", '
     '"ocr_confidence": "<low|medium|high>"}'

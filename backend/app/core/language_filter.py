@@ -2,32 +2,41 @@
 Détection best-effort « cette annonce est-elle probablement une carte NON
 française ? » à partir d'un texte libre (titre d'annonce, description...).
 
-Principe (inchangé) : on suppose une annonce française SAUF indice
-contraire. Sur Vinted.fr, la majorité des vendeurs ne précisent pas la
-langue quand la carte est française — c'est l'implicite. Exiger un mot
-« français » explicite exclurait donc à tort la majorité des annonces
-réellement françaises.
+Principe : on suppose une annonce française SAUF indice contraire. Sur
+Vinted.fr, la majorité des vendeurs ne précisent pas la langue quand la
+carte est française — c'est l'implicite. Exiger un mot « français »
+explicite exclurait donc à tort la majorité des annonces réellement
+françaises.
 
-Ce qui a changé le 25/08/2026
------------------------------
-La version précédente ne repérait qu'une déclaration explicite de langue
-(« japonaise », « english »...) ou un alphabet non latin. Sur 500 annonces
-réelles de la prod, elle laissait passer une grande partie des annonces
-étrangères, car les vendeurs ne déclarent pas leur langue — ils écrivent
-simplement dans leur langue :
+Trois familles de signaux, combinées par un petit score plutôt que par un
+veto au premier mot croisé (un veto sur un mot ambigu comme « card »
+rejetterait des annonces françaises tout à fait valables) :
 
-- une trentaine d'annonces « Pokémon Karte <nom> Einzelkarte Sammelkarte »
-  (allemand) ;
-- une dizaine d'annonces italiennes (« Carta Pokemon », « promozionale »,
-  « evoluzioni prismatiche ») ;
-- des annonces néerlandaises (« graad 9.5 », « kaart ») ;
-- et surtout des cartes anglaises reconnaissables au seul nom du Pokémon :
-  « Charizard », « Gengar », « Psyduck », « Snorlax »... Une carte
-  française s'appelle Dracaufeu, Ectoplasma, Psykokwak, Ronflex.
+1. déclaration explicite de langue, ou sigle collé en fin de titre
+   (« japonaise », « ENG », « JAP ») — le signal le plus sûr ;
+2. mots qui n'existent QUE dans une langue étrangère (« Karte »,
+   « carta », « kaart ») ;
+3. vocabulaire de collectionneur anglophone, faible pris isolément : il en
+   faut deux, et aucun indice français à côté.
 
-D'où trois familles de signaux, combinées par un petit score plutôt que
-par un veto au premier mot croisé (un veto sur un mot ambigu comme « card »
-rejetterait des annonces françaises tout à fait valables).
+⚠️ CE FILTRE EST PLUS FAIBLE SUR ONE PIECE QUE SUR UN JEU TRADUIT
+-----------------------------------------------------------------
+Le signal le plus décisif, sur un jeu dont les noms sont traduits, est le
+nom lui-même : une carte dont le nom imprimé n'existe que dans une langue
+ne peut pas venir d'une autre édition. Ce signal n'existe
+PAS ici. One Piece ne traduit pas ses personnages : Monkey D. Luffy,
+Roronoa Zoro, Nami s'écrivent pareil en français, en anglais et en
+italien. Un titre « Monkey D. Luffy OP01-120 » ne dit rien de sa langue.
+
+Conséquence assumée : une carte anglaise dont le vendeur ne déclare rien
+et n'emploie aucun vocabulaire anglophone PASSERA. On ne peut pas la
+distinguer d'une française sur le texte seul — il faudrait lire la photo.
+C'est pour ça que la liste de vocabulaire anglais (3) est plus fournie ici
+qu'elle ne le serait sur un jeu traduit : elle doit porter seule une
+charge qu'elle partageait ailleurs.
+
+Les cartes japonaises, elles, restent bien attrapées : alphabet non latin,
+sigles « JAP »/« JPN », ou déclaration explicite.
 
 Aucune clé API n'est nécessaire : tout est lexical et tourne en local.
 """
@@ -73,13 +82,12 @@ _STRONG_FOREIGN_MARKERS = {
            "seltene", "glurak", "unbespielt", "originalverpackt", "kaufen",
            "versand", "sehr gut"],
     "it": ["carta", "carte da collezione", "collezione", "promozionale",
-           "spedizione", "condizioni", "gradazione", "cercasi", "evoluzioni",
-           "ascesa", "gravita", "folgoranti", "ossidrica", "scintille",
-           "prismatiche", "eroica", "contrappeso", "raro", "nuova",
-           # Articles contractes : souvent le SEUL indice quand le nom du
-           # Pokemon s'ecrit pareil dans les deux langues ("Mewtwo EX del
-           # Team Rocket", "Pikachu Ex del set mega dream"). Verifie sur les
-           # 500 annonces reelles : 6 titres concernes, tous italiens.
+           "spedizione", "condizioni", "gradazione", "cercasi", "raro",
+           "nuova", "rarissima", "originale", "perfetta",
+           # Articles contractes : souvent le SEUL indice utilisable, les
+           # noms de personnages s'ecrivant pareil dans les deux langues
+           # (« Rufy del Mare », « Zoro della Marina »). Ils portent donc
+           # plus de poids ici que sur un jeu dont les noms sont traduits.
            "del", "della", "dello", "dei", "delle",
            "ottime", "ottimo", "nuovo", "nuove"],
     "nl": ["kaart", "kaarten", "verzamelkaart", "graad", "zeldzaam",
@@ -92,82 +100,18 @@ _STRONG_FOREIGN_MARKERS = {
 # mint », « holo », « full art »...). Un seul ne prouve rien ; on n'agit
 # qu'à partir de deux, et seulement en l'absence de marqueur français.
 _WEAK_ENGLISH_MARKERS = [
-    "near mint", "mint condition", "trick or trade", "booster box",
-    "sealed", "shipping", "brand new", "condition", "graded", "card lot",
+    "near mint", "mint condition", "booster box", "sealed", "shipping",
+    "brand new", "condition", "graded", "ungraded", "card lot", "lot of",
     "single card", "very rare", "pack fresh", "please", "worldwide",
-    # Vocabulaire de collectionneur anglophone. Chacun pris isolement est
-    # employe par des vendeurs francais ("Base Set" comme nom de serie,
-    # "Unlimited" comme edition) : c'est bien pour ca qu'ils sont FAIBLES et
-    # qu'il en faut deux. Ajoutes apres avoir vu "Pikachu 58/102 Original
-    # Base Set Unlimited Pokemon Card - Near Mint" arriver en tete des
-    # resultats de recherche le 25/08/2026.
-    "base set", "unlimited", "shadowless", "trading card", "pokemon card",
-    "holo rare", "first edition", "original",
+    "trading card", "holo rare", "first edition", "original", "playset",
+    "pre owned", "preowned", "free shipping", "fast shipping", "bundle",
+    "collectible", "collectable", "slabbed",
+    # Termes de jeu ecrits a l'anglaise. La frontiere de mot evite les faux
+    # positifs sur leurs equivalents francais : « parallel » n'attrape pas
+    # « parallele », « alternate » n'attrape pas « alternative ».
+    "alternate art", "alternate", "parallel", "leader card", "character card",
+    "starter deck", "booster pack",
 ]
-
-# ---------------------------------------------------------------------------
-# 3. Noms de Pokémon dont la version française DIFFÈRE
-# ---------------------------------------------------------------------------
-# C'est le signal décisif pour les cartes anglaises qui ne déclarent rien.
-# Liste volontairement PARTIELLE et conservatrice : n'y figurent que des
-# noms dont je suis certain que le nom français est différent. Un nom
-# identique dans les deux langues (Pikachu, Mewtwo, Lucario, Rayquaza,
-# Gardevoir...) n'a rien à y faire — il ne prouverait rien.
-#
-# Facile à compléter : ajouter une ligne "anglais": "français".
-_ENGLISH_ONLY_POKEMON = {
-    # Starters et évolutions les plus vendus
-    "bulbasaur": "Bulbizarre", "ivysaur": "Herbizarre", "venusaur": "Florizarre",
-    "charmander": "Salamèche", "charmeleon": "Reptincel", "charizard": "Dracaufeu",
-    "squirtle": "Carapuce", "wartortle": "Carabaffe", "blastoise": "Tortank",
-    "chikorita": "Germignon", "cyndaquil": "Héricendre", "totodile": "Kaiminus",
-    "treecko": "Arcko", "torchic": "Poussifeu", "blaziken": "Braségali",
-    "mudkip": "Gobou", "turtwig": "Tortipouss", "chimchar": "Ouisticram",
-    "piplup": "Tiplouf", "rowlet": "Brindibou", "litten": "Flamiaou",
-    "popplio": "Otaquin", "grookey": "Ouistempo", "scorbunny": "Flambino",
-    "sobble": "Larméléon", "sprigatito": "Poussacha", "delphox": "Goupelin",
-    "greninja": "Amphinobi", "serperior": "Majaspic",
-    # Gen 1 populaires
-    "caterpie": "Chenipan", "butterfree": "Papilusion", "weedle": "Aspicot",
-    "beedrill": "Dardargnan", "pidgey": "Roucool", "pidgeotto": "Roucoups",
-    "pidgeot": "Roucarnage", "raticate": "Rattatac", "sandshrew": "Sabelette",
-    "clefairy": "Mélofée", "clefable": "Mélodelfe", "vulpix": "Goupix",
-    "ninetales": "Feunard", "jigglypuff": "Rondoudou", "wigglytuff": "Grodoudou",
-    "zubat": "Nosferapti", "golbat": "Nosferalto", "oddish": "Mystherbe",
-    "gloom": "Ortide", "vileplume": "Rafflesia", "venonat": "Mimitoss",
-    "venomoth": "Aéromite", "diglett": "Taupiqueur", "dugtrio": "Triopikeur",
-    "meowth": "Miaouss", "psyduck": "Psykokwak", "golduck": "Akwakwak",
-    "mankey": "Férosinge", "primeape": "Colossinge", "growlithe": "Caninos",
-    "arcanine": "Arcanin", "poliwag": "Ptitard", "machop": "Machoc",
-    "machoke": "Machopeur", "machamp": "Mackogneur", "bellsprout": "Chétiflor",
-    "geodude": "Racaillou", "graveler": "Gravalanch", "rapidash": "Galopa",
-    "slowpoke": "Ramoloss", "slowbro": "Flagadoss", "farfetch": "Canarticho",
-    "seel": "Otaria", "dewgong": "Lamantine", "grimer": "Tadmorv",
-    "muk": "Grotadmorv", "shellder": "Kokiyas", "cloyster": "Crustabri",
-    "gastly": "Fantominus", "haunter": "Spectrum", "gengar": "Ectoplasma",
-    "drowzee": "Soporifik", "hypno": "Hypnomade", "voltorb": "Voltorbe",
-    "exeggcute": "Noeunoeuf", "exeggutor": "Noadkoko", "cubone": "Osselait",
-    "marowak": "Ossatueur", "hitmonlee": "Kicklee", "hitmonchan": "Tygnon",
-    "lickitung": "Excelangue", "koffing": "Smogo", "weezing": "Smogogo",
-    "rhyhorn": "Rhinocorne", "rhydon": "Rhinoféros", "chansey": "Leveinard",
-    "tangela": "Saquedeneu", "kangaskhan": "Kangourex", "horsea": "Hypotrempe",
-    "seadra": "Hypocéan", "goldeen": "Poissirène", "seaking": "Poissoroy",
-    "staryu": "Stari", "starmie": "Staross", "scyther": "Insécateur",
-    "jynx": "Lippoutou", "electabuzz": "Élektek", "pinsir": "Scarabrute",
-    "magikarp": "Magicarpe", "gyarados": "Léviator", "lapras": "Lokhlass",
-    "ditto": "Métamorph", "eevee": "Évoli", "vaporeon": "Aquali",
-    "jolteon": "Voltali", "flareon": "Pyroli", "omanyte": "Amonita",
-    "aerodactyl": "Ptéra", "snorlax": "Ronflex", "articuno": "Artikodin",
-    "zapdos": "Électhor", "moltres": "Sulfura", "dratini": "Minidraco",
-    "dragonair": "Draco", "dragonite": "Dracolosse",
-    # Évolitions et modernes très recherchés
-    "umbreon": "Noctali", "espeon": "Mentali", "leafeon": "Phyllali",
-    "glaceon": "Givrali", "sylveon": "Nymphali", "mimikyu": "Mimiqui",
-    "toxtricity": "Salarsen", "munchlax": "Goinfrex", "sudowoodo": "Simularbre",
-    "wobbuffet": "Qulbutoké", "joltik": "Statitik", "gothita": "Scrutella",
-    "salamence": "Drattak", "lurantis": "Floramantis", "garchomp": "Carchacrok",
-}
-
 
 def _compile_words(words) -> re.Pattern:
     """Motif qui n'accepte que des mots entiers, accents déjà retirés."""
@@ -198,29 +142,41 @@ _STRONG_PATTERNS = {
     lang: _compile_words(words) for lang, words in _STRONG_FOREIGN_MARKERS.items()
 }
 _WEAK_ENGLISH_PATTERN = _compile_words(_WEAK_ENGLISH_MARKERS)
-_ENGLISH_POKEMON_PATTERN = _compile_words(_ENGLISH_ONLY_POKEMON.keys())
 
 # Mots qui affirment le caractère français de la carte. Leur présence
-# désarme les signaux faibles ET les noms anglais : un vendeur qui écrit
-# « Dracaufeu carte française » alors que le titre contient « Charizard »
-# vend bien la version française.
+# désarme même les marqueurs forts : un vendeur qui écrit « carte
+# française » dans un titre par ailleurs bilingue vend bien la française.
 _FRENCH_ASSERTIONS = _compile_words([
     "francaise", "francais", "vf", "version francaise", "edition francaise",
     "carte fr", "en francais",
 ])
 
-# Contrepoids indispensable au signal « nom anglais » : beaucoup de
-# vendeurs francais ecrivent les DEUX noms pour etre trouves dans les
-# recherches (« Dracaufeu Charizard Gold Metal 4/102 », « Ectoplasma ...
-# Gengar »). Si un nom francais de Pokemon est present, le vendeur ecrit
-# en francais — le nom anglais ne prouve plus rien.
-_FRENCH_POKEMON_PATTERN = _compile_words(set(_ENGLISH_ONLY_POKEMON.values()))
+# Vocabulaire de vendeur FRANÇAIS, plus faible que ci-dessus. Il ne désarme
+# que les signaux anglais faibles, jamais un marqueur étranger fort : un
+# « état » isolé dans un titre allemand ne fait pas de la carte une
+# française, alors qu'il rend improbable qu'un titre truffé de vocabulaire
+# anglophone vienne d'un vendeur anglophone.
+#
+# Ce contrepoids remplace celui qu'on avait sur un jeu aux noms traduits,
+# où la présence du nom français suffisait à prouver que le vendeur écrit
+# en français. One Piece ne traduisant pas ses personnages, il fallait le
+# reconstruire sur du vocabulaire — d'où cette liste.
+#
+# Critère d'entrée : le mot ne doit exister dans AUCUNE des autres langues
+# surveillées. « état » oui ; « carte » non, c'est aussi le pluriel italien
+# de « carta ».
+_FRENCH_VOCABULARY = _compile_words([
+    "etat", "neuve", "envoi", "soigne", "livraison", "pochette",
+    "jamais joue", "lot de", "frais de port", "vendue", "achat",
+    "parfait", "sous blister", "protege carte", "collectionneur",
+    "classeur", "tres bon", "debarras", "cadeau",
+])
 
-# Sigles de langue que les vendeurs collent en fin de titre : "Pikachu Ex
-# 044/193 JAP", "Vmax 046/184 S8B JPN", "Eevee 9.5 ITA". Repere en verifiant
-# le dashboard en vrai le 25/08/2026 : la version precedente ne connaissait
-# que "jp" et "kr", si bien que "JAP" et "JPN" — de loin les plus frequents —
-# passaient au travers.
+# Sigles de langue que les vendeurs collent en fin de titre : "Luffy
+# OP01-120 JAP", "Zoro OP01-025 JPN Mint", "Nami 9.5 ITA". Repere en
+# verifiant le dashboard en vrai le 25/08/2026 : la version precedente ne
+# connaissait que "jp" et "kr", si bien que "JAP" et "JPN" — de loin les plus
+# frequents — passaient au travers.
 #
 # N'y figurent QUE des sigles qui ne sont pas aussi des mots francais. "EN",
 # "DE", "IT", "US" en sont volontairement absents : "carte EN très bon état",
@@ -279,8 +235,8 @@ def detect_language(*texts) -> LanguageVerdict:
                                ["alphabet non latin dans le titre"])
 
     text = _strip_accents(combined_raw).lower()
-    french_name = _FRENCH_POKEMON_PATTERN.search(text)
-    french_asserted = bool(_FRENCH_ASSERTIONS.search(text)) or bool(french_name)
+    french_asserted = bool(_FRENCH_ASSERTIONS.search(text))
+    french_vocabulary = french_asserted or bool(_FRENCH_VOCABULARY.search(text))
 
     for lang, pattern in _EXPLICIT_PATTERNS.items():
         found = pattern.search(text)
@@ -307,22 +263,18 @@ def detect_language(*texts) -> LanguageVerdict:
             return LanguageVerdict(False, lang, "high",
                                    [f"mot(s) exclusivement {lang} : {mots}"])
 
-    english_names = _ENGLISH_POKEMON_PATTERN.findall(text)
-    if english_names and not french_asserted:
-        nom = english_names[0]
-        return LanguageVerdict(
-            False, "en", "high",
-            [f"nom de Pokemon anglais « {nom} » (en francais : "
-             f"{_ENGLISH_ONLY_POKEMON.get(nom, '?')})"],
-        )
-
+    # Sur un jeu aux noms traduits, un nom anglais trancherait ici. One Piece
+    # n'en offre pas : « Monkey D. Luffy » s'ecrit pareil dans toutes les
+    # langues. Le vocabulaire anglophone porte donc seul la detection des
+    # cartes anglaises non declarees, et il en faut toujours deux : un seul
+    # ("original", "condition") sort de la plume de vendeurs francais.
     weak = set(_WEAK_ENGLISH_PATTERN.findall(text))
-    if len(weak) >= 2 and not french_asserted:
+    if len(weak) >= 2 and not french_vocabulary:
         mots = ", ".join(f"« {m} »" for m in sorted(weak)[:3])
         return LanguageVerdict(False, "en", "medium",
                                [f"plusieurs expressions anglaises : {mots}"])
 
-    return LanguageVerdict(True, None, "low" if not french_asserted else "high",
+    return LanguageVerdict(True, None, "high" if french_vocabulary else "low",
                            ["aucun indice de langue etrangere"])
 
 

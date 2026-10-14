@@ -68,7 +68,7 @@ jobs:
         # Render déploie CETTE image (render.yaml > runtime: docker). Elle
         # n'était construite nulle part avant ce job : un Dockerfile cassé ne
         # se voyait qu'au déploiement, une fois poussé sur main.
-        run: docker build -t pokemon-deal-hunter-backend:ci .
+        run: docker build -t one-piece-deal-hunter-backend:ci .
 
       - name: Démarrer le conteneur et vérifier qu'il répond
         # Construire ne suffit pas : une image peut se construire et ne pas
@@ -78,7 +78,7 @@ jobs:
         run: |
           docker run -d --name backend-ci -p 8000:8000 \
             -e DATABASE_URL="sqlite:////tmp/ci.db" \
-            pokemon-deal-hunter-backend:ci
+            one-piece-deal-hunter-backend:ci
 
           echo "Attente du démarrage d'uvicorn..."
           for tentative in $(seq 1 30); do

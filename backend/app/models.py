@@ -71,7 +71,7 @@ class Listing(Base):
     rarity_tier = Column(String(64), nullable=True)      # ex "Illustration Rare"
     is_vintage = Column(Boolean, default=False)
     # Renomme le 14/10/2026 avec le passage a One Piece : le champ parle
-    # d'un personnage, pas d'un Pokemon. L'ancienne colonne est rattrapee
+    # d'un personnage phare du jeu. L'ancienne colonne est rattrapee
     # par _COLONNES_AJOUTEES (database.py).
     is_popular_character = Column(Boolean, default=False)
     condition_tier = Column(String(8), nullable=True)     # "NM" | "LP" | "MP" | "HP" | "DMG"
@@ -203,8 +203,8 @@ class MarketCardPrice(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, index=True)
 
     # --- Exploration par theme (voir services/card_themes.py) ------------
-    # Slugs encadres de virgules (",pikachu,dragons,") pour que le filtre
-    # SQL `LIKE '%,pikachu,%'` soit exact. Champ texte plutot que table de
+    # Slugs encadres de virgules (",chapeau-de-paille,secret-rare,") pour
+    # que le filtre SQL `LIKE '%,chapeau-de-paille,%'` soit exact. Champ texte plutot que table de
     # jointure : portable SQLite/Postgres, et aucune migration pour ce
     # volume. Recalcule a chaque synchronisation de la carte.
     theme_slugs = Column(String(512), nullable=True, index=True)

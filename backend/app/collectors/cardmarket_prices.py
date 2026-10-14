@@ -59,7 +59,7 @@ from app.matching.card_matcher import slugify_card_name as _slugify_card_name
 logger = logging.getLogger(__name__)
 
 # Section One Piece de Cardmarket. Le segment du jeu suit le reglage
-# central (settings.cardmarket_game_path) : il valait "Pokemon" en dur.
+# central (settings.cardmarket_game_path), et non fige dans le collecteur.
 BASE_URL = f"https://www.cardmarket.com/en/{settings.cardmarket_game_path}/Products/Singles"
 
 # Cardmarket demande d'être identifié par un User-Agent standard ; on ne
@@ -103,7 +103,7 @@ class CardmarketPriceClient:
 
     def build_product_url(self, expansion_slug: str, card_slug: str) -> str:
         """
-        ex: expansion_slug="Base-Set", card_slug="Charizard"
+        ex: expansion_slug="Romance-Dawn", card_slug="Monkey-D-Luffy"
         -> https://www.cardmarket.com/en/OnePiece/Products/Singles/Romance-Dawn/Monkey-D-Luffy
         """
         return f"{BASE_URL}/{expansion_slug}/{card_slug}"

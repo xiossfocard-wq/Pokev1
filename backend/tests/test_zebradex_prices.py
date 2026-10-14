@@ -4,16 +4,23 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from app.collectors import zebradex_prices
 from app.collectors.zebradex_prices import ZebraDexClient, slugify_name
 
-# ECHANTILLONS REELS recuperes le 04/08/2026 depuis zebradex.fr
-# (pas des reconstructions : copies de la structure reellement servie).
+# ECHANTILLONS REELS recuperes le 04/08/2026 depuis zebradex.fr : des
+# copies de la structure reellement servie, pas des reconstructions.
 #
-# Ils viennent des pages POKEMON, seul jeu dont la structure ait pu etre
-# observee pour de vrai. Le projet vise desormais One Piece, mais on ne
-# remplace pas "pokemon" par "one-piece" dans ces echantillons : ce serait
-# transformer une capture reelle en supposition sur une page jamais vue, et
-# le test ne prouverait plus rien. Les tests ci-dessous pointent donc le
-# collecteur sur "pokemon" le temps de lire ces echantillons — ce qui, au
-# passage, verifie que le segment de jeu est bien devenu un reglage.
+# POURQUOI ILS NE SONT PAS PORTES SUR ONE PIECE
+# ---------------------------------------------
+# Contrairement aux autres fixtures du projet, le nom du jeu est ici
+# PORTEUR DE SENS : le parseur d'index de series lit le segment de jeu dans
+# l'URL (/fr/tcg/<jeu>/<bloc>/<serie>/<id>), et c'est precisement ce
+# decoupage que ces echantillons prouvent. Les reecrire en One Piece
+# reviendrait a affirmer que les pages One Piece ont la meme forme — une
+# page que personne n'a vue depuis cet environnement, ou le reseau sortant
+# vers zebradex.fr est refuse. Le test ne prouverait plus rien, il
+# supposerait.
+#
+# Les tests ci-dessous pointent donc explicitement le collecteur sur le jeu
+# de l'echantillon, le temps de le lire — ce qui verifie au passage que le
+# segment de jeu est bien devenu un reglage et non une valeur figee.
 #
 # La structure des pages One Piece de ZebraDex reste A VERIFIER :
 # GET /api/admin/debug-zebradex rend la reponse brute pour la comparer.

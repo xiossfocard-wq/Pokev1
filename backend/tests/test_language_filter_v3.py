@@ -1,12 +1,22 @@
 """
-Tests de la detection de langue amelioree (core/language_filter.py).
+Tests de la detection de langue (core/language_filter.py).
 
-Comme pour le matching, tous les titres sont de VRAIS titres releves le
-25/08/2026 sur les 500 dernieres annonces de la production. Les deux
-categories de tests sont aussi importantes l'une que l'autre :
+D'ou viennent ces titres
+------------------------
+Ce qui est teste ici, ce sont des TOURNURES de langue — « Karte …
+Sammelkarte », « carta … promozionale », « graad 9.5 », le sigle « JAP »
+colle en fin de titre. Ces tournures ont ete relevees sur 500 annonces
+reelles de la production, et ce sont elles qui portent la valeur de
+preuve : le filtre ne regarde rien d'autre.
 
-- ce qui doit etre ECARTE : sur ces 500 annonces, ~18% n'etaient pas
-  francaises et passaient toutes le filtre precedent ;
+Les noms de cartes, eux, sont ceux de One Piece, le jeu que le projet
+suit. Les laisser dans un autre jeu aurait teste le filtre sur un
+vocabulaire qu'il ne rencontrera plus jamais.
+
+Les deux categories de tests comptent autant l'une que l'autre :
+
+- ce qui doit etre ECARTE : sur l'echantillon d'origine, ~18% des annonces
+  n'etaient pas francaises et passaient toutes le filtre precedent ;
 - ce qui doit etre GARDE : un filtre trop zele fait disparaitre de vraies
   bonnes affaires francaises sans que l'utilisateur sache pourquoi. Les
   faux positifs sont plus graves que les faux negatifs ici.
@@ -20,12 +30,12 @@ from app.core.language_filter import looks_non_french, detect_language
 
 class TestAnnoncesEtrangeresEcartees(unittest.TestCase):
     def test_allemand_sans_declaration_de_langue(self):
-        """~30 annonces de ce moule dans l'echantillon. Le vendeur ne dit
-        jamais "allemand" : il ecrit simplement en allemand."""
+        """Le vendeur ne dit jamais "allemand" : il ecrit simplement en
+        allemand. C'etait le moule le plus frequent de l'echantillon."""
         for titre in [
-            "Pokémon Karte Sirapfel Einzelkarte Sammelkarte",
-            "Pokémon Karte Türkisgrüne Maske Ogerpon Einzelkarte Sammelkarte",
-            "Pokémon Karte Fundamentmaske-Ogerpon Einzelkarte Sammelkarte",
+            "One Piece Karte Ruffy Einzelkarte Sammelkarte",
+            "One Piece Karte Lorenor Zorro Einzelkarte Sammelkarte",
+            "One Piece Karte Ruffy Leader sehr gut Zustand",
         ]:
             with self.subTest(titre=titre):
                 self.assertTrue(looks_non_french(titre))
@@ -33,58 +43,42 @@ class TestAnnoncesEtrangeresEcartees(unittest.TestCase):
 
     def test_italien(self):
         for titre in [
-            "Carta Pokemon Grookey promozionale 30th anniversario graad 9",
-            "carta da collezione Pokemon",
-            "Carta Pokémon magneton 27/112 condizioni ottime vintage",
-            "Carta Pokemon Monte gravità gold scintille folgoranti ita",
+            "Carta One Piece Rufy promozionale condizioni ottime",
+            "carta da collezione One Piece",
+            "Carta One Piece Zoro OP01-025 condizioni ottime",
+            "Carta One Piece Nami rarissima spedizione tracciata",
         ]:
             with self.subTest(titre=titre):
                 self.assertTrue(looks_non_french(titre))
 
     def test_articles_italiens_seul_indice(self):
-        """Vu sur le dashboard : quand le nom du Pokemon s'ecrit pareil dans
-        les deux langues, l'article contracte est le seul indice restant."""
+        """Le cas le plus difficile du jeu : les personnages s'ecrivent
+        pareil dans les deux langues, donc l'article contracte peut etre le
+        SEUL indice restant."""
         for titre in [
-            "Pikachu Ex del set mega dream",
-            "Mewtwo EX del Team Rocket DRI 081",
-            "Persian EX del Team Rocket DRI 150",
+            "Monkey D. Luffy del Mare Orientale OP01-120",
+            "Roronoa Zoro della Marina OP01-025",
+            "Nico Robin dei Rivoluzionari OP02-068",
         ]:
             with self.subTest(titre=titre):
                 self.assertTrue(looks_non_french(titre))
                 self.assertEqual(detect_language(titre).language, "it")
 
     def test_neerlandais(self):
-        self.assertTrue(looks_non_french("Eevee graad 9.5 ita"))
-        self.assertTrue(looks_non_french("Piplup GRAAD 9.5"))
-        self.assertTrue(
-            looks_non_french("Eevee reverse holo Prismatic Evolutions Pokémon kaart")
-        )
-
-    def test_nom_de_pokemon_anglais(self):
-        """Le signal decisif pour les cartes anglaises muettes : une carte
-        francaise s'appelle Dracaufeu, pas Charizard."""
-        for titre in [
-            "Charizard EX Secret Rare 223/197 MT",
-            "Gengar 057/091 Holo (Trick or Trade Halloween 2024) - Near Mint!",
-            "Psyduck #28 Pokemon Astral Radiance",
-            "Pokemon Munchlax",
-            "Charizard V 017/172",
-            "Pokémon Salamence EX holo card mint",
-        ]:
-            with self.subTest(titre=titre):
-                self.assertTrue(looks_non_french(titre))
-                self.assertEqual(detect_language(titre).language, "en")
+        self.assertTrue(looks_non_french("One Piece Luffy graad 9.5"))
+        self.assertTrue(looks_non_french("Zoro OP01-025 GRAAD 9.5"))
+        self.assertTrue(looks_non_french("One Piece Nami zeldzaam kaart"))
 
     def test_sigles_de_langue_en_fin_de_titre(self):
-        """Repere en ouvrant le dashboard en vrai : deux annonces japonaises
-        y figuraient encore. La version precedente ne connaissait que "jp" et
-        "kr", alors que les vendeurs ecrivent "JAP" et "JPN"."""
+        """Les vendeurs collent le sigle en fin de titre. Signal capital sur
+        One Piece : les cartes japonaises y sont tres nombreuses, et le nom
+        du personnage ne les distingue pas d'une francaise."""
         cas = [
-            ("Carte Pokémon Pikachu Ex 044/193 JAP", "ja"),
-            ("Pikachu Kanazawa holo PSA 10 JPN Mint", "ja"),
-            ("Pokémon Shaymin 185/182 Holo ITA", "it"),
-            ("Raikou neo revelation holo eng swirl", "en"),
-            ("Dracaufeu KOR promo", "ko"),
+            ("Carte One Piece Monkey D. Luffy OP01-120 JAP", "ja"),
+            ("Luffy Leader Parallel OP01-003 JPN Mint", "ja"),
+            ("One Piece Nami OP01-016 ITA", "it"),
+            ("One Piece Shanks manga rare eng swirl", "en"),
+            ("One Piece Zoro KOR promo", "ko"),
         ]
         for titre, langue in cas:
             with self.subTest(titre=titre):
@@ -92,23 +86,32 @@ class TestAnnoncesEtrangeresEcartees(unittest.TestCase):
                 self.assertEqual(detect_language(titre).language, langue)
 
     def test_carte_anglaise_au_vocabulaire_de_collectionneur(self):
-        """Vue en tete des resultats de recherche le 25/08/2026 : "Pikachu"
-        s'ecrit pareil en francais, donc seul le vocabulaire trahit la carte.
-        Un seul mot anglais ne suffit pas, plusieurs oui."""
-        titre = "Pikachu 58/102 Original Base Set Unlimited Pokémon Card – Near Mint"
+        """Sans nom traduit pour trancher, c'est le vocabulaire qui doit
+        trahir la carte anglaise. Un seul mot ne suffit pas, plusieurs oui."""
+        titre = "Monkey D. Luffy OP01-120 Original Trading Card - Near Mint"
         self.assertTrue(looks_non_french(titre))
         self.assertEqual(detect_language(titre).language, "en")
 
-    def test_racine_de_langue_declinee(self):
-        """Regression du 25/08/2026 : en passant d'une recherche par
-        sous-chaine a une recherche par mot entier, "japan" ne trouvait plus
-        "japanese". Une annonce "Dialga G LV79 japanese" passait donc au
-        travers. Les declarations de langue doivent matcher en PREFIXE."""
+    def test_vocabulaire_de_jeu_ecrit_a_l_anglaise(self):
+        """« alternate art », « parallel », « starter deck » : des termes que
+        le vendeur francais ecrit autrement (alternative, parallele, deck de
+        depart)."""
         for titre in [
-            "Dialga G LV79 galactics conquest 065096 japanese",
-            "Pikachu japanese promo",
-            "Carta Pokemon italiano",
-            "Charizard germany edition",
+            "One Piece Zoro alternate art parallel",
+            "One Piece starter deck sealed",
+        ]:
+            with self.subTest(titre=titre):
+                self.assertTrue(looks_non_french(titre))
+                self.assertEqual(detect_language(titre).language, "en")
+
+    def test_racine_de_langue_declinee(self):
+        """Les declarations de langue doivent matcher en PREFIXE : sans ca,
+        "japan" ne trouve pas "japanese" et l'annonce passe au travers."""
+        for titre in [
+            "One Piece Luffy OP01-120 japanese",
+            "Zoro OP01-025 japanese promo",
+            "Carta One Piece italiano",
+            "One Piece Sanji germany edition",
         ]:
             with self.subTest(titre=titre):
                 self.assertTrue(looks_non_french(titre))
@@ -116,78 +119,105 @@ class TestAnnoncesEtrangeresEcartees(unittest.TestCase):
     def test_raison_expliquee(self):
         """Une annonce ecartee doit pouvoir etre expliquee, sinon elle
         disparait du dashboard sans que personne ne sache pourquoi."""
-        verdict = detect_language("Charizard V 017/172")
+        verdict = detect_language("One Piece Karte Ruffy Sammelkarte")
         self.assertFalse(verdict.is_french)
         self.assertTrue(verdict.reasons)
-        self.assertIn("Dracaufeu", verdict.reasons[0])
+        self.assertIn("karte", verdict.reasons[0])
+
+
+class TestLimiteConnueDuFiltre(unittest.TestCase):
+    """Ce que le filtre ne sait PAS faire sur One Piece, affirme ici pour
+    que personne ne suppose le contraire plus tard.
+
+    Sur un jeu aux noms traduits, un titre anglais muet se repere au nom
+    lui-meme. One Piece ne traduit pas ses personnages : rien, dans
+    « Monkey D. Luffy OP01-120 », ne dit la langue de la carte. Ces
+    annonces-la passent, et c'est irreductible sur le texte seul.
+    """
+
+    def test_titre_anglais_muet_passe(self):
+        for titre in [
+            "Monkey D. Luffy OP01-120",
+            "Roronoa Zoro OP01-025 Super Rare",
+            "One Piece Card Game Nami OP01-016",
+        ]:
+            with self.subTest(titre=titre):
+                self.assertFalse(
+                    looks_non_french(titre),
+                    "Si ce test se met a echouer, c'est que le filtre s'est "
+                    "durci : verifier qu'il n'ecarte pas des annonces "
+                    "francaises au passage.",
+                )
 
 
 class TestAnnoncesFrancaisesGardees(unittest.TestCase):
     def test_titres_francais_ordinaires(self):
         for titre in [
-            "Carte Pokémon Epine de Fer 062/162 Holo - Ecarlate et Violet FR",
-            "Carte Pokémon Dracaufeu V Shiny 079/073 - La Voie",
-            "Beau Lot de 10 cartes Pokémon 151 Reverse Holo EV3.5 Neuves Fr",
-            "Base Secrète de la Team Aqua 28/34 XY Double Danger 2015",
-            "Carte Pokémon Stade en Ruines Gold 215/196",
+            "Carte One Piece Monkey D. Luffy OP01-120 Secret Rare FR",
+            "Carte One Piece Roronoa Zoro OP01-025 - Romance Dawn",
+            "Beau Lot de 10 cartes One Piece Neuves Fr",
+            "Carte One Piece Nami OP01-016 état correct",
             "Carte en très bon état de collection",
         ]:
             with self.subTest(titre=titre):
                 self.assertFalse(looks_non_french(titre), titre)
 
-    def test_vendeur_qui_ecrit_les_deux_noms(self):
-        """Cas reel : beaucoup de vendeurs francais ajoutent le nom anglais
-        pour etre trouves dans les recherches. La presence du nom FRANCAIS
-        doit desarmer le signal "nom anglais"."""
-        self.assertFalse(
-            looks_non_french("Carte pokemon Dracaufeu Charizard Gold Metal 4/102 Celebrations")
-        )
-        self.assertFalse(looks_non_french("Ectoplasma (s4a 71) Shiny Star V - Gengar"))
-
     def test_mention_francaise_explicite_l_emporte(self):
-        self.assertFalse(looks_non_french("Charizard carte française VF holo"))
+        """Elle desarme meme un marqueur etranger fort : un vendeur qui
+        ecrit "carte francaise" dans un titre bilingue vend la francaise."""
+        self.assertFalse(looks_non_french("One Piece Luffy carte française VF"))
+        self.assertFalse(
+            looks_non_french("One Piece Zoro carta collezione - carte française")
+        )
 
     def test_un_seul_mot_anglais_ne_suffit_pas(self):
-        """"card", "holo", "full art" sont employes par des vendeurs
+        """"card", "holo", "original" sont employes par des vendeurs
         francais : un seul de ces mots ne doit rien declencher."""
+        self.assertFalse(looks_non_french("Carte One Piece Luffy card promo jumbo"))
+        self.assertFalse(looks_non_french("One Piece Sanji OP01-013 – Near Mint – FR"))
+
+    def test_vocabulaire_francais_desarme_les_signaux_faibles(self):
+        """Deux mots anglais suffiraient, mais le vocabulaire de vendeur
+        francais a cote rend l'annonce francaise beaucoup plus probable."""
         self.assertFalse(
-            looks_non_french("Carte card pokémon dracaufeu v de peter promo jumbo")
+            looks_non_french(
+                "Carte One Piece Luffy original trading card - envoi soigné, état neuf"
+            )
         )
-        self.assertFalse(looks_non_french("Kravos V Full Art 72/73 – Near Mint – FR"))
 
     def test_sigles_ambigus_en_francais_ignores(self):
         """"EN", "DE", "IT", "US" sont des mots francais ordinaires : ils ne
         doivent jamais compter comme sigles de langue, sinon "lot DE 10
         cartes" disparait du dashboard."""
         self.assertFalse(looks_non_french("Carte EN très bon état de collection"))
-        self.assertFalse(looks_non_french("Lot DE 10 cartes Pokémon Neuves Fr"))
-        self.assertFalse(looks_non_french("Dracaufeu IT 4/102"))
+        self.assertFalse(looks_non_french("Lot DE 10 cartes One Piece Neuves Fr"))
+        self.assertFalse(looks_non_french("Luffy IT OP01-120"))
 
     def test_titre_minimal(self):
-        self.assertFalse(looks_non_french("Carte Pokémon"))
-        self.assertFalse(looks_non_french("Pokemon"))
+        self.assertFalse(looks_non_french("Carte One Piece"))
+        self.assertFalse(looks_non_french("One Piece"))
 
 
 class TestRetroCompatibilite(unittest.TestCase):
-    """La detection precedente doit continuer de fonctionner a l'identique."""
+    """La detection de base doit continuer de fonctionner a l'identique."""
 
     def test_declaration_explicite(self):
-        self.assertTrue(looks_non_french("Zekrom carte anglaise rare"))
-        self.assertTrue(looks_non_french("Pikachu version japonaise"))
+        self.assertTrue(looks_non_french("One Piece Kaido carte anglaise rare"))
+        self.assertTrue(looks_non_french("Luffy version japonaise"))
 
     def test_alphabet_non_latin(self):
-        self.assertTrue(looks_non_french("ピカチュウ 美品"))
-        self.assertTrue(looks_non_french("포켓몬 카드"))
+        self.assertTrue(looks_non_french("ルフィ 美品"))
+        self.assertTrue(looks_non_french("원피스 카드"))
 
     def test_jeton_court(self):
-        self.assertTrue(looks_non_french("Dracaufeu JP set de base"))
+        self.assertTrue(looks_non_french("Luffy JP Romance Dawn"))
         self.assertFalse(looks_non_french("carte enjpolie fictive"))
 
     def test_entrees_vides(self):
         self.assertFalse(looks_non_french(None, "", None))
 
     def test_description_aussi_analysee(self):
-        self.assertTrue(looks_non_french("Zekrom", "État japonais, très bon état"))
+        self.assertTrue(looks_non_french("Kaido", "État japonais, très bon état"))
 
 
 if __name__ == "__main__":

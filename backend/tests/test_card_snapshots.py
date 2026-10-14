@@ -75,8 +75,8 @@ class TestReleveQuotidien(unittest.TestCase):
     def test_relancer_apres_un_changement_de_prix_met_a_jour_le_jour(self):
         enregistrer_releve_du_jour(self.db)
 
-        pikachu = self.db.query(MarketCardPrice).filter_by(display_name="Nami").first()
-        pikachu.price_eur = 2.5
+        nami = self.db.query(MarketCardPrice).filter_by(display_name="Nami").first()
+        nami.price_eur = 2.5
         self.db.commit()
 
         resultat = enregistrer_releve_du_jour(self.db)
@@ -91,17 +91,17 @@ class TestReleveQuotidien(unittest.TestCase):
         self.assertEqual(releve.price_eur, 2.5)
 
     def test_l_historique_est_rendu_dans_l_ordre(self):
-        pikachu = self.db.query(MarketCardPrice).filter_by(display_name="Nami").first()
+        nami = self.db.query(MarketCardPrice).filter_by(display_name="Nami").first()
         debut = date.today() - timedelta(days=4)
         # Insere volontairement en desordre.
         for decalage in (3, 0, 4, 1, 2):
             self.db.add(CardPriceSnapshot(
-                name_slug=pikachu.name_slug, card_code=pikachu.card_code,
+                name_slug=nami.name_slug, card_code=nami.card_code,
                 price_eur=1.0 + decalage, captured_on=debut + timedelta(days=decalage),
             ))
         self.db.commit()
 
-        historique = historique_de_la_carte(self.db, pikachu.name_slug, pikachu.card_code)
+        historique = historique_de_la_carte(self.db, nami.name_slug, nami.card_code)
         jours = [j for j, _ in historique]
         self.assertEqual(jours, sorted(jours))
         self.assertEqual(len(historique), 5)

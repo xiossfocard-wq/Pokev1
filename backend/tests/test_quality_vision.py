@@ -44,7 +44,7 @@ class TestAnalyzeCardPhotos(unittest.TestCase):
             "surface": "quelques micro-rayures",
             "confidence": "medium",
             "caveats": "photo un peu floue",
-            "printed_name": "Dracaufeu",
+            "printed_name": "Monkey D. Luffy",
             "printed_set_number": "4/102",
             "ocr_confidence": "high",
         })
@@ -52,13 +52,13 @@ class TestAnalyzeCardPhotos(unittest.TestCase):
         result = analyze_card_photos(
             api_key="fake-key",
             photo_urls=["https://example.test/photo1.jpg"],
-            title="Dracaufeu holo TBE",
+            title="Monkey D. Luffy holo TBE",
             description="Belle carte",
         )
 
         self.assertIsInstance(result, VisionQualityResult)
         self.assertAlmostEqual(result.score, 72.0)
-        self.assertEqual(result.printed_name, "Dracaufeu")
+        self.assertEqual(result.printed_name, "Monkey D. Luffy")
         self.assertEqual(result.printed_set_number, "4/102")
         self.assertEqual(result.ocr_confidence, "high")
 
@@ -121,12 +121,12 @@ class TestAnalyzeCardPhotos(unittest.TestCase):
     def test_to_dict_includes_disclaimer_and_ocr_fields(self):
         result = VisionQualityResult(
             score=80, centering="ok", corners="ok", surface="ok",
-            confidence="high", caveats="", printed_name="Mewtwo",
+            confidence="high", caveats="", printed_name="Nico Robin",
             printed_set_number="10/102", ocr_confidence="medium",
         )
         d = result.to_dict()
         self.assertIn("disclaimer", d)
-        self.assertEqual(d["printed_name"], "Mewtwo")
+        self.assertEqual(d["printed_name"], "Nico Robin")
 
 
 if __name__ == "__main__":

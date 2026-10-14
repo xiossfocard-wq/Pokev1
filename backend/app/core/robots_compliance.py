@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 CACHE_TTL_SECONDS = 6 * 3600  # 6h : robots.txt change rarement
 
-DEFAULT_USER_AGENT = "PokemonDealHunter/1.0 (+usage personnel non-commercial)"
+DEFAULT_USER_AGENT = "OnePieceDealHunter/1.0 (+usage personnel non-commercial)"
 
 
 class _RobotsCacheEntry:

@@ -30,7 +30,7 @@ PRODUCTION_BROWSE_URL = "https://api.ebay.com/buy/browse/v1/item_summary/search"
 SANDBOX_BROWSE_URL = "https://api.sandbox.ebay.com/buy/browse/v1/item_summary/search"
 
 DEFAULT_SCOPE = "https://api.ebay.com/oauth/api_scope"
-POKEMON_TCG_CATEGORY_ID = "183454"  # "Individual Trading Card Games"
+TCG_CATEGORY_ID = "183454"  # "Individual Trading Card Games", tous jeux
 
 
 @dataclass
@@ -114,7 +114,7 @@ class EbayBrowseClient:
             "Content-Type": "application/json",
         }
 
-        filters = [f"categoryIds:{{{POKEMON_TCG_CATEGORY_ID}}}"]
+        filters = [f"categoryIds:{{{TCG_CATEGORY_ID}}}"]
         price_filter_parts = []
         if min_price is not None:
             price_filter_parts.append(f"price:[{min_price}..{max_price or ''}]")
@@ -122,7 +122,7 @@ class EbayBrowseClient:
 
         params = {
             "q": keywords,
-            "category_ids": POKEMON_TCG_CATEGORY_ID,
+            "category_ids": TCG_CATEGORY_ID,
             "limit": str(limit),
             "offset": str(offset),
         }

@@ -45,7 +45,7 @@ class SearchJobStoreTest(unittest.TestCase):
             job.listing_ids = [1, 2, 3]
 
         debut = time.time()
-        job = self.store.submit("pikachu", worker)
+        job = self.store.submit("nami", worker)
         duree = time.time() - debut
 
         self.assertLess(duree, 0.5)
@@ -59,7 +59,7 @@ class SearchJobStoreTest(unittest.TestCase):
         def worker(job):
             job.listing_ids = [42]
 
-        job = self.store.submit("dracaufeu ex", worker)
+        job = self.store.submit("luffy leader", worker)
         self.assertTrue(_wait_until(lambda: job.status == STATUS_DONE))
 
         relu = self.store.get(job.id)
@@ -98,8 +98,8 @@ class SearchJobStoreTest(unittest.TestCase):
             appels.append(job.query)
             release.wait(timeout=5)
 
-        premier = self.store.submit("Pikachu", worker)
-        second = self.store.submit("  pikachu  ", worker)
+        premier = self.store.submit("Nami", worker)
+        second = self.store.submit("  nami  ", worker)
         self.assertEqual(premier.id, second.id)
 
         release.set()

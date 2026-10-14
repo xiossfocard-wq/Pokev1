@@ -196,7 +196,7 @@ export interface SearchJob {
 }
 
 // Intervalle entre deux verifications de l'avancement, et duree max avant
-// d'abandonner. Mesure sur la prod le 25/08/2026 : 325 s pour "dracaufeu"
+// d'abandonner. Mesure sur la prod le 25/08/2026 : 325 s pour une
 // (92 annonces toutes nouvelles a scorer). Le plafond precedent de 6 min
 // passait a 35 s pres — on prend une vraie marge, quitte a ce que
 // l'utilisateur abandonne de lui-meme avant.

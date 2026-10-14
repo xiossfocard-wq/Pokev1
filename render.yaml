@@ -4,7 +4,7 @@
 # limites (mise en veille après 15 min d'inactivité) et comment vivre avec.
 services:
   - type: web
-    name: pokemon-deal-hunter-backend
+    name: one-piece-deal-hunter-backend
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend

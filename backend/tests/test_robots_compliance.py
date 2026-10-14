@@ -22,7 +22,7 @@ class TestRobotsCompliance(unittest.TestCase):
 
     def test_allowed_path(self):
         with patch.object(rc, "_fetch_robots_txt", return_value=FAKE_ROBOTS_TXT):
-            self.assertTrue(rc.is_allowed("https://example.test/search?q=pikachu"))
+            self.assertTrue(rc.is_allowed("https://example.test/search?q=luffy"))
 
     def test_disallowed_path(self):
         with patch.object(rc, "_fetch_robots_txt", return_value=FAKE_ROBOTS_TXT):

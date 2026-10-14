@@ -38,19 +38,19 @@ class TestCardmarketPriceExtraction(unittest.TestCase):
         self.assertIsNone(price)
 
     def test_build_product_url(self):
-        url = self.client.build_product_url("Base-Set", "Charizard")
-        self.assertEqual(url, "https://www.cardmarket.com/en/OnePiece/Products/Singles/Base-Set/Charizard")
+        url = self.client.build_product_url("Romance-Dawn", "Monkey-D-Luffy")
+        self.assertEqual(url, "https://www.cardmarket.com/en/OnePiece/Products/Singles/Romance-Dawn/Monkey-D-Luffy")
 
 
 BULK_CSV_SEMICOLON = (
     "Name;Trend;30-days average\n"
-    "Dracaufeu VMAX;45.50;48.10\n"
-    "Pikachu Illustrator;180000.00;175000.00\n"
+    "Monkey D. Luffy;45.50;48.10\n"
+    "Shanks Manga;180000.00;175000.00\n"
 )
 
 BULK_CSV_COMMA_ALT_COLUMNS = (
     "Product Name,Price Trend\n"
-    "Mewtwo ex,3.20\n"  # séparateur CSV virgule -> décimales en point (pas d'ambiguïté possible)
+    "Nico Robin,3.20\n"  # séparateur CSV virgule -> décimales en point (pas d'ambiguïté possible)
 )
 
 BULK_CSV_BAD_FORMAT = "Foo;Bar\n1;2\n"
@@ -59,12 +59,12 @@ BULK_CSV_BAD_FORMAT = "Foo;Bar\n1;2\n"
 class TestBulkPriceGuideParsing(unittest.TestCase):
     def test_parses_semicolon_csv_with_standard_columns(self):
         prices = CardmarketPriceClient._parse_bulk_csv(BULK_CSV_SEMICOLON)
-        self.assertIn("Dracaufeu-Vmax", prices)
-        self.assertAlmostEqual(prices["Dracaufeu-Vmax"], 45.50)
+        self.assertIn("Monkey-D-Luffy", prices)
+        self.assertAlmostEqual(prices["Monkey-D-Luffy"], 45.50)
 
     def test_handles_alternate_column_names(self):
         prices = CardmarketPriceClient._parse_bulk_csv(BULK_CSV_COMMA_ALT_COLUMNS)
-        self.assertIn("Mewtwo-Ex", prices)
+        self.assertIn("Nico-Robin", prices)
 
     def test_unknown_columns_returns_empty_dict(self):
         prices = CardmarketPriceClient._parse_bulk_csv(BULK_CSV_BAD_FORMAT)

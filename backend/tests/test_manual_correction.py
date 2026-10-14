@@ -47,16 +47,16 @@ class TestCorrectionManuelle(unittest.TestCase):
         price_index._slug_cache = []
         price_index._slug_cache_at = None
 
-        # Trois "Pikachu ex" a des prix sans rapport : le rapprochement
+        # Trois "Monkey D. Luffy" a des prix sans rapport : le rapprochement
         # automatique retiendra la mediane, et se trompera.
         self.db.add_all([
-            carte("pikachu-ex", "Pikachu Ex", "SET1 1", 2.0),
-            carte("pikachu-ex", "Pikachu Ex", "SET2 2", 75.0),
-            carte("pikachu-ex", "Pikachu Ex", "SET3 3", 900.0),
+            carte("monkey-d-luffy", "Monkey D. Luffy", "ST01-001", 2.0),
+            carte("monkey-d-luffy", "Monkey D. Luffy", "OP05-119", 75.0),
+            carte("monkey-d-luffy", "Monkey D. Luffy", "OP01-120", 900.0),
         ])
         self.listing = Listing(
             source=SourcePlatform.VINTED, external_id="abc",
-            title="Carte Pokemon Pikachu ex", description="",
+            title="Carte One Piece Monkey D. Luffy", description="",
             url="https://www.vinted.fr/items/abc-carte", price=5.0,
             shipping_price=0.0, currency="EUR", photo_urls=[],
             seller_reliability_score=50.0,
@@ -163,7 +163,7 @@ class TestCorrectionManuelle(unittest.TestCase):
         automatique n'a pas a la faire disparaitre derriere son dos."""
         etrangere = Listing(
             source=SourcePlatform.VINTED, external_id="de-1",
-            title="Pokemon Karte Glurak Einzelkarte Sammelkarte", description="",
+            title="One Piece Karte Ruffy Einzelkarte Sammelkarte", description="",
             url="https://www.vinted.fr/items/de-1-carte", price=9.0,
             shipping_price=0.0, currency="EUR", photo_urls=[],
         )
@@ -187,7 +187,7 @@ def _lecture_vision(langue: str) -> VisionQualityResult:
         surface="surface propre",
         confidence="high",
         caveats="",
-        printed_name="Pikachu",
+        printed_name="Monkey D. Luffy",
         printed_set_number="058/165",
         printed_language=langue,
         ocr_confidence="high",
@@ -213,7 +213,7 @@ class TestVerdictUtilisateurEtFiltreLangue(unittest.TestCase):
 
         self.listing = Listing(
             source=SourcePlatform.VINTED, external_id="examinee",
-            title="Carte Pokemon Pikachu", description="",
+            title="Carte One Piece Luffy", description="",
             url="https://www.vinted.fr/items/examinee", price=20.0,
             shipping_price=0.0, currency="EUR", photo_urls=["https://exemple.test/1.jpg"],
             seller_reliability_score=50.0,
@@ -228,7 +228,7 @@ class TestVerdictUtilisateurEtFiltreLangue(unittest.TestCase):
         self.db.close()
 
     def test_le_filtre_sur_le_titre_ne_touche_pas_une_annonce_examinee(self):
-        self.listing.title = "Pokemon card japanese Pikachu"
+        self.listing.title = "One Piece card japanese Luffy"
         self.db.commit()
 
         with mock.patch.object(pipeline.settings, "french_only", True), \
@@ -257,7 +257,7 @@ class TestVerdictUtilisateurEtFiltreLangue(unittest.TestCase):
         """Le garde-fou ne doit pas desactiver le filtre pour tout le monde."""
         non_examinee = Listing(
             source=SourcePlatform.VINTED, external_id="jamais-vue",
-            title="Carte Pokemon Pikachu", description="",
+            title="Carte One Piece Luffy", description="",
             url="https://www.vinted.fr/items/jamais-vue", price=20.0,
             shipping_price=0.0, currency="EUR", photo_urls=["https://exemple.test/2.jpg"],
             seller_reliability_score=50.0,
@@ -275,7 +275,7 @@ class TestVerdictUtilisateurEtFiltreLangue(unittest.TestCase):
         self.assertEqual(non_examinee.status, ListingStatus.IGNORED)
 
     def test_refilter_language_ne_touche_pas_une_annonce_examinee(self):
-        self.listing.title = "Pokemon card japanese Pikachu"
+        self.listing.title = "One Piece card japanese Luffy"
         self.db.commit()
 
         with mock.patch.object(pipeline.settings, "french_only", True):

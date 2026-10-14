@@ -164,7 +164,7 @@ def _run_search_job(job: search_jobs.SearchJob):
 
 @router.post("/search")
 def start_search(
-    q: str = Query(..., min_length=2, description="ex: Pikachu, Dracaufeu ex, PAF 232"),
+    q: str = Query(..., min_length=2, description="ex: Luffy, Roronoa Zoro, OP01-120"),
 ):
     """Demarre une recherche ciblee et rend IMMEDIATEMENT un identifiant de
     job. Ne fait volontairement PAS le travail dans cette requete : la

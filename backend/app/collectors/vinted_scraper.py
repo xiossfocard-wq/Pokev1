@@ -24,11 +24,13 @@ fetch web, PAS depuis ce conteneur qui n'a pas d'accès réseau sortant) :
   la protection anti-bot (Datadome) même pour une requête ponctuelle et
   bien formée : on ne l'utilise donc PAS.
 - Les pages HTML "humaines" du catalogue (ex:
-  https://www.vinted.fr/brand/191646-pokemon?catalog[]=1502 — 1502 étant
+  https://www.vinted.fr/brand/<id>-<marque>?catalog[]=1502 — 1502 étant
   l'ID catégorie "Cartes à collectionner à l'unité") répondent normalement
   et affichent bien les annonces (prix, état, vendeur...). C'est donc cette
   famille d'URL "catalogue humain" qui est utilisée ci-dessous, combinée à
-  `search_text` pour filtrer sur "carte pokemon".
+  `search_text` pour filtrer sur le texte recherché. La structure a été
+  confirmée sur une page de marque réelle ; la marque elle-même n'entre
+  pas dans ce constat.
 - Le contenu exact du JSON embarqué (__NEXT_DATA__ / __NUXT__) n'a en
   revanche pas pu être inspecté brut (le fetch de vérification renvoie du
   texte déjà extrait/converti, pas le HTML source), donc la fonction
@@ -76,7 +78,7 @@ _JSON_BLOB_PATTERNS = [
 ]
 
 # Chaque annonce sur la page catalogue est un <a href="/items/{id}-{slug}">
-# avec un attribut title="{titre}, Marque: Pokémon, État: {état}, {prix} €,
+# avec un attribut title="{titre}, Marque: {marque}, État: {état}, {prix} €,
 # {prix avec protection acheteur} €" — confirmé sur un vrai échantillon prod
 # le 04/08/2026. La photo associée est un <img> voisin partageant le même id
 # dans son data-testid.
@@ -97,7 +99,7 @@ COOLDOWN_SECONDS_AFTER_BLOCK = 30 * 60
 # première valeur (1502) s'est révélée incorrecte lors du tout premier essai
 # en production (03/08/2026). Reconfirmée le 04/08/2026 via plusieurs pages
 # réelles trouvées par recherche web (ex:
-# vinted.fr/catalog/4874-carduri-de-tranzactionare/brand/191646-pokemon pour
+# vinted.fr/catalog/4874-carduri-de-tranzactionare/brand/<id>-<marque> pour
 # la catégorie parente "Trading cards" = 4874) : la sous-catégorie "cartes à
 # l'unité" (par opposition aux lots) est 4875. À revérifier si le scraper
 # cesse à nouveau de remonter des résultats pertinents.
@@ -105,10 +107,10 @@ TRADING_CARDS_SINGLES_CATALOG_ID = 4875
 
 # Identifiant de MARQUE Vinted, ajoute a la recherche quand il est connu.
 #
-# Il valait 191646 (Pokemon) en dur : avec le passage a One Piece, chaque
-# recherche restait donc filtree sur la marque Pokemon et ne pouvait
-# remonter QUE des cartes Pokemon. C'etait le defaut le plus grave de la
-# bascule, et il etait silencieux.
+# Un identifiant fige en dur est un piege silencieux : chaque recherche
+# reste filtree sur CETTE marque, et aucune carte d'une autre ne peut
+# remonter — sans que rien ne le signale. D'ou un reglage, et un defaut
+# vide.
 #
 # L'identifiant One Piece n'a pas pu etre releve : vinted.fr est injoignable
 # depuis l'environnement de developpement. Par defaut, AUCUN filtre de
@@ -348,8 +350,10 @@ class VintedScraper:
     def _parse_title_attr(title_attr: str) -> Optional[dict]:
         """
         title_attr ressemble à :
-        "Magicarpe FR 19/98 - Excellent, Marque: Pokémon, État: Très bon état, 2.99 €, 3.84 €"
-        Le titre peut être générique ("Pokémon" tout seul) si le vendeur n'a
+        "Luffy OP01-120 FR - Excellent, Marque: One Piece, État: Très bon état, 2.99 €, 3.84 €"
+        Le segment "Marque" varie selon ce que le vendeur a renseigné ; seule
+        sa présence sert de repère de découpage.
+        Le titre peut être générique ("One Piece" tout seul) si le vendeur n'a
         pas mis de titre descriptif — on garde quand même l'annonce, le
         matching de carte (card_matcher.py) et l'OCR photo serviront de
         filet de rattrapage dans ce cas.

@@ -264,7 +264,7 @@ class TestCatalogueHttp(unittest.TestCase):
     # --- cartes en vogue -------------------------------------------------
 
     def test_les_cartes_en_vogue_sont_classees_en_pourcentage(self):
-        """Évoli (+1,50 sur 3 EUR, soit +50 %) doit passer devant Dracaufeu
+        """Nami (+1,50 sur 3 EUR, soit +50 %) doit passer devant Luffy
         (+25 sur 394 EUR, soit +6 %), alors qu'en euros c'est l'inverse.
         C'est tout l'interet du classement en pourcentage."""
         corps = self.client.get("/api/cards/trending", params={"direction": "hausse"}).json()
@@ -279,7 +279,7 @@ class TestCatalogueHttp(unittest.TestCase):
         self.assertEqual(noms, ["Trafalgar Law"])
 
     def test_une_carte_sans_variation_n_est_pas_en_vogue(self):
-        """Mew ex n'a pas de variation publiee : l'absence de donnee ne doit
+        """Cette carte n'a pas de variation publiee : l'absence de donnee ne doit
         pas etre lue comme une stabilite, ni comme une tendance."""
         for direction in ("hausse", "baisse"):
             corps = self.client.get(

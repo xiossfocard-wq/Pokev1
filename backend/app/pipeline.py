@@ -257,7 +257,7 @@ def _score_listing(db: Session, listing: Listing, skip_vision: bool = False):
         return
 
     # Filet de rattrapage : si le titre de l'annonce n'a pas suffi à trouver
-    # un prix de référence (ex: "Lot cartes pokémon TBE" très générique) mais
+    # un prix de référence (ex: "Lot cartes One Piece TBE" très générique) mais
     # que l'analyse vision a pu lire un nom/numéro directement sur la carte
     # avec une confiance correcte, on retente avec cette identification —
     # souvent plus fiable qu'un titre écrit à la va-vite par un particulier.
@@ -379,7 +379,7 @@ def _maybe_notify(db: Session, listing: Listing, threshold: float):
             smtp_user=settings.smtp_user,
             smtp_password=settings.smtp_password,
             to_address=settings.notification_email_to,
-            subject=f"🔥 Bonne affaire Pokémon (score {listing.deal_score:.0f})",
+            subject=f"🔥 Bonne affaire One Piece (score {listing.deal_score:.0f})",
             body=format_deal_alert_html(listing),
         )
         db.add(NotificationSent(listing_id=listing.id, channel="email", success=ok))
@@ -517,7 +517,7 @@ def _existing_by_external_id(db: Session, source, external_ids: list) -> dict:
 
 def run_targeted_search(db: Session, query: str, limit: int = 60, on_progress=None) -> list:
     """
-    Recherche A LA DEMANDE sur un terme precis (ex: "Pikachu", "Dracaufeu
+    Recherche A LA DEMANDE sur un terme precis (ex: "Luffy", "Zoro
     ex", un code de set...), contrairement a run_ebay_check/run_vinted_check
     qui tournent en tache de fond sur le terme generique de config.
 

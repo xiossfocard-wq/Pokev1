@@ -63,8 +63,8 @@ _client = ZebraDexClient()
 FUZZY_MIN_RATIO = 0.80
 FUZZY_MIN_LENGTH = 5
 FUZZY_MAX_TRIES = 8
-# Ecart de longueur tolere. "dracofeu" -> "dracaufeu" (1 lettre) : oui.
-# "pikachu" -> "pikachu-ex" (3 caracteres) : non, ce sont deux cartes
+# Ecart de longueur tolere. "zorro" -> "zoro" (1 lettre) : oui.
+# "luffy" -> "luffy-leader" (7 caracteres) : non, ce sont deux cartes
 # differentes, pas une faute de frappe.
 FUZZY_MAX_LENGTH_DELTA = 2
 
@@ -226,7 +226,7 @@ class PriceMatch:
         self.confidence = confidence  # "high" | "medium" | "low"
         self.reason = reason
         # Toutes les cartes qui portaient le meme nom. Sert a chiffrer
-        # l'incertitude : si 10 cartes s'appellent "Dracaufeu" et que leurs
+        # l'incertitude : si 10 cartes s'appellent "Monkey D. Luffy" et que leurs
         # prix vont de 3 a 230 EUR, le prix median retenu ne veut pas dire
         # grand-chose et l'utilisateur doit le savoir.
         self.candidates = candidates or [row]
@@ -413,7 +413,7 @@ def _best_in_group(name: str, group: List[MarketCardPrice], set_number) -> Price
 
 def _match_by_fuzzy_name(db: Session, names: List[str], set_number) -> Optional[PriceMatch]:
     """
-    Rattrapage des fautes de frappe ("dracofeu", "salameche" mal ecrit...).
+    Rattrapage des fautes de frappe ("zorro" pour "zoro", "lufy"...).
     Compare les candidats aux noms REELLEMENT presents dans l'index, garde
     en cache la liste des noms pour ne pas la relire a chaque annonce.
 
@@ -451,7 +451,7 @@ def _match_by_fuzzy_name(db: Session, names: List[str], set_number) -> Optional[
 
 
 def _variant_tail(slug: str) -> Optional[str]:
-    """Derniere partie du slug si c'est une variante ("dracaufeu-ex" -> "ex")."""
+    """Derniere partie du slug si c'est une variante ("luffy-leader" -> "leader")."""
     tail = slug.rsplit("-", 1)[-1] if "-" in slug else None
     return tail if tail in NAME_SUFFIXES else None
 
@@ -459,7 +459,7 @@ def _variant_tail(slug: str) -> Optional[str]:
 def _is_plausible_typo(candidate: str, corrected: str) -> bool:
     """
     Garde-fou du rattrapage orthographique. Une similarite elevee ne suffit
-    pas : "pikachu" et "pikachu-ex" se ressemblent beaucoup mais sont deux
+    pas : "luffy" et "luffy-leader" se ressemblent beaucoup mais sont deux
     cartes aux prix sans rapport. On exige donc une longueur proche et une
     variante identique de part et d'autre.
     """
@@ -470,7 +470,7 @@ def _is_plausible_typo(candidate: str, corrected: str) -> bool:
 
 def _flag_variant_mismatch(match: PriceMatch, variant: Optional[str]) -> None:
     """
-    Le titre annonce "Dracaufeu V" mais la carte retenue est "Dracaufeu"
+    Le titre annonce "Luffy Leader" mais la carte retenue est "Luffy"
     tout court ? Ce sont deux cartes differentes, aux prix sans rapport.
     On garde le prix (il donne un ordre de grandeur) mais on le signale
     explicitement au lieu de le presenter comme sur.

@@ -1,16 +1,22 @@
 """
 Tests du rapprochement annonce -> carte (services/price_index.py).
 
-Tous les titres utilises ici sont de VRAIS titres d'annonces, releves le
-25/08/2026 sur les 500 dernieres annonces collectees en production. C'est
-la seule facon honnete de tester ce code : un titre invente par un
-developpeur est toujours plus propre que ce qu'ecrit un vendeur reel.
+L'index de test reproduit les pieges propres a One Piece :
 
-L'index de test reproduit fidelement deux pieges observes en prod :
-- un meme nom de carte existe dans plusieurs series a des prix tres
-  differents (10 cartes "Dracaufeu", de 3 a 250 EUR) ;
-- les codes carte melangent les conventions de zero-padding ("PBL 016"
-  mais "CEC 66"), ce qui faisait echouer la comparaison textuelle.
+- un meme personnage porte plusieurs cartes a des prix sans rapport
+  (« Monkey D. Luffy » de 2,40 € a 412 €) ;
+- un LEADER et un PERSONNAGE du meme nom sont deux cartes differentes :
+  confondre les deux, c'est afficher un prix faux en confiance ;
+- les initiales (« Monkey D. Luffy », « Portgas D. Ace ») : le « D. »
+  d'une seule lettre etait purement efface par le filtre de bruit, ce qui
+  rendait ces noms introuvables ;
+- le zero-padding du code varie entre la source et ce qu'ecrit le vendeur
+  (« OP01-004 » contre « OP01-4 »).
+
+Les titres sont construits sur les tournures reellement observees en
+production (« Carte One Piece <nom> <code> <rarete> FR », les titres tout
+en minuscules, les lots generiques) : c'est la FORME qui est testee ici,
+pas le nom des personnages.
 """
 import sys, os, unittest
 
@@ -52,139 +58,147 @@ class PriceMatchingTestCase(unittest.TestCase):
 
     def _index(self):
         return [
-            # "Dracaufeu" existe dans plusieurs series, a des prix sans
-            # rapport : c'est le piege principal du matching par nom seul.
-            card("dracaufeu", "Dracaufeu", "BS 4", 250.0, "Set de Base"),
-            card("dracaufeu", "Dracaufeu", "CEC 66", 7.48, "Cosmic Eclipse"),
-            card("dracaufeu", "Dracaufeu", "GEN 11", 3.20, "Generations"),
-            card("dracaufeu-ex", "Dracaufeu Ex", "PAF 054", 29.50, "Destinees Paldea"),
-            card("dracaufeu-v", "Dracaufeu V", "SWSH 019", 41.00, "Epee et Bouclier"),
-            # Noms francais en plusieurs mots : impossibles a retrouver
-            # avant, le parseur ne construisait que des paires de mots.
-            card("epine-de-fer", "Epine de Fer", "TEF 62", 1.90, "Forces Temporelles"),
-            card("paume-de-fer", "Paume de Fer", "TEF 61", 2.40, "Forces Temporelles"),
-            card("stade-en-ruines", "Stade en Ruines", "PAR 215", 12.00, "Faille Paradoxe"),
-            card("mew-ex", "Mew Ex", "PAF 232", 180.0, "Destinees Paldea"),
-            card("salameche", "Salameche", "MEW 004", 1.10, "151"),
+            # Le meme personnage, trois cartes, trois prix sans rapport :
+            # c'est le piege principal du rapprochement par nom seul.
+            card("monkey-d-luffy", "Monkey D. Luffy", "OP01-120", 412.0, "Romance Dawn"),
+            card("monkey-d-luffy", "Monkey D. Luffy", "OP05-119", 18.00, "Awakening"),
+            card("monkey-d-luffy", "Monkey D. Luffy", "ST01-001", 2.40, "Deck Chapeau de Paille"),
+            # Un LEADER du meme nom : carte differente, prix different.
+            card("monkey-d-luffy-leader", "Monkey D. Luffy Leader", "OP01-003", 25.00, "Romance Dawn"),
+            # Noms a initiale et noms composes.
+            card("portgas-d-ace", "Portgas D. Ace", "OP02-013", 88.00, "Paramount War"),
+            card("charlotte-katakuri", "Charlotte Katakuri", "OP02-074", 73.00, "Paramount War"),
+            card("edward-newgate", "Edward Newgate", "OP02-001", 210.0, "Paramount War"),
+            card("donquixote-doflamingo", "Donquixote Doflamingo", "OP04-040", 47.00, "Kingdoms of Intrigue"),
+            card("roronoa-zoro", "Roronoa Zoro", "OP01-025", 188.0, "Romance Dawn"),
+            # Code a zero-padding, pour le cas « OP01-4 ».
+            card("nami", "Nami", "OP01-004", 3.40, "Romance Dawn"),
         ]
 
     def match(self, titre):
         return find_price_for_listing(self.db, titre)
 
 
-class TestNomsEnPlusieursMots(PriceMatchingTestCase):
-    def test_epine_de_fer(self):
-        m = self.match("Carte Pokémon Epine de Fer 062/162 Holo - Ecarlate et Violet - Forces Temporelles FR")
-        self.assertIsNotNone(m, "un nom de carte en 3 mots doit etre retrouve")
-        self.assertEqual(m.row.display_name, "Epine de Fer")
+class TestNomsAInitialeEtComposes(PriceMatchingTestCase):
+    """Le « D. » d'une seule lettre etait efface avec la ponctuation : tous
+    les noms de ce moule — et ils sont nombreux dans One Piece — etaient
+    introuvables."""
 
-    def test_paume_de_fer(self):
-        m = self.match("Carte Pokémon Paume de Fer 061/162 - Ecarlate et Violet - Forces Temporelles FR")
-        self.assertIsNotNone(m)
-        self.assertEqual(m.row.display_name, "Paume de Fer")
+    def test_initiale_au_milieu_du_nom(self):
+        m = self.match("Carte One Piece Portgas D. Ace OP02-013 super rare FR")
+        self.assertIsNotNone(m, "un nom a initiale doit etre retrouve")
+        self.assertEqual(m.row.display_name, "Portgas D. Ace")
 
-    def test_stade_en_ruines(self):
-        m = self.match("Carte Pokémon Stade en Ruines Gold 215/196")
+    def test_initiale_sans_point(self):
+        """Beaucoup de vendeurs ecrivent « Monkey D Luffy » sans le point."""
+        m = self.match("carte one piece monkey d luffy")
         self.assertIsNotNone(m)
-        self.assertEqual(m.row.display_name, "Stade en Ruines")
+        self.assertEqual(m.row.display_name, "Monkey D. Luffy")
+
+    def test_nom_compose_en_deux_mots(self):
+        m = self.match("Carte One Piece Charlotte Katakuri OP02-074")
+        self.assertEqual(m.row.display_name, "Charlotte Katakuri")
+
+    def test_autre_nom_compose(self):
+        m = self.match("Carte One Piece Donquixote Doflamingo OP04-040 SR")
+        self.assertEqual(m.row.display_name, "Donquixote Doflamingo")
 
 
 class TestVariantes(PriceMatchingTestCase):
-    def test_variante_v_non_confondue_avec_la_carte_de_base(self):
-        """Le bug le plus couteux : "Dracaufeu V" recevait le prix de
-        "Dracaufeu" (7,48 EUR) parce que le "V" d'une seule lettre etait
-        purement efface du titre."""
-        m = self.match("Carte Pokémon Dracaufeu V Shiny 079/073 - La Voie")
+    def test_leader_non_confondu_avec_le_personnage(self):
+        """Le bug le plus couteux : un Leader et un Personnage du meme nom
+        sont deux cartes. Tant que « leader » etait traite comme du bruit,
+        le candidat « monkey-d-luffy-leader » n'etait jamais construit et
+        l'annonce recevait le prix d'une autre carte."""
+        m = self.match("Carte One Piece Monkey D. Luffy Leader OP01-003")
         self.assertIsNotNone(m)
-        self.assertEqual(m.row.display_name, "Dracaufeu V")
-        self.assertEqual(m.row.price_eur, 41.00)
+        self.assertEqual(m.row.display_name, "Monkey D. Luffy Leader")
+        self.assertEqual(m.row.price_eur, 25.00)
 
-    def test_variante_ex_prioritaire_sur_le_nom_nu(self):
-        m = self.match("Carte card pokémon dracaufeu ex 054 091")
-        self.assertEqual(m.row.display_name, "Dracaufeu Ex")
+    def test_leader_retrouve_sans_code(self):
+        m = self.match("Carte One Piece Monkey D. Luffy Leader")
+        self.assertEqual(m.row.display_name, "Monkey D. Luffy Leader")
 
     def test_variante_absente_de_l_index_est_signalee(self):
-        """"Dracaufeu VMAX" n'existe pas dans l'index : on retombe sur une
-        autre carte, et il faut le dire au lieu d'afficher un prix sur."""
-        m = self.match("Carte Pokémon Dracaufeu VMAX 020/189")
+        """« Monkey D. Luffy Manga » n'existe pas dans l'index : on retombe
+        sur une autre carte, et il faut le dire au lieu d'afficher un prix
+        sur."""
+        m = self.match("Carte One Piece Monkey D. Luffy Manga")
         self.assertIsNotNone(m)
         self.assertIsNotNone(m.warning, "un rabattement de variante doit etre signale")
+        self.assertIn("MANGA", m.warning)
         self.assertEqual(m.confidence, "low")
         self.assertTrue(m.is_uncertain)
 
     def test_pas_d_alerte_quand_la_variante_correspond(self):
-        m = self.match("Mew ex PAF 232 SIR")
+        m = self.match("Carte One Piece Monkey D. Luffy Leader OP01-003")
         self.assertIsNone(m.warning)
 
 
-class TestNumeroDeSet(PriceMatchingTestCase):
-    def test_numero_departage_les_homonymes(self):
-        """4/102 = le Dracaufeu du Set de Base (250 EUR), pas la mediane
-        des 3 Dracaufeu de l'index."""
-        m = self.match("Carte Pokémon PSA 10 Dracaufeu 4/102 célébrations")
-        self.assertEqual(m.confidence, "high")
-        self.assertEqual(m.row.card_code, "BS 4")
-        self.assertEqual(m.row.price_eur, 250.0)
-
-    def test_comparaison_numerique_et_non_textuelle(self):
-        """Le code reel est "CEC 66" (non zero-padde) : l'ancien
-        LIKE '%066' ne le trouvait jamais."""
-        m = self.match("Carte Pokémon Dracaufeu 66/236 Cosmic Eclipse")
-        self.assertEqual(m.confidence, "high")
-        self.assertEqual(m.row.card_code, "CEC 66")
-
-
 class TestCodeCarte(PriceMatchingTestCase):
-    def test_code_explicite(self):
-        m = self.match("Mew ex PAF 232 SIR")
+    def test_code_explicite_departage_les_homonymes(self):
+        """OP01-120 = le Luffy a 412 €, pas la mediane des trois."""
+        m = self.match("Carte One Piece Monkey D. Luffy OP01-120 Secret Rare")
         self.assertEqual(m.confidence, "high")
-        self.assertEqual(m.row.display_name, "Mew Ex")
+        self.assertEqual(m.row.price_eur, 412.0)
+
+    def test_un_autre_code_designe_une_autre_carte(self):
+        m = self.match("Carte One Piece Monkey D. Luffy ST01-001 neuve")
+        self.assertEqual(m.confidence, "high")
+        self.assertEqual(m.row.price_eur, 2.40)
+
+    def test_separateur_indifferent(self):
+        """Le vendeur ecrit « OP01 025 », la source « OP01-025 »."""
+        for titre in ["carte one piece zoro OP01-025",
+                      "carte one piece zoro OP01 025",
+                      "carte one piece zoro op01-025"]:
+            with self.subTest(titre=titre):
+                m = self.match(titre)
+                self.assertEqual(m.confidence, "high")
+                self.assertEqual(m.row.display_name, "Roronoa Zoro")
 
     def test_code_non_padde_dans_le_titre(self):
-        m = self.match("Carte Pokemon Salameche MEW 4 neuve")
-        self.assertEqual(m.row.display_name, "Salameche")
+        """« OP01-4 » et « OP01-004 » designent la meme carte."""
+        m = self.match("Carte One Piece Nami OP01-4")
+        self.assertEqual(m.confidence, "high")
+        self.assertEqual(m.row.display_name, "Nami")
 
     def test_mot_du_titre_pris_pour_un_code_ne_passe_plus(self):
-        """"Epine de Fer 062/162" ne doit PAS produire le code "FER 062" :
-        c'etait un faux match annonce en confiance HAUTE."""
-        m = self.match("Carte Pokémon Epine de Fer 062/162 Holo")
-        self.assertNotIn("code carte", m.reason)
+        m = self.match("Carte One Piece Charlotte Katakuri 062 162 Holo")
+        if m is not None:
+            self.assertNotIn("code carte", m.reason)
 
 
 class TestFautesDeFrappe(PriceMatchingTestCase):
     def test_faute_de_frappe_rattrapee(self):
-        m = self.match("carte pokemon dracofeu holo")
+        m = self.match("carte one piece roronoa zorro holo")
         self.assertIsNotNone(m, "une faute d'une lettre doit etre rattrapee")
         self.assertIn("faute de frappe", m.reason)
         self.assertEqual(m.confidence, "low")
 
-    def test_accent_manquant(self):
-        m = self.match("carte pokemon salameche")
-        self.assertEqual(m.row.display_name, "Salameche")
-
     def test_mot_trop_different_non_rattrape(self):
-        """On prefere ne rien trouver plutot que d'inventer : "Ronflex"
-        n'est pas une faute de frappe de "Dracaufeu"."""
-        self.assertIsNone(self.match("carte pokemon Ronflex holo"))
+        """On prefere ne rien trouver plutot que d'inventer : « Chopper »
+        n'est pas une faute de frappe de « Nami »."""
+        self.assertIsNone(self.match("carte one piece Chopper holo"))
 
 
 class TestIncertitude(PriceMatchingTestCase):
     def test_homonymes_signales_comme_incertains(self):
-        m = self.match("carte pokemon dracaufeu")
+        m = self.match("carte one piece monkey d luffy")
         self.assertEqual(m.confidence, "low")
         self.assertEqual(len(m.candidates), 3)
-        self.assertGreater(m.price_spread_eur, 200)
+        self.assertGreater(m.price_spread_eur, 400)
         self.assertTrue(m.is_uncertain)
 
     def test_details_exposes_au_frontend(self):
-        detail = self.match("carte pokemon dracaufeu").to_dict()
+        detail = self.match("carte one piece monkey d luffy").to_dict()
         for cle in ("candidates_count", "price_spread_eur", "uncertain", "warning"):
             self.assertIn(cle, detail)
         self.assertEqual(detail["candidates_count"], 3)
         self.assertTrue(detail["uncertain"])
 
     def test_match_sur_code_non_incertain(self):
-        m = self.match("Mew ex PAF 232 SIR")
+        m = self.match("Carte One Piece Monkey D. Luffy OP01-120")
         self.assertFalse(m.is_uncertain)
 
 
@@ -193,27 +207,25 @@ class TestAbsenceDeMatch(PriceMatchingTestCase):
         self.assertIsNone(self.match(""))
 
     def test_titre_sans_nom_de_carte(self):
-        self.assertIsNone(self.match("Carte Pokémon"))
+        self.assertIsNone(self.match("Carte One Piece"))
 
     def test_lot_generique(self):
-        self.assertIsNone(self.match("Beau Lot de 10 cartes Pokémon 151 Reverse Holo EV3.5 Neuves Fr"))
-
-
-if __name__ == "__main__":
-    unittest.main()
+        self.assertIsNone(
+            self.match("Beau Lot de 10 cartes One Piece Romance Dawn Neuves Fr")
+        )
 
 
 class TestSeparateurDeCodeCarte(unittest.TestCase):
     """Regression trouvee en basculant vers One Piece.
 
-    Le separateur du code depend du jeu et de la source : Pokemon ecrit
-    « PAF 232 » avec une espace, One Piece ecrit « OP01-120 » avec un tiret,
-    et les vendeurs melangent les deux. Le parseur de titre, lui, normalise
-    en espace.
+    Le separateur du code depend de la source : One Piece ecrit
+    « OP01-120 » avec un tiret, d'autres catalogues separent par une
+    espace, et les vendeurs melangent les deux. Le parseur de titre, lui,
+    normalise en espace.
 
-    Comparer les chaines telles quelles faisait echouer le rapprochement par
-    code sur TOUTES les cartes One Piece, en silence : le prix retombait sur
-    un rapprochement par nom, bien moins sur, sans que rien ne le signale.
+    Comparer les chaines telles quelles faisait echouer le rapprochement
+    par code sur TOUTES les cartes, en silence : le prix retombait sur un
+    rapprochement par nom, bien moins sur, sans que rien ne le signale.
     """
 
     def setUp(self):
@@ -255,3 +267,7 @@ class TestSeparateurDeCodeCarte(unittest.TestCase):
         match = find_price_for_listing(self.db, "Carte One Piece Zoro OP01-025")
         if match is not None:
             self.assertNotEqual(match.confidence, "high")
+
+
+if __name__ == "__main__":
+    unittest.main()

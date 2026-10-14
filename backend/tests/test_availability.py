@@ -29,7 +29,7 @@ def annonce(external_id, score, statut=ListingStatus.SCORED,
             source=SourcePlatform.VINTED, vue_il_y_a_h=0):
     return Listing(
         source=source, external_id=external_id,
-        title=f"Carte Pokemon {external_id}", description="",
+        title=f"Carte One Piece {external_id}", description="",
         url=f"https://www.vinted.fr/items/{external_id}-carte",
         price=12.0, shipping_price=0.0, currency="EUR", photo_urls=[],
         deal_score=score, status=statut,

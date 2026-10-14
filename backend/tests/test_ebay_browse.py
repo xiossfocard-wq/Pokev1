@@ -9,7 +9,7 @@ from app.collectors.ebay_browse import EbayBrowseClient
 
 SAMPLE_ITEM_SUMMARY = {
     "itemId": "v1|123456789|0",
-    "title": "Carte Pokemon Dracaufeu VMAX FR",
+    "title": "Carte One Piece Monkey D. Luffy OP01-120 FR",
     "price": {"value": "89.99", "currency": "EUR"},
     "shippingOptions": [{"shippingCost": {"value": "4.50", "currency": "EUR"}}],
     "itemWebUrl": "https://www.ebay.fr/itm/123456789",
@@ -21,7 +21,7 @@ SAMPLE_ITEM_SUMMARY = {
 
 SAMPLE_ITEM_SUMMARY_NO_SHIPPING_NO_SELLER_FEEDBACK = {
     "itemId": "v1|987654321|0",
-    "title": "Lot cartes Pokemon vrac",
+    "title": "Lot cartes One Piece vrac",
     "price": {"value": "15.0", "currency": "EUR"},
     "shippingOptions": [],
     "itemWebUrl": "https://www.ebay.fr/itm/987654321",

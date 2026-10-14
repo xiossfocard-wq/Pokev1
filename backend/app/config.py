@@ -60,13 +60,12 @@ class Settings:
     )
     # Identifiant de marque Vinted, optionnel. Vide = aucun filtre de marque,
     # la recherche se fait sur le seul texte. Voir vinted_scraper.py : il
-    # valait l'identifiant Pokemon en dur, ce qui empechait toute remontee
-    # d'annonces One Piece.
+    # etait fige en dur sur une autre marque, ce qui empechait toute
+    # remontee d'annonces One Piece.
     vinted_brand_id: Optional[str] = field(
         default_factory=lambda: os.environ.get("VINTED_BRAND_ID") or None
     )
-    # Segment du jeu dans les URL Cardmarket (/en/<jeu>/...). Il valait
-    # "Pokemon" en dur dans le collecteur.
+    # Segment du jeu dans les URL Cardmarket (/en/<jeu>/...).
     cardmarket_game_path: str = field(
         default_factory=lambda: os.environ.get("CARDMARKET_GAME_PATH", "OnePiece")
     )

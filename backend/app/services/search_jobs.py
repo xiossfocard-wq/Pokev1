@@ -1,11 +1,11 @@
 """
-File d'attente EN MEMOIRE pour les recherches ciblees ("Chercher Pikachu").
+File d'attente EN MEMOIRE pour les recherches ciblees ("Chercher Luffy").
 
 Pourquoi ce module existe
 -------------------------
 Une recherche ciblee interroge Vinted et eBay en direct, puis score chaque
 annonce trouvee (matching de prix + ecritures en base Neon). Mesure faite
-le 24/08/2026 sur la prod : 289 s a froid, 126 s a chaud pour "pikachu".
+le 24/08/2026 sur la prod : 289 s a froid, 126 s a chaud pour une recherche.
 
 Un navigateur n'attend pas aussi longtemps sur une seule requete HTTP (et
 un intermediaire type Cloudflare/Render peut couper la connexion avant).

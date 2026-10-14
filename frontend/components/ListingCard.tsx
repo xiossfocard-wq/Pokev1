@@ -76,7 +76,7 @@ export default function ListingCard({
   const safeUrl = /^https?:\/\//i.test(listing.url) ? listing.url : undefined;
 
   const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(
-    listing.title + " pokemon carte prix"
+    listing.title + " one piece carte prix"
   )}`;
   // Cardmarket exige l'extension exacte dans l'URL d'une fiche produit,
   // indevinable depuis un titre Vinted : on pointe vers leur recherche.

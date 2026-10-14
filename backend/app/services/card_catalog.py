@@ -178,7 +178,7 @@ def carte_en_dict(ligne: MarketCardPrice) -> dict:
 def themes_avec_compteurs(db: Session) -> List[dict]:
     """Liste des themes, avec le nombre de cartes et la fourchette de prix.
 
-    Permet a l'interface d'afficher « Ligne de Dracaufeu — 184 cartes, de
+    Permet a l'interface d'afficher « Equipage du Chapeau de Paille — 184 cartes, de
     0,30 a 419 EUR » plutot qu'une simple etiquette : c'est ce qui rend un
     theme choisissable.
     """

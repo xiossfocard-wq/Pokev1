@@ -3,11 +3,11 @@ Visuel officiel des cartes One Piece, deduit du code de la carte.
 
 Pourquoi par le CODE et pas par le nom
 --------------------------------------
-La version precedente de ce fichier interrogeait TCGdex, une API Pokemon,
-en cherchant par NOM. Deux problemes, et le second est le pire :
+Chercher l'illustration par NOM serait approximatif par construction, et
+c'est l'erreur que ce fichier evite :
 
-1. TCGdex ne connait pas One Piece. Aucune carte n'aurait jamais remonte.
-2. La recherche par nom est approximative par construction. « Luffy »
+1. les API d'illustrations grand public couvrent surtout d'autres jeux ;
+2. « Luffy »
    designe une quarantaine de cartes differentes ; la premiere reponse
    n'est pas forcement celle qu'on a en base, et rien ne permet de le
    savoir. On aurait affiche le visuel d'une autre carte sous un prix,

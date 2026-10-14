@@ -12,8 +12,8 @@ guide cette version :
 - les noms de cartes francais font souvent 3 mots ("Epine de Fer", "Paume
   de Fer", "Stade en Ruines") : la version precedente ne construisait que
   des paires de mots et les ratait toutes ;
-- les variantes ecrites avec une seule lettre ("Dracaufeu V", "Mega-
-  Dracaufeu X") etaient purement et simplement effacees par le filtre
+- les variantes et initiales ecrites avec une seule lettre ("Monkey D.
+  Luffy", "Portgas D. Ace") etaient purement et simplement effacees par le filtre
   `len(mot) > 1`, si bien qu'une carte V recevait le prix de la carte de
   base (7,48 EUR au lieu du prix reel) ;
 - les codes modernes de type "sv8a 215" n'etaient pas reconnus.
@@ -56,8 +56,8 @@ TITLE_NOISE = {
     # « monkey-d-luffy ».
     "one", "piece", "onepiece", "tcg", "bandai",
     # Rarete et traitements propres a One Piece.
-    "sec", "sr", "ur", "manga", "leader", "parallele", "parallel",
-    "alternative", "super",
+    "sr", "ur", "parallel",
+    "super",
     # « d » est garde comme MOT par _words (initiale de « Monkey D. Luffy »),
     # mais reste du remplissage : un groupe ne peut ni commencer ni finir par
     # lui, il ne peut que se trouver au milieu d'un nom.
@@ -68,21 +68,37 @@ TITLE_NOISE = {
     "cgc", "the", "de", "du", "des", "la", "le", "les", "un", "une", "et",
     "en", "au", "aux", "avec", "pour", "sur", "vends", "vend", "vente",
     "prix", "envoi", "protege", "sleeve", "toploader", "shiny", "reverse",
-    "promo", "jumbo", "full", "art", "secret", "alt", "gold", "near",
+    "promo", "jumbo", "full", "art", "gold", "near",
     "grade", "gradee", "graded", "edition", "ere", "eme", "vintage",
     "collection", "belle", "beau", "sans", "doubles", "serie", "series",
     "bloc", "niv",
 }
 
 # Suffixes qui font partie du nom reel d'une carte : gardes dans les
-# groupes de mots (ex "mew-ex", "dracaufeu-v"), jamais utilises seuls et
-# jamais en debut de groupe.
-NAME_SUFFIXES = {"ex", "gx", "v", "vmax", "vstar", "star", "prime", "lv", "x", "y"}
+# groupes de mots ("monkey-d-luffy-leader", "roronoa-zoro-parallele"),
+# jamais utilises seuls et jamais en debut de groupe.
+#
+# Ils ne sont PAS du bruit, et c'est tout l'enjeu : un Leader et un
+# Personnage du meme nom sont deux cartes differentes, souvent a des prix
+# sans rapport. Tant que ces mots etaient traites comme du remplissage,
+# deux choses cassaient en silence :
+#
+# 1. un groupe ne peut pas finir par un mot de bruit, donc le candidat
+#    "monkey-d-luffy-leader" n'etait jamais construit : une annonce
+#    « Luffy Leader » ne retrouvait pas sa carte ;
+# 2. `extract_variant` ne rendait jamais rien, donc l'alerte « le titre
+#    annonce une variante que la carte retenue n'a pas » ne se declenchait
+#    jamais. Le prix d'un Personnage pouvait s'afficher, en confiance,
+#    sous une annonce de Leader.
+NAME_SUFFIXES = {
+    "leader", "parallele", "manga", "alternative", "alt",
+    "secret", "sec",
+}
 
-# Variantes ecrites sur une seule lettre. Le filtre general ignore les
-# mots d'une lettre (bruit de ponctuation) ; celles-ci font exception car
-# elles changent completement la valeur de la carte.
-VARIANT_LETTERS = {"v", "x", "y"}
+# Variantes ecrites sur une seule lettre. One Piece n'en a pas : ses
+# variantes s'ecrivent en toutes lettres (ci-dessus). L'ensemble reste
+# defini — le filtre de mots courts s'y refere — mais vide.
+VARIANT_LETTERS: set = set()
 
 # Taille maximale d'un groupe de mots teste comme nom de carte. 4 couvre
 # "Base Secrete de la Team Aqua" tronque a "secrete-de-la-team" et surtout
@@ -165,13 +181,13 @@ def extract_name_candidates(text: str) -> List[str]:
     Slugs candidats depuis le titre, ordonnes du PLUS SPECIFIQUE au moins
     specifique : groupes de 4 mots, puis 3, puis 2, puis mots isoles.
     C'est cet ordre qui garantit qu'on essaie "epine-de-fer" avant "epine",
-    et "dracaufeu-ex" avant "dracaufeu".
+    et "monkey-d-luffy" avant "luffy".
 
     Regles de bon sens pour ne pas noyer la requete SQL sous du bruit :
     - un groupe ne peut ni commencer ni finir par un mot de remplissage
       ("carte one piece ...", "... de") ;
     - un groupe ne peut pas commencer par un suffixe de variante ("v-shiny"
-      n'est pas un nom de carte, "dracaufeu-v" oui) ;
+      n'est pas un nom de carte, "monkey-d-luffy" oui) ;
     - un groupe contenant un nombre est ecarte (le numero de set est traite
       separement) ;
     - un groupe doit contenir au moins un mot qui ne soit ni du bruit ni un
@@ -208,7 +224,7 @@ def extract_variant(text: str) -> Optional[str]:
     """
     Variante explicitement annoncee dans le titre ("ex", "gx", "v",
     "vmax"...). Sert a detecter un rabattement dangereux : si le titre dit
-    "Dracaufeu V" et qu'on finit par retenir la carte "Dracaufeu" tout
+    "Monkey D. Luffy" et qu'on finit par retenir la carte "Luffy" tout
     court, le prix de reference est celui d'une autre carte, bien moins
     chere - il faut le signaler plutot que de l'afficher comme un prix sur.
     """

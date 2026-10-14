@@ -8,7 +8,7 @@ name: Trigger deal check
 #
 # Configuration requise : dans Settings -> Secrets and variables -> Actions
 # du repo, ajouter un secret BACKEND_URL avec l'URL du backend déployé (ex
-# https://pokemon-deal-hunter-backend.onrender.com, sans slash final).
+# https://<ton-service>.onrender.com, sans slash final).
 
 on:
   schedule:

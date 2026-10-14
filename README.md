@@ -171,9 +171,9 @@ l'environnement de développement ne peut pas joindre, et aucune n'a donc pu
 | `CARD_IMAGE_BASE_URL` | liste officielle du jeu | Confirme avec `GET /api/admin/debug-card-images?code=OP01-001` : la réponse donne le code HTTP de chaque adresse essayée. |
 
 Le filtre de marque Vinted mérite une explication. Il était **figé sur
-l'identifiant Pokémon** : chaque recherche restait filtrée sur cette marque
-et ne pouvait donc remonter que des cartes Pokémon. C'était le défaut le plus
-grave du changement de jeu, et il était silencieux. Par défaut, plus aucun
+l'identifiant d'une autre marque** : chaque recherche restait filtrée
+dessus et ne pouvait donc remonter aucune carte One Piece. C'était le défaut
+le plus grave, et il était silencieux. Par défaut, plus aucun
 filtre de marque n'est appliqué : la recherche se fait sur le seul texte,
 moins précise mais juste. Mieux vaut trop d'annonces que les annonces d'un
 autre jeu.
@@ -186,12 +186,12 @@ ZebraDex ne publie pas d'image exploitable. Les visuels viennent donc de la
 **Par le code de la carte, pas par son nom.** C'est le point important.
 L'illustration de `OP01-120` vit à une adresse qui se déduit directement de
 ce code : `<base>/OP01-120.png`. Pas de recherche, pas d'API, pas
-d'ambiguïté. La version précédente de ce collecteur interrogeait TCGdex en
-cherchant **par nom** — doublement faux : TCGdex est une API Pokémon qui ne
-connaît pas One Piece, et une quarantaine de cartes s'appellent « Luffy »,
-donc même en couvrant le jeu elle aurait pu rendre le visuel d'une autre
-carte sous un prix. Afficher la mauvaise image est pire que n'en afficher
-aucune : c'est l'image qu'on regarde pour décider d'acheter.
+d'ambiguïté. Chercher **par nom**, comme le ferait une API d'illustrations
+généraliste, serait beaucoup moins sûr : une quarantaine de cartes
+s'appellent « Luffy », et la réponse pourrait être le visuel d'une autre
+carte, affiché sous un prix. Montrer la mauvaise image est pire que n'en
+montrer aucune — c'est justement l'image qu'on regarde pour décider
+d'acheter.
 
 **Chaque adresse est vérifiée avant d'être enregistrée.** Construire une URL
 ne prouve pas qu'elle existe. Le collecteur fait une requête de contrôle
@@ -369,7 +369,7 @@ Le dépôt git est déjà initialisé en local avec un premier commit. Il ne res
 
 ```bash
 # Crée d'abord un repo vide sur https://github.com/new (sans README ni .gitignore, ils existent déjà)
-git remote add origin https://github.com/<ton-compte>/pokemon-deal-hunter.git
+git remote add origin https://github.com/<ton-compte>/<ton-depot>.git
 git branch -M main
 git push -u origin main
 ```
@@ -384,7 +384,7 @@ git push -u origin main
 
 1. https://render.com → New → Blueprint → sélectionner ton repo GitHub (le fichier `render.yaml` à la racine est détecté automatiquement).
 2. Renseigner les variables marquées `sync: false` dans le dashboard Render : `DATABASE_URL` (Neon), `EBAY_CLIENT_ID`/`EBAY_CLIENT_SECRET`, et les autres clés optionnelles quand tu les auras.
-3. Noter l'URL du service déployé (ex `https://pokemon-deal-hunter-backend.onrender.com`).
+3. Noter l'URL du service déployé (ex `https://<ton-service>.onrender.com`).
 
 **Limite du plan gratuit** : le service s'endort après 15 min sans requête. Deux options :
 - **Accepter la mise en veille** : configurer le secret GitHub `BACKEND_URL` (Settings → Secrets and variables → Actions) avec l'URL Render, le workflow `.github/workflows/trigger-check.yml` réveille le backend et lance un cycle de vérification toutes les 20 min, gratuitement, via GitHub Actions.

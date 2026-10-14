@@ -76,7 +76,7 @@ def annonce(**surcharges):
     valeurs = dict(
         source=SourcePlatform.VINTED,
         external_id="ext-1",
-        title="Dracaufeu ex 006/165",
+        title="Monkey D. Luffy OP01-120",
         description="",
         url="https://www.vinted.fr/items/1",
         price=25.0,
@@ -185,7 +185,7 @@ class TestRoutesHttp(unittest.TestCase):
         corps = reponse.json()
         self.assertEqual(len(corps), 1)
         self.assertEqual(corps[0]["id"], ligne.id)
-        self.assertEqual(corps[0]["title"], "Dracaufeu ex 006/165")
+        self.assertEqual(corps[0]["title"], "Monkey D. Luffy OP01-120")
         self.assertEqual(corps[0]["price"], 25.0)
 
     def test_detail_d_une_annonce(self):
