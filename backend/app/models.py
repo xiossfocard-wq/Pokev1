@@ -198,6 +198,11 @@ class MarketCardPrice(Base):
     # volume. Recalcule a chaque synchronisation de la carte.
     theme_slugs = Column(String(512), nullable=True, index=True)
 
+    # Nom + code normalises (minuscules, sans accents) pour une recherche
+    # libre insensible a la casse et aux accents, identique sous SQLite et
+    # sous Postgres. Voir card_themes.cle_de_recherche pour le pourquoi.
+    search_key = Column(String(512), nullable=True, index=True)
+
     # --- Visuel de la carte ----------------------------------------------
     # ZebraDex ne publie pas d'image : elle vient d'une source distincte
     # (voir collectors/card_images.py). `image_checked_at` est renseigne

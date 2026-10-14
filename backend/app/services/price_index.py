@@ -48,7 +48,9 @@ from app.matching.title_parser import (
     extract_set_number, extract_variant,
 )
 from app.models import MarketCardPrice, ZebraDexSeriesState
-from app.services.card_themes import encoder_themes, themes_de_la_carte
+from app.services.card_themes import (
+    cle_de_recherche, encoder_themes, themes_de_la_carte,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -201,6 +203,7 @@ def _upsert_card_price(db: Session, card) -> None:
         # synchronisee avant l'ajout d'un theme doit le rejoindre au
         # passage suivant sans intervention.
         theme_slugs=encoder_themes(themes_de_la_carte(card.name, card.rarity)),
+        search_key=cle_de_recherche(card.name, card.card_code),
     )
     if existing:
         for key, value in values.items():

@@ -25,7 +25,7 @@ from app.models import CardPriceSnapshot, MarketCardPrice
 from app.services.card_catalog import (
     enregistrer_releve_du_jour,
     historique_de_la_carte,
-    recalculer_themes,
+    recalculer_champs_derives,
 )
 from app.services.card_themes import decoder_themes
 
@@ -133,7 +133,7 @@ class TestRattrapageDesThemes(unittest.TestCase):
         self.db.add(carte("Noctali VMAX", 180.0, themes=None))
         self.db.commit()
 
-        resultat = recalculer_themes(self.db)
+        resultat = recalculer_champs_derives(self.db)
         self.assertEqual(resultat["updated"], 1)
 
         ligne = self.db.query(MarketCardPrice).one()
@@ -145,15 +145,15 @@ class TestRattrapageDesThemes(unittest.TestCase):
         self.db.add(carte("Pikachu", 1.0))
         self.db.commit()
 
-        recalculer_themes(self.db)
-        resultat = recalculer_themes(self.db)
+        recalculer_champs_derives(self.db)
+        resultat = recalculer_champs_derives(self.db)
         self.assertEqual(resultat["updated"], 0)
 
     def test_la_rarete_est_prise_en_compte(self):
         self.db.add(carte("Carte quelconque", 10.0, rarete="Illustration Rare"))
         self.db.commit()
 
-        recalculer_themes(self.db)
+        recalculer_champs_derives(self.db)
         ligne = self.db.query(MarketCardPrice).one()
         self.assertIn("illustration-rare", decoder_themes(ligne.theme_slugs))
 

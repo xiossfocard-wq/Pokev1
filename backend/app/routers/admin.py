@@ -213,19 +213,21 @@ def enrich_card_images_now(limit: int = Query(40, ge=1, le=200)):
         db.close()
 
 
-@router.post("/recompute-card-themes")
-def recompute_card_themes(limit: int = Query(5000, ge=1, le=50000)):
-    """Recalcule les themes des cartes deja en base.
+@router.post("/recompute-card-fields")
+def recompute_card_fields(limit: int = Query(5000, ge=1, le=50000)):
+    """Recalcule les champs derives des cartes deja en base : les themes et
+    la cle de recherche.
 
-    Necessaire au premier deploiement (les cartes synchronisees avant que
-    les themes existent n'en portent aucun) et apres chaque ajout de theme.
-    Sans ce rattrapage, un nouveau theme resterait vide jusqu'a la
+    A LANCER UNE FOIS apres le deploiement : les cartes synchronisees avant
+    l'existence de ces colonnes n'en portent aucune, donc leurs themes sont
+    vides et la recherche libre ne les trouve pas. A relancer ensuite apres
+    chaque ajout de theme. Sans ce rattrapage, il faudrait attendre la
     resynchronisation complete du catalogue, qui prend des jours au rythme
     impose a ZebraDex.
     """
     db = SessionLocal()
     try:
-        return card_catalog.recalculer_themes(db, limite=limit)
+        return card_catalog.recalculer_champs_derives(db, limite=limit)
     finally:
         db.close()
 

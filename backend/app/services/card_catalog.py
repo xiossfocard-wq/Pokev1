@@ -51,11 +51,22 @@ def _requete_filtree(
     requete = db.query(MarketCardPrice)
 
     if q:
-        motif = f"%{q.strip().lower()}%"
+        # La requete est normalisee exactement comme `search_key` l'a ete a
+        # l'ecriture : minuscules, sans accents. C'est ce qui rend la
+        # recherche insensible a la casse ET aux accents, et identique sous
+        # SQLite et sous Postgres. Chercher sur le nom affiche ne marchait
+        # pas : `lower()` de SQLite ignore les accents, et personne ne tape
+        # « Électhor ». Voir card_themes.cle_de_recherche.
+        normalise = card_themes.cle_de_recherche(q)
+        # Replis pour les lignes pas encore rattrapees par
+        # /api/admin/recompute-card-fields : sans eux, une base synchronisee
+        # avant cette colonne ne rendrait plus rien du tout. Le slug est deja
+        # sans accents mais separe par des tirets ; le code de carte est de
+        # l'ASCII, donc `lower()` s'y comporte pareil sous SQLite et Postgres.
         requete = requete.filter(
-            func.lower(MarketCardPrice.display_name).like(motif)
-            | func.lower(MarketCardPrice.name_slug).like(motif)
-            | func.lower(func.coalesce(MarketCardPrice.card_code, "")).like(motif)
+            func.coalesce(MarketCardPrice.search_key, "").like(f"%{normalise}%")
+            | MarketCardPrice.name_slug.like(f"%{normalise.replace(' ', '-')}%")
+            | func.lower(func.coalesce(MarketCardPrice.card_code, "")).like(f"%{normalise}%")
         )
 
     if theme:
@@ -341,25 +352,30 @@ def historique_de_la_carte(db: Session, name_slug: str,
     return [(ligne.captured_on, ligne.price_eur) for ligne in lignes]
 
 
-def recalculer_themes(db: Session, limite: int = 5000) -> dict:
-    """Recalcule `theme_slugs` sur les cartes deja en base.
+def recalculer_champs_derives(db: Session, limite: int = 5000) -> dict:
+    """Recalcule les champs DERIVES des cartes deja en base : les themes et
+    la cle de recherche.
 
-    Necessaire a deux moments : au deploiement de cette fonctionnalite, ou
-    toutes les cartes ont ete synchronisees avant que les themes existent,
-    et apres chaque ajout de theme dans card_themes.py. Sans ce rattrapage,
-    un nouveau theme resterait vide jusqu'a la resynchronisation complete du
-    catalogue, qui prend des jours au rythme impose a ZebraDex.
+    Necessaire a trois moments : au deploiement de ces fonctionnalites, ou
+    toutes les cartes ont ete synchronisees avant que ces colonnes existent ;
+    apres chaque ajout de theme dans card_themes.py ; et si la normalisation
+    de la cle de recherche change. Sans ce rattrapage, un nouveau theme
+    resterait vide et la recherche ne rendrait rien sur les anciennes lignes,
+    jusqu'a la resynchronisation complete du catalogue — qui prend des jours
+    au rythme impose a ZebraDex.
     """
     cartes = db.query(MarketCardPrice).limit(limite).all()
     modifiees = 0
     for carte in cartes:
-        nouveau = card_themes.encoder_themes(
+        themes = card_themes.encoder_themes(
             card_themes.themes_de_la_carte(carte.display_name, carte.rarity)
         )
-        if carte.theme_slugs != nouveau:
-            carte.theme_slugs = nouveau
+        cle = card_themes.cle_de_recherche(carte.display_name, carte.card_code)
+        if carte.theme_slugs != themes or carte.search_key != cle:
+            carte.theme_slugs = themes
+            carte.search_key = cle
             modifiees += 1
     db.commit()
-    logger.info("Themes : %d carte(s) examinee(s), %d mise(s) a jour",
+    logger.info("Champs derives : %d carte(s) examinee(s), %d mise(s) a jour",
                 len(cartes), modifiees)
     return {"examined": len(cartes), "updated": modifiees}

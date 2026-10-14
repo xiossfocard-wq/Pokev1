@@ -46,7 +46,7 @@ def rechercher(
         raise HTTPException(
             status_code=400,
             detail=(
-                f"Theme inconnu : « {theme} ». Valeurs acceptees : "
+                f"Thème inconnu : « {theme} ». Valeurs acceptées : "
                 f"{', '.join(card_themes.slugs_connus())}."
             ),
         )
@@ -54,13 +54,13 @@ def rechercher(
     if trend not in TENDANCES_ACCEPTEES:
         raise HTTPException(
             status_code=400,
-            detail=f"Tendance inconnue. Valeurs acceptees : {', '.join(TENDANCES_ACCEPTEES)}.",
+            detail=f"Tendance inconnue. Valeurs acceptées : {', '.join(TENDANCES_ACCEPTEES)}.",
         )
 
     if sort_by not in TRIS_ACCEPTES:
         raise HTTPException(
             status_code=400,
-            detail=f"Tri inconnu. Valeurs acceptees : {', '.join(TRIS_ACCEPTES)}.",
+            detail=f"Tri inconnu. Valeurs acceptées : {', '.join(TRIS_ACCEPTES)}.",
         )
 
     # Une fourchette inversee ne rend jamais rien : plutot que de servir une
@@ -68,7 +68,7 @@ def rechercher(
     if price_min is not None and price_max is not None and price_min > price_max:
         raise HTTPException(
             status_code=400,
-            detail="Le prix minimum est superieur au prix maximum.",
+            detail="Le prix minimum est supérieur au prix maximum.",
         )
 
     return card_catalog.rechercher_cartes(
@@ -115,7 +115,7 @@ def cartes_en_vogue(
             status_code=400, detail="Direction inconnue : hausse | baisse.",
         )
     if theme and card_themes.theme_par_slug(theme) is None:
-        raise HTTPException(status_code=400, detail=f"Theme inconnu : « {theme} ».")
+        raise HTTPException(status_code=400, detail=f"Thème inconnu : « {theme} ».")
 
     cartes = card_catalog.cartes_en_vogue(
         db, sens=direction, prix_min=price_min, prix_max=price_max,
@@ -126,8 +126,8 @@ def cartes_en_vogue(
         "count": len(cartes),
         "cartes": cartes,
         "source_note": (
-            "Variation sur 7 jours publiee par ZebraDex. C'est une donnee de "
-            "marche reelle, pas une estimation."
+            "Variation sur 7 jours publiée par ZebraDex. C'est une donnée de "
+            "marché réelle, pas une estimation."
         ),
     }
 

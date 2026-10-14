@@ -34,7 +34,9 @@ if TestClient is not None:
     from app.database import SessionLocal, init_db
     from app.main import app
     from app.models import CardPriceSnapshot, MarketCardPrice
-    from app.services.card_themes import encoder_themes, themes_de_la_carte
+    from app.services.card_themes import (
+        cle_de_recherche, encoder_themes, themes_de_la_carte,
+    )
 
 
 def carte(nom, prix, rarete=None, serie="Faille Paradoxe", code=None,
@@ -53,6 +55,7 @@ def carte(nom, prix, rarete=None, serie="Faille Paradoxe", code=None,
         variation_7d_eur=variation,
         source="zebradex",
         theme_slugs=encoder_themes(themes_de_la_carte(nom, rarete)),
+        search_key=cle_de_recherche(nom, code),
         image_url=image,
         image_source="tcgdex" if image else None,
     )
@@ -106,6 +109,52 @@ class TestCatalogueHttp(unittest.TestCase):
         corps = self.client.get("/api/cards", params={"q": "PAF 232"}).json()
         self.assertEqual(corps["total"], 1)
         self.assertEqual(corps["cartes"][0]["display_name"], "Mew ex")
+
+    def test_recherche_insensible_aux_accents(self):
+        """Regression. Deux defauts se cumulaient et rendaient la recherche
+        inutilisable sur les noms accentues :
+
+        - `lower()` de SQLite ne traite que l'ASCII, donc « Évoli » y restait
+          « Évoli » alors que Python en faisait « évoli » : taper le nom
+          exact, accent compris, ne rendait RIEN ;
+        - personne ne tape les accents, et « electhor ex » ne correspondait
+          ni au name_slug (« electhor-ex », avec un tiret) ni au nom affiche
+          (« Électhor ex »), y compris sous Postgres.
+
+        Les quatre graphies doivent desormais ramener la carte."""
+        for graphie in ("Évoli", "évoli", "Evoli", "evoli"):
+            corps = self.client.get("/api/cards", params={"q": graphie}).json()
+            self.assertEqual(
+                corps["total"], 1,
+                f"la recherche « {graphie} » ne trouve pas la carte",
+            )
+            self.assertEqual(corps["cartes"][0]["display_name"], "Évoli")
+
+    def test_recherche_sans_accent_sur_un_nom_compose(self):
+        """Le cas qui echouait AUSSI sous Postgres : nom accentue en deux
+        mots, cherche sans accent et avec un espace."""
+        self.db.add(carte("Électhor ex", 41.0, "Double Rare", code="MEW 145"))
+        self.db.commit()
+
+        for graphie in ("electhor ex", "Électhor ex", "ELECTHOR"):
+            corps = self.client.get("/api/cards", params={"q": graphie}).json()
+            self.assertEqual(corps["total"], 1, f"echec sur « {graphie} »")
+
+    def test_la_recherche_fonctionne_avant_le_rattrapage(self):
+        """Une base synchronisee avant l'ajout de la cle de recherche ne doit
+        pas devenir mystérieusement vide : le repli sur le slug et sur le
+        code de carte prend le relais jusqu'au passage de
+        /api/admin/recompute-card-fields."""
+        ancienne = carte("Mentali ex", 72.0, "Illustration Rare", code="PAF 189")
+        ancienne.search_key = None  # comme avant la migration
+        self.db.add(ancienne)
+        self.db.commit()
+
+        par_slug = self.client.get("/api/cards", params={"q": "mentali"}).json()
+        self.assertGreaterEqual(par_slug["total"], 1)
+
+        par_code = self.client.get("/api/cards", params={"q": "PAF 189"}).json()
+        self.assertGreaterEqual(par_code["total"], 1)
 
     def test_filtre_par_theme(self):
         corps = self.client.get("/api/cards", params={"theme": "evolutions-evoli"}).json()

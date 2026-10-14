@@ -148,7 +148,7 @@ class TestProjection(unittest.TestCase):
 
     def test_l_avertissement_d_extrapolation_est_present(self):
         p = projection(_serie(30))
-        self.assertIn("prevision", p.avertissement.lower())
+        self.assertIn("prévision", p.avertissement.lower())
 
 
 if __name__ == "__main__":

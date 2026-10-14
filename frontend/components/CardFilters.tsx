@@ -62,7 +62,10 @@ export default function CardFilters({
   const themesType = themes.filter((t) => t.famille === "type");
 
   return (
-    <aside className="flex w-full shrink-0 flex-col gap-3.5 rounded-md border border-ink-700 bg-ink-900 p-3.5 lg:w-64">
+    // Collant sur grand ecran : la grille fait plusieurs ecrans de haut, et
+    // sans ca les filtres partaient hors de vue des la deuxieme rangee —
+    // il fallait remonter tout en haut pour changer un critere.
+    <aside className="flex w-full shrink-0 flex-col gap-3.5 self-start rounded-md border border-ink-700 bg-ink-900 p-3.5 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:w-64 lg:overflow-y-auto">
       <div className="flex items-center justify-between">
         <h2 className="font-display text-sm text-parchment-100">Filtres</h2>
         <button

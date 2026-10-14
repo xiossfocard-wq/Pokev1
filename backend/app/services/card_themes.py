@@ -49,6 +49,29 @@ def _sans_accents(texte: str) -> str:
     return "".join(c for c in decompose if unicodedata.category(c) != "Mn").lower()
 
 
+def cle_de_recherche(display_name: str, card_code: Optional[str] = None) -> str:
+    """Cle de recherche normalisee : minuscules, sans accents, espaces
+    uniformes, nom et code reunis.
+
+    Elle existe parce que chercher directement sur le nom affiche ne marche
+    pas, pour deux raisons cumulees :
+
+    - `lower()` de SQLite ne traite que l'ASCII : « Évoli » y reste
+      « Évoli », alors que Python en fait « évoli ». Taper le nom exact,
+      accent compris, ne rendait donc rien en developpement ;
+    - personne ne tape les accents. « electhor ex » ne correspond ni au
+      `name_slug` (« electhor-ex », avec un tiret) ni au nom affiche
+      (« Électhor ex », avec l'accent) — y compris sous Postgres, ou
+      `lower()` gere pourtant les accents.
+
+    Normaliser des DEUX cotes, a l'ecriture et dans la requete, rend la
+    recherche insensible a la casse ET aux accents, de facon identique
+    sous SQLite et sous Postgres.
+    """
+    base = _sans_accents(f"{display_name or ''} {card_code or ''}")
+    return " ".join(base.split())
+
+
 # --- definition d'un theme -----------------------------------------------
 
 

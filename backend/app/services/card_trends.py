@@ -177,15 +177,15 @@ def _fiabilite(points: int, jours: int, r2: float) -> str:
 
 
 _AVERTISSEMENT_INSUFFISANT = (
-    "Historique trop court pour degager une tendance de fond : il faut au "
-    f"moins {MIN_POINTS} releves etales sur {MIN_JOURS} jours. L'historique "
-    "se constitue a raison d'un releve par jour, il n'existe donc pas "
-    "retroactivement."
+    "Historique trop court pour dégager une tendance de fond : il faut au "
+    f"moins {MIN_POINTS} relevés étalés sur {MIN_JOURS} jours. L'historique "
+    "se constitue à raison d'un relevé par jour, il n'existe donc pas "
+    "rétroactivement."
 )
 
 _AVERTISSEMENT_EXTRAPOLATION = (
-    "Prolongement de la pente recente, pas une prevision : suppose que rien "
-    "ne change. Une reimpression, un resultat de tournoi ou une video virale "
+    "Prolongement de la pente récente, pas une prévision : suppose que rien "
+    "ne change. Une réimpression, un résultat de tournoi ou une vidéo virale "
     "peuvent inverser la tendance en quelques jours."
 )
 

@@ -93,9 +93,27 @@ C'est une **heuristique sur le nom**, pas une base de données Pokémon
 exhaustive. Les noms français sont prioritaires (la source publie en
 français) avec les noms anglais en alias. Un thème raté n'enlève rien à la
 carte, qui reste trouvable par la recherche libre. Pour ajouter un thème :
-compléter `card_themes.py`, puis `POST /api/admin/recompute-card-themes`
+compléter `card_themes.py`, puis `POST /api/admin/recompute-card-fields`
 pour rattraper les cartes déjà en base — sinon le nouveau thème resterait
 vide jusqu'à la resynchronisation complète du catalogue, qui prend des jours.
+
+### La recherche
+
+Elle est **insensible à la casse et aux accents** : « Évoli », « evoli » et
+« EVOLI » ramènent la même carte, et « electhor ex » trouve « Électhor ex ».
+
+Ce n'était pas gratuit. Chercher directement sur le nom affiché échouait
+pour deux raisons cumulées : le `lower()` de SQLite ne traite que l'ASCII,
+donc « Évoli » y restait « Évoli » alors que Python en faisait « évoli » ;
+et personne ne tape les accents, or « electhor ex » ne correspond ni au
+`name_slug` (« electhor-ex », avec un tiret) ni au nom affiché, y compris
+sous Postgres. Une colonne `search_key` normalisée est donc calculée à
+l'écriture, et la requête est normalisée de la même façon.
+
+**Après le déploiement, lancer une fois `POST /api/admin/recompute-card-fields`** :
+les cartes synchronisées avant l'existence de cette colonne ne la portent
+pas. Un repli sur le slug et sur le code de carte évite que la recherche
+devienne vide entre-temps, mais il est moins précis.
 
 ### Les tendances : deux choses très différentes
 
@@ -173,7 +191,7 @@ Deux limites assumées, même quand l'API répond :
 | `GET /api/cards/{id}` | Fiche : thèmes, historique, tendance de fond, projection |
 | `POST /api/admin/snapshot-card-prices` | Relevé de prix du jour (rattrapage manuel) |
 | `POST /api/admin/enrich-card-images` | Complète les visuels manquants |
-| `POST /api/admin/recompute-card-themes` | Rattrape les thèmes après un ajout |
+| `POST /api/admin/recompute-card-fields` | Rattrape les thèmes et la clé de recherche (à lancer une fois après le déploiement) |
 | `GET /api/admin/debug-card-images` | Réponse brute de l'API d'images |
 
 **Tests** : `backend/tests/` — 301 tests. Lancer avec :
