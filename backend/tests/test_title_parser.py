@@ -73,3 +73,49 @@ class TestNormalize(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestNomsOnePiece(unittest.TestCase):
+    """Regressions trouvees en basculant le projet de Pokemon vers One Piece.
+
+    Les deux defauts ci-dessous faisaient echouer le rapprochement par nom
+    sur les personnages les plus demandes du jeu, en silence : l'annonce
+    retombait sur « aucun prix trouve » sans que rien ne signale pourquoi.
+    """
+
+    def test_le_nom_du_jeu_ne_pollue_pas_les_candidats(self):
+        """« One Piece » figure dans presque toutes les annonces. Tant qu'il
+        n'etait pas traite comme du bruit, le meilleur candidat etait
+        « one-piece-monkey-luffy », qui ne correspond a aucune carte."""
+        candidats = extract_name_candidates("Carte One Piece Monkey D. Luffy neuve")
+        self.assertIn("monkey-d-luffy", candidats)
+        for c in candidats:
+            self.assertFalse(c.startswith("one-"), f"candidat pollue : {c}")
+            self.assertFalse(c.startswith("piece-"), f"candidat pollue : {c}")
+
+    def test_l_initiale_est_conservee(self):
+        """One Piece utilise constamment l'initiale « D. ». La tokenisation
+        jetait les lettres isolees, produisant « monkey-luffy » la ou l'index
+        contient « monkey-d-luffy »."""
+        for titre, attendu in [
+            ("One Piece Monkey D. Luffy", "monkey-d-luffy"),
+            ("One Piece Portgas D. Ace SR", "portgas-d-ace"),
+            ("One Piece Marshall D. Teach", "marshall-d-teach"),
+        ]:
+            self.assertIn(attendu, extract_name_candidates(titre), titre)
+
+    def test_l_initiale_ne_forme_pas_un_candidat_a_elle_seule(self):
+        """Gardee comme mot, « d » reste du remplissage : aucun candidat ne
+        doit commencer ou finir par elle."""
+        for c in extract_name_candidates("One Piece Monkey D. Luffy"):
+            self.assertNotEqual(c, "d")
+            self.assertFalse(c.startswith("d-"), c)
+            self.assertFalse(c.endswith("-d"), c)
+
+    def test_les_codes_one_piece_sont_extraits(self):
+        for titre, attendu in [
+            ("Luffy OP01-120 SR", "OP01 120"),
+            ("Deck ST01-012", "ST01 012"),
+            ("Extra Booster EB01-006", "EB01 006"),
+        ]:
+            self.assertIn(attendu, extract_card_codes(titre), titre)

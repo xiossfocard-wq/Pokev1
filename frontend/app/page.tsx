@@ -165,7 +165,7 @@ export default function DashboardPage() {
       <header className="sticky top-0 z-20 border-b border-ink-800 bg-ink-950/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2.5">
           <Link href="/" className="shrink-0">
-            <span className="font-display text-lg leading-none text-parchment-100">Pokéradar</span>
+            <span className="font-display text-lg leading-none text-parchment-100">Radar</span>
             <span className="ml-1.5 hidden font-mono text-[10px] uppercase tracking-[0.14em] text-ink-600 sm:inline">
               à pépites
             </span>
@@ -176,8 +176,8 @@ export default function DashboardPage() {
               type="search"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Chercher une carte : Pikachu, Dracaufeu ex, PAF 232…"
-              aria-label="Chercher une carte sur Vinted et eBay"
+              placeholder="Chercher une carte : Luffy, Zoro alt art, OP01-120…"
+              aria-label="Chercher une carte One Piece sur Vinted et eBay"
               className="min-w-0 flex-1 rounded-md border border-ink-700 bg-ink-800/80 px-3 py-1.5 text-sm text-parchment-100 placeholder:text-ink-600 focus:border-ember-500 focus:outline-none"
             />
             <button

@@ -11,9 +11,9 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-body" });
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
 export const metadata: Metadata = {
-  title: "Le Pokéradar à Pépites",
+  title: "Le Radar à Pépites",
   description:
-    "Surveillance Vinted & eBay pour cartes Pokémon françaises, comparée à Cardmarket et ZebraDex.",
+    "Surveillance Vinted & eBay pour cartes One Piece françaises, et exploration du catalogue par thème.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

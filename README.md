@@ -1,17 +1,18 @@
-# Pokémon Deal Hunter
+# One Piece Deal Hunter
 
 Deux outils complémentaires sur la même base de données, qui répondent à
 deux questions différentes.
 
 **1. Explorer le catalogue** (`/explorer`) — *quelle carte vaut la peine ?*
-Chercher parmi toutes les cartes connues par **thème** (la ligne de
-Dracaufeu, les évolutions d'Évoli, les légendaires…), par **type de carte**
-(Illustration Rare, Full Art, Gold…), par **budget** et par **tendance**,
+Chercher parmi toutes les cartes connues par **thème** (l'équipage du
+Chapeau de Paille, la Marine, les Grands Corsaires…), par **type de carte**
+(Secret Rare, Manga Rare, alternative, Leader…), par **budget** et par
+**tendance**,
 avec le **visuel de chaque carte**. Les cartes en vogue sont classées sur la
 variation 7 jours, en pourcentage.
 
 **2. Chasser les bonnes affaires** (`/`) — *où l'acheter au bon prix ?*
-Surveillance des annonces Vinted et eBay (cartes Pokémon FR), comparées à
+Surveillance des annonces Vinted et eBay (cartes One Piece FR), comparées à
 des prix de référence (Cardmarket + ZebraDex), avec un score de "bonne
 affaire" combinant marge estimée, qualité indicative (photos + texte) et
 fiabilité vendeur. Notifications Telegram/email au-dessus d'un seuil
@@ -79,35 +80,42 @@ frontend/  Next.js 14 (App Router) + Tailwind
 `backend/app/services/card_themes.py` classe chaque carte dans deux familles
 de thèmes, qui se cumulent :
 
-- **par sujet** : Pikachu & sa famille, ligne de Dracaufeu, Évoli et ses huit
-  évolutions, starters de Kanto, oiseaux légendaires, légendaires, dragons,
-  spectres, chouchous du public ;
-- **par type de carte** : Illustration Rare, Secret/Special Illustration
-  Rare, Full Art, Gold & Rainbow, mécaniques ex / V-VMAX-VSTAR / GX.
+- **par sujet** : équipage du Chapeau de Paille, Pires Générations, équipages
+  du Cœur, de Kid, du Roux, aux Cent Bêtes, de Big Mom, de Barbe Blanche, de
+  Barbe Noire, Marine, Grands Corsaires, Armée Révolutionnaire, famille
+  Donquixote ;
+- **par type de carte** : Secret Rare, Super Rare, Manga Rare, alternative /
+  parallèle, Leader, promotionnelle.
 
-« Dracaufeu ex Illustration Rare » appartient donc à la fois à
-`ligne-dracaufeu`, `illustration-rare` et `mecanique-ex` : ce sont trois
+« Monkey D. Luffy (Secret Rare) » appartient donc à la fois à
+`chapeau-de-paille`, `pires-generations` et `secret-rare` : ce sont trois
 façons distinctes de chercher la même carte.
 
-C'est une **heuristique sur le nom**, pas une base de données Pokémon
-exhaustive. Les noms français sont prioritaires (la source publie en
-français) avec les noms anglais en alias. Un thème raté n'enlève rien à la
-carte, qui reste trouvable par la recherche libre. Pour ajouter un thème :
-compléter `card_themes.py`, puis `POST /api/admin/recompute-card-fields`
-pour rattraper les cartes déjà en base — sinon le nouveau thème resterait
-vide jusqu'à la resynchronisation complète du catalogue, qui prend des jours.
+C'est une **heuristique sur le nom**, pas une base de données One Piece
+exhaustive. Les graphies françaises anciennes sont prévues en alias
+(Zorro, Pipo, Baggy), tout comme les noms anglais. Un thème raté n'enlève
+rien à la carte, qui reste trouvable par la recherche libre. Pour ajouter un
+thème : compléter `card_themes.py`, puis `POST /api/admin/recompute-card-fields`
+pour rattraper les cartes déjà en base.
+
+**Deux axes majeurs du jeu manquent volontairement** : la **couleur** (rouge,
+vert, bleu, violet, noir, jaune) et le **type de carte** (Leader, Personnage,
+Événement, Stage). Ni l'un ni l'autre ne se lit dans le nom d'une carte : il
+faut que la source les publie. Les deviner donnerait un filtre faux, ce qui
+est pire qu'un filtre absent. Seul le Leader est reconnu, et uniquement quand
+la rareté le dit explicitement.
 
 ### La recherche
 
-Elle est **insensible à la casse et aux accents** : « Évoli », « evoli » et
-« EVOLI » ramènent la même carte, et « electhor ex » trouve « Électhor ex ».
+Elle est **insensible à la casse et aux accents** : « Portgás », « portgas »
+et « PORTGAS » ramènent la même carte.
 
 Ce n'était pas gratuit. Chercher directement sur le nom affiché échouait
 pour deux raisons cumulées : le `lower()` de SQLite ne traite que l'ASCII,
-donc « Évoli » y restait « Évoli » alors que Python en faisait « évoli » ;
-et personne ne tape les accents, or « electhor ex » ne correspond ni au
-`name_slug` (« electhor-ex », avec un tiret) ni au nom affiché, y compris
-sous Postgres. Une colonne `search_key` normalisée est donc calculée à
+donc « Portgás » y restait inchangé alors que Python en faisait « portgás » ;
+et personne ne tape les accents, or la graphie sans accent ne correspondait
+ni au `name_slug` (avec des tirets) ni au nom affiché, y compris sous
+Postgres. Une colonne `search_key` normalisée est donc calculée à
 l'écriture, et la requête est normalisée de la même façon.
 
 **Après le déploiement, lancer une fois `POST /api/admin/recompute-card-fields`** :
@@ -153,9 +161,14 @@ prolongée, jamais comme une valeur future.
 
 ZebraDex ne publie pas d'image exploitable. Les visuels viennent donc de
 **TCGdex** (`backend/app/collectors/card_images.py`), une API publique,
-ouverte, documentée, avec localisation française et sans clé. C'est un usage
-prévu par la source : aucune des réserves juridiques ci-dessus ne s'y
-applique.
+ouverte, documentée et sans clé. C'est un usage prévu par la source : aucune
+des réserves juridiques ci-dessus ne s'y applique.
+
+⚠️ **TCGdex est une API Pokémon.** Elle a été intégrée quand le projet visait
+ce jeu. Sa couverture One Piece — si elle existe — n'a pas pu être vérifiée,
+l'hôte étant injoignable depuis l'environnement de développement. Si elle ne
+couvre pas One Piece, il faudra une autre source d'illustrations ; le reste
+du catalogue fonctionne sans, les cartes s'affichant avec un cadre vide.
 
 **Ce code n'a pas pu être testé contre l'API réelle.** L'environnement de
 développement n'a pas d'accès réseau sortant vers `api.tcgdex.net` ni
@@ -165,7 +178,7 @@ donc écrit d'après la forme documentée de l'API, et volontairement tolérant
 toute réponse inattendue journalisée au lieu de lever). Sa logique est
 testée hors réseau, mais la forme réelle des réponses ne l'est pas.
 
-Si aucun visuel ne remonte : `GET /api/admin/debug-card-images?nom=Dracaufeu`
+Si aucun visuel ne remonte : `GET /api/admin/debug-card-images?nom=Luffy`
 rend la réponse brute, à comparer à ce que le parsing attend — même démarche
 que `debug-vinted` et `debug-zebradex`. Copie-la-moi et j'ajuste.
 

@@ -51,6 +51,17 @@ NOT_CODE_PREFIXES = {
 # carte. Servent a deux choses : exclure un mot isole comme candidat, et
 # interdire qu'un groupe de mots COMMENCE ou FINISSE par l'un d'eux.
 TITLE_NOISE = {
+    # Le nom du JEU est du bruit : presque toutes les annonces le citent, et
+    # sans lui les candidats devenaient « one-piece-monkey-luffy » au lieu de
+    # « monkey-d-luffy ». Pokemon y figurait deja.
+    "one", "piece", "onepiece", "tcg", "bandai",
+    # Rarete et traitements propres a One Piece.
+    "sec", "sr", "ur", "manga", "leader", "parallele", "parallel",
+    "alternative", "super",
+    # « d » est garde comme MOT par _words (initiale de « Monkey D. Luffy »),
+    # mais reste du remplissage : un groupe ne peut ni commencer ni finir par
+    # lui, il ne peut que se trouver au milieu d'un nom.
+    "d",
     "carte", "cartes", "card", "cards", "pokemon", "lot", "lots", "holo",
     "rare", "neuve", "neuf", "occasion", "fr", "francaise", "francais",
     "tres", "bon", "etat", "mint", "nm", "lp", "mp", "hp", "psa", "bgs",
@@ -131,9 +142,18 @@ def extract_set_number(text: str) -> Optional[Tuple[str, str]]:
     return number.zfill(3), total.zfill(3)
 
 
+# Initiales conservees malgre leur longueur de 1. One Piece en fait un usage
+# constant — Monkey D. Luffy, Portgas D. Ace, Marshall D. Teach, Gol D. Roger
+# — et les jeter produisait « monkey-luffy », qui ne correspond a aucun slug
+# de l'index (« monkey-d-luffy »). Le rapprochement par nom echouait donc sur
+# les personnages les plus demandes du jeu.
+INITIALES = {"d"}
+
+
 def _words(text: str) -> List[str]:
     raw = [w for w in re.split(r"[^a-z0-9]+", normalize(text)) if w]
-    return [w for w in raw if len(w) > 1 or w in VARIANT_LETTERS]
+    return [w for w in raw
+            if len(w) > 1 or w in VARIANT_LETTERS or w in INITIALES]
 
 
 def _is_fillerish(word: str) -> bool:

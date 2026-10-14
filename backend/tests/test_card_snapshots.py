@@ -49,8 +49,8 @@ class TestReleveQuotidien(unittest.TestCase):
         Base.metadata.create_all(bind=engine)
         self.db = sessionmaker(bind=engine)()
         self.db.add_all([
-            carte("Dracaufeu ex", 400.0, code="PAF 234"),
-            carte("Pikachu", 1.5, code="PAF 10"),
+            carte("Monkey D. Luffy", 400.0, code="OP01-120"),
+            carte("Nami", 1.5, code="OP01-016"),
         ])
         self.db.commit()
 
@@ -75,7 +75,7 @@ class TestReleveQuotidien(unittest.TestCase):
     def test_relancer_apres_un_changement_de_prix_met_a_jour_le_jour(self):
         enregistrer_releve_du_jour(self.db)
 
-        pikachu = self.db.query(MarketCardPrice).filter_by(display_name="Pikachu").first()
+        pikachu = self.db.query(MarketCardPrice).filter_by(display_name="Nami").first()
         pikachu.price_eur = 2.5
         self.db.commit()
 
@@ -85,13 +85,13 @@ class TestReleveQuotidien(unittest.TestCase):
 
         releve = (
             self.db.query(CardPriceSnapshot)
-            .filter_by(name_slug="pikachu", captured_on=date.today())
+            .filter_by(name_slug="nami", captured_on=date.today())
             .one()
         )
         self.assertEqual(releve.price_eur, 2.5)
 
     def test_l_historique_est_rendu_dans_l_ordre(self):
-        pikachu = self.db.query(MarketCardPrice).filter_by(display_name="Pikachu").first()
+        pikachu = self.db.query(MarketCardPrice).filter_by(display_name="Nami").first()
         debut = date.today() - timedelta(days=4)
         # Insere volontairement en desordre.
         for decalage in (3, 0, 4, 1, 2):
@@ -108,7 +108,7 @@ class TestReleveQuotidien(unittest.TestCase):
 
     def test_l_historique_d_une_carte_ne_melange_pas_les_autres(self):
         enregistrer_releve_du_jour(self.db)
-        historique = historique_de_la_carte(self.db, "pikachu", "PAF 10")
+        historique = historique_de_la_carte(self.db, "nami", "OP01-016")
         self.assertEqual(len(historique), 1)
         self.assertEqual(historique[0][1], 1.5)
 
@@ -130,19 +130,19 @@ class TestRattrapageDesThemes(unittest.TestCase):
         """Au premier deploiement, toutes les cartes deja synchronisees
         n'ont aucun theme : sans ce rattrapage, les themes resteraient vides
         jusqu'a une resynchronisation complete, qui prend des jours."""
-        self.db.add(carte("Noctali VMAX", 180.0, themes=None))
+        self.db.add(carte("Monkey D. Luffy", 180.0, themes=None))
         self.db.commit()
 
         resultat = recalculer_champs_derives(self.db)
         self.assertEqual(resultat["updated"], 1)
 
         ligne = self.db.query(MarketCardPrice).one()
-        self.assertIn("evolutions-evoli", decoder_themes(ligne.theme_slugs))
+        self.assertIn("chapeau-de-paille", decoder_themes(ligne.theme_slugs))
 
     def test_un_second_passage_ne_change_rien(self):
         """Idempotent : utile parce que la route peut etre relancee a la
         main sans risque."""
-        self.db.add(carte("Pikachu", 1.0))
+        self.db.add(carte("Nami", 1.0))
         self.db.commit()
 
         recalculer_champs_derives(self.db)
@@ -150,12 +150,12 @@ class TestRattrapageDesThemes(unittest.TestCase):
         self.assertEqual(resultat["updated"], 0)
 
     def test_la_rarete_est_prise_en_compte(self):
-        self.db.add(carte("Carte quelconque", 10.0, rarete="Illustration Rare"))
+        self.db.add(carte("Carte quelconque", 10.0, rarete="Secret Rare"))
         self.db.commit()
 
         recalculer_champs_derives(self.db)
         ligne = self.db.query(MarketCardPrice).one()
-        self.assertIn("illustration-rare", decoder_themes(ligne.theme_slugs))
+        self.assertIn("secret-rare", decoder_themes(ligne.theme_slugs))
 
 
 if __name__ == "__main__":

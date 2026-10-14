@@ -80,7 +80,7 @@ export default function ListingCard({
   )}`;
   // Cardmarket exige l'extension exacte dans l'URL d'une fiche produit,
   // indevinable depuis un titre Vinted : on pointe vers leur recherche.
-  const cardmarketUrl = `https://www.cardmarket.com/fr/Pokemon/Products/Search?searchString=${encodeURIComponent(
+  const cardmarketUrl = `https://www.cardmarket.com/fr/OnePiece/Products/Search?searchString=${encodeURIComponent(
     detail?.matched_card || listing.title
   )}`;
 

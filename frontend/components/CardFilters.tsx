@@ -56,7 +56,7 @@ export default function CardFilters({
   onReset: () => void;
 }) {
   // Les themes de SUJET et de TYPE repondent a deux besoins differents :
-  // quel Pokemon est dessus, et comment la carte est imprimee. Les melanger
+  // qui est sur la carte, et comment elle est imprimee. Les melanger
   // dans une seule liste rendrait le choix illisible.
   const themesSujet = themes.filter((t) => t.famille === "sujet");
   const themesType = themes.filter((t) => t.famille === "type");
@@ -86,7 +86,7 @@ export default function CardFilters({
           type="search"
           value={filtres.q}
           onChange={(e) => onChange({ q: e.target.value })}
-          placeholder="Dracaufeu, PAF 232…"
+          placeholder="Luffy, Zoro, OP01-120…"
           className={classeChamp}
         />
       </div>

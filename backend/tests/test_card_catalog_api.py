@@ -39,7 +39,7 @@ if TestClient is not None:
     )
 
 
-def carte(nom, prix, rarete=None, serie="Faille Paradoxe", code=None,
+def carte(nom, prix, rarete=None, serie="Romance Dawn", code=None,
           variation=None, image=None):
     """Fabrique une carte avec ses themes deja calcules, comme le fait la
     synchronisation reelle."""
@@ -75,16 +75,18 @@ class TestCatalogueHttp(unittest.TestCase):
         self.db.commit()
 
         self.db.add_all([
-            carte("Dracaufeu ex", 419.31, "Double Rare", code="PAF 234",
-                  variation=25.0, image="https://exemple.test/dracaufeu.png"),
-            carte("Noctali VMAX", 180.0, "Secret Rare", code="EB12 215",
+            carte("Monkey D. Luffy", 419.31, "Secret Rare", code="OP01-120",
+                  variation=25.0, image="https://exemple.test/luffy.png"),
+            carte("Trafalgar Law", 180.0, "Super Rare", code="OP02-049",
                   variation=-30.0),
-            carte("Pikachu", 1.20, "Commune", code="PAF 10", variation=0.01),
-            carte("Évoli", 4.50, "Rare", code="PAF 11", variation=1.5),
-            carte("Mew ex", 65.0, "Illustration Rare", code="PAF 232",
+            carte("Nami", 1.20, "Commune", code="OP01-016", variation=0.01),
+            carte("Nico Robin", 4.50, "Rare", code="OP01-017", variation=1.5),
+            carte("Shanks", 65.0, "Manga Rare", code="OP01-120",
                   variation=None),
-            carte("Lugia V", 95.0, "Full Art", serie="Tempête Argentée",
-                  code="EB12 138", variation=9.0),
+            carte("Dracule Mihawk", 95.0, "Alternative Art",
+                  serie="Paramount War", code="OP02-004", variation=9.0),
+            carte("Portgás D. Ace", 72.0, "Super Rare", code="OP02-013",
+                  variation=6.0),
         ])
         self.db.commit()
 
@@ -97,18 +99,18 @@ class TestCatalogueHttp(unittest.TestCase):
         reponse = self.client.get("/api/cards")
         self.assertEqual(reponse.status_code, 200)
         corps = reponse.json()
-        self.assertEqual(corps["total"], 6)
-        self.assertEqual(len(corps["cartes"]), 6)
+        self.assertEqual(corps["total"], 7)
+        self.assertEqual(len(corps["cartes"]), 7)
 
     def test_recherche_par_nom(self):
-        corps = self.client.get("/api/cards", params={"q": "dracaufeu"}).json()
+        corps = self.client.get("/api/cards", params={"q": "luffy"}).json()
         self.assertEqual(corps["total"], 1)
-        self.assertEqual(corps["cartes"][0]["display_name"], "Dracaufeu ex")
+        self.assertEqual(corps["cartes"][0]["display_name"], "Monkey D. Luffy")
 
     def test_recherche_par_code_de_carte(self):
-        corps = self.client.get("/api/cards", params={"q": "PAF 232"}).json()
+        corps = self.client.get("/api/cards", params={"q": "OP02-049"}).json()
         self.assertEqual(corps["total"], 1)
-        self.assertEqual(corps["cartes"][0]["display_name"], "Mew ex")
+        self.assertEqual(corps["cartes"][0]["display_name"], "Trafalgar Law")
 
     def test_recherche_insensible_aux_accents(self):
         """Regression. Deux defauts se cumulaient et rendaient la recherche
@@ -122,21 +124,22 @@ class TestCatalogueHttp(unittest.TestCase):
           (« Électhor ex »), y compris sous Postgres.
 
         Les quatre graphies doivent desormais ramener la carte."""
-        for graphie in ("Évoli", "évoli", "Evoli", "evoli"):
+        for graphie in ("Portgás", "portgás", "Portgas", "PORTGAS"):
             corps = self.client.get("/api/cards", params={"q": graphie}).json()
             self.assertEqual(
                 corps["total"], 1,
                 f"la recherche « {graphie} » ne trouve pas la carte",
             )
-            self.assertEqual(corps["cartes"][0]["display_name"], "Évoli")
+            self.assertEqual(corps["cartes"][0]["display_name"], "Portgás D. Ace")
 
     def test_recherche_sans_accent_sur_un_nom_compose(self):
         """Le cas qui echouait AUSSI sous Postgres : nom accentue en deux
         mots, cherche sans accent et avec un espace."""
-        self.db.add(carte("Électhor ex", 41.0, "Double Rare", code="MEW 145"))
+        self.db.add(carte("Portgás D. Ace (Édition Spéciale)", 41.0,
+                          "Super Rare", code="EB01-006"))
         self.db.commit()
 
-        for graphie in ("electhor ex", "Électhor ex", "ELECTHOR"):
+        for graphie in ("edition speciale", "Édition Spéciale", "EDITION SPECIALE"):
             corps = self.client.get("/api/cards", params={"q": graphie}).json()
             self.assertEqual(corps["total"], 1, f"echec sur « {graphie} »")
 
@@ -145,51 +148,51 @@ class TestCatalogueHttp(unittest.TestCase):
         pas devenir mystérieusement vide : le repli sur le slug et sur le
         code de carte prend le relais jusqu'au passage de
         /api/admin/recompute-card-fields."""
-        ancienne = carte("Mentali ex", 72.0, "Illustration Rare", code="PAF 189")
+        ancienne = carte("Eustass Kid", 72.0, "Super Rare", code="OP01-060")
         ancienne.search_key = None  # comme avant la migration
         self.db.add(ancienne)
         self.db.commit()
 
-        par_slug = self.client.get("/api/cards", params={"q": "mentali"}).json()
+        par_slug = self.client.get("/api/cards", params={"q": "eustass"}).json()
         self.assertGreaterEqual(par_slug["total"], 1)
 
-        par_code = self.client.get("/api/cards", params={"q": "PAF 189"}).json()
+        par_code = self.client.get("/api/cards", params={"q": "OP01-060"}).json()
         self.assertGreaterEqual(par_code["total"], 1)
 
     def test_filtre_par_theme(self):
-        corps = self.client.get("/api/cards", params={"theme": "evolutions-evoli"}).json()
+        corps = self.client.get("/api/cards", params={"theme": "chapeau-de-paille"}).json()
         noms = {c["display_name"] for c in corps["cartes"]}
-        self.assertEqual(noms, {"Noctali VMAX", "Évoli"})
+        self.assertEqual(noms, {"Monkey D. Luffy", "Nami", "Nico Robin"})
 
     def test_filtre_par_fourchette_de_prix(self):
         corps = self.client.get(
             "/api/cards", params={"price_min": 50, "price_max": 200}
         ).json()
         noms = {c["display_name"] for c in corps["cartes"]}
-        self.assertEqual(noms, {"Noctali VMAX", "Mew ex", "Lugia V"})
+        self.assertEqual(noms, {"Trafalgar Law", "Shanks", "Dracule Mihawk", "Portgás D. Ace"})
 
     def test_filtre_par_rarete(self):
-        corps = self.client.get("/api/cards", params={"rarity": "Illustration Rare"}).json()
-        self.assertEqual(corps["total"], 1)
+        corps = self.client.get("/api/cards", params={"rarity": "Super Rare"}).json()
+        self.assertEqual(corps["total"], 2)
 
     def test_filtre_par_serie(self):
-        corps = self.client.get("/api/cards", params={"series": "Argentée"}).json()
+        corps = self.client.get("/api/cards", params={"series": "Paramount"}).json()
         self.assertEqual(corps["total"], 1)
-        self.assertEqual(corps["cartes"][0]["display_name"], "Lugia V")
+        self.assertEqual(corps["cartes"][0]["display_name"], "Dracule Mihawk")
 
     def test_filtre_sur_la_presence_d_image(self):
         avec = self.client.get("/api/cards", params={"with_image": True}).json()
         self.assertEqual(avec["total"], 1)
         sans = self.client.get("/api/cards", params={"with_image": False}).json()
-        self.assertEqual(sans["total"], 5)
+        self.assertEqual(sans["total"], 6)
 
     def test_les_filtres_se_cumulent(self):
         corps = self.client.get(
             "/api/cards",
-            params={"theme": "evolutions-evoli", "price_max": 10},
+            params={"theme": "chapeau-de-paille", "price_max": 10},
         ).json()
-        self.assertEqual(corps["total"], 1)
-        self.assertEqual(corps["cartes"][0]["display_name"], "Évoli")
+        noms = {c["display_name"] for c in corps["cartes"]}
+        self.assertEqual(noms, {"Nami", "Nico Robin"})
 
     def test_tri_par_prix_croissant(self):
         corps = self.client.get(
@@ -201,7 +204,7 @@ class TestCatalogueHttp(unittest.TestCase):
     def test_pagination(self):
         page1 = self.client.get("/api/cards", params={"limit": 2, "offset": 0}).json()
         page2 = self.client.get("/api/cards", params={"limit": 2, "offset": 2}).json()
-        self.assertEqual(page1["total"], 6)
+        self.assertEqual(page1["total"], 7)
         self.assertEqual(len(page1["cartes"]), 2)
         ids1 = {c["id"] for c in page1["cartes"]}
         ids2 = {c["id"] for c in page2["cartes"]}
@@ -214,7 +217,7 @@ class TestCatalogueHttp(unittest.TestCase):
         croire que le theme est vide."""
         reponse = self.client.get("/api/cards", params={"theme": "licornes"})
         self.assertEqual(reponse.status_code, 400)
-        self.assertIn("pikachu", reponse.json()["detail"])
+        self.assertIn("chapeau-de-paille", reponse.json()["detail"])
 
     def test_fourchette_inversee_est_refusee(self):
         reponse = self.client.get(
@@ -235,26 +238,26 @@ class TestCatalogueHttp(unittest.TestCase):
     def test_les_themes_sont_comptes_et_chiffres(self):
         corps = self.client.get("/api/cards/themes").json()
         par_slug = {t["slug"]: t for t in corps["themes"]}
-        evoli = par_slug["evolutions-evoli"]
-        self.assertEqual(evoli["card_count"], 2)
-        self.assertEqual(evoli["price_min_eur"], 4.5)
-        self.assertEqual(evoli["price_max_eur"], 180.0)
-        self.assertTrue(evoli["label"])
-        self.assertTrue(evoli["description"])
+        equipage = par_slug["chapeau-de-paille"]
+        self.assertEqual(equipage["card_count"], 3)
+        self.assertEqual(equipage["price_min_eur"], 1.2)
+        self.assertEqual(equipage["price_max_eur"], 419.31)
+        self.assertTrue(equipage["label"])
+        self.assertTrue(equipage["description"])
 
     def test_un_theme_sans_carte_est_rendu_a_zero(self):
         """Il doit apparaitre avec 0 plutot que disparaitre : l'interface
         peut alors le griser au lieu de le cacher sans explication."""
         corps = self.client.get("/api/cards/themes").json()
         par_slug = {t["slug"]: t for t in corps["themes"]}
-        self.assertIn("spectres", par_slug)
-        self.assertEqual(par_slug["spectres"]["card_count"], 0)
+        self.assertIn("cent-betes", par_slug)
+        self.assertEqual(par_slug["cent-betes"]["card_count"], 0)
 
     def test_valeurs_de_filtres_refletent_la_base(self):
         corps = self.client.get("/api/cards/filters").json()
-        self.assertEqual(corps["total_cards"], 6)
-        self.assertIn("Illustration Rare", corps["rarities"])
-        self.assertIn("Tempête Argentée", corps["series"])
+        self.assertEqual(corps["total_cards"], 7)
+        self.assertIn("Super Rare", corps["rarities"])
+        self.assertIn("Paramount War", corps["series"])
         self.assertEqual(corps["price_min_eur"], 1.2)
         self.assertEqual(corps["price_max_eur"], 419.31)
 
@@ -266,14 +269,14 @@ class TestCatalogueHttp(unittest.TestCase):
         C'est tout l'interet du classement en pourcentage."""
         corps = self.client.get("/api/cards/trending", params={"direction": "hausse"}).json()
         noms = [c["display_name"] for c in corps["cartes"]]
-        self.assertIn("Évoli", noms)
-        self.assertIn("Dracaufeu ex", noms)
-        self.assertLess(noms.index("Évoli"), noms.index("Dracaufeu ex"))
+        self.assertIn("Nico Robin", noms)
+        self.assertIn("Monkey D. Luffy", noms)
+        self.assertLess(noms.index("Nico Robin"), noms.index("Monkey D. Luffy"))
 
     def test_les_baisses_sont_servies_a_part(self):
         corps = self.client.get("/api/cards/trending", params={"direction": "baisse"}).json()
         noms = [c["display_name"] for c in corps["cartes"]]
-        self.assertEqual(noms, ["Noctali VMAX"])
+        self.assertEqual(noms, ["Trafalgar Law"])
 
     def test_une_carte_sans_variation_n_est_pas_en_vogue(self):
         """Mew ex n'a pas de variation publiee : l'absence de donnee ne doit
@@ -282,15 +285,15 @@ class TestCatalogueHttp(unittest.TestCase):
             corps = self.client.get(
                 "/api/cards/trending", params={"direction": direction}
             ).json()
-            self.assertNotIn("Mew ex", [c["display_name"] for c in corps["cartes"]])
+            self.assertNotIn("Shanks", [c["display_name"] for c in corps["cartes"]])
 
     def test_les_tendances_se_filtrent_par_budget(self):
         corps = self.client.get(
             "/api/cards/trending", params={"direction": "hausse", "price_max": 10}
         ).json()
         noms = [c["display_name"] for c in corps["cartes"]]
-        self.assertIn("Évoli", noms)
-        self.assertNotIn("Dracaufeu ex", noms)
+        self.assertIn("Nico Robin", noms)
+        self.assertNotIn("Monkey D. Luffy", noms)
 
     def test_direction_inconnue_est_refusee(self):
         reponse = self.client.get("/api/cards/trending", params={"direction": "haut"})
@@ -300,13 +303,13 @@ class TestCatalogueHttp(unittest.TestCase):
 
     def test_la_fiche_porte_les_themes_decrits(self):
         id_carte = self.client.get(
-            "/api/cards", params={"q": "dracaufeu"}
+            "/api/cards", params={"q": "luffy"}
         ).json()["cartes"][0]["id"]
 
         corps = self.client.get(f"/api/cards/{id_carte}").json()
-        self.assertEqual(corps["display_name"], "Dracaufeu ex")
+        self.assertEqual(corps["display_name"], "Monkey D. Luffy")
         slugs = {t["slug"] for t in corps["themes_detail"]}
-        self.assertIn("ligne-dracaufeu", slugs)
+        self.assertIn("chapeau-de-paille", slugs)
         for theme in corps["themes_detail"]:
             self.assertTrue(theme["label"])
 
@@ -326,7 +329,7 @@ class TestCatalogueHttp(unittest.TestCase):
         self.assertTrue(corps["projection"]["avertissement"])
 
     def test_une_projection_apparait_quand_l_historique_le_permet(self):
-        ligne = self.db.query(MarketCardPrice).filter_by(display_name="Pikachu").first()
+        ligne = self.db.query(MarketCardPrice).filter_by(display_name="Nami").first()
         debut = date.today() - timedelta(days=29)
         for i in range(30):
             self.db.add(CardPriceSnapshot(

@@ -398,7 +398,7 @@ def run_ebay_check(db: Session):
         use_sandbox=settings.ebay_use_sandbox,
     )
     try:
-        results = client.search_pokemon_listings(keywords="pokemon carte francais")
+        results = client.search_pokemon_listings(keywords=settings.ebay_search_keywords)
     except Exception as exc:  # on isole les pannes d'une source de l'autre
         logger.error("eBay: cycle de collecte échoué (%s)", exc)
         return
@@ -593,7 +593,7 @@ def run_targeted_search(db: Session, query: str, limit: int = 60, on_progress=No
                 marketplace_id=settings.ebay_marketplace_id,
                 use_sandbox=settings.ebay_use_sandbox,
             )
-            ebay_results = client.search_pokemon_listings(keywords=f"pokemon carte {query}")
+            ebay_results = client.search_pokemon_listings(keywords=f"{settings.tcg_nom} carte {query}")
         except Exception as exc:
             logger.error("Recherche ciblee eBay echouee (%s)", exc)
             ebay_results = []

@@ -40,6 +40,8 @@ from typing import List, Optional
 
 import requests
 
+from app.config import settings
+
 from app.core import robots_compliance
 
 logger = logging.getLogger(__name__)
@@ -70,16 +72,35 @@ DEFAULT_HEADERS = {
 
 MIN_DELAY_SECONDS = 6.0  # respectueux : 1 requete / 6s max
 
-_SERIES_LINK_PATTERN = re.compile(
-    r"""href=['"](?:https://zebradex\.fr)?(/fr/tcg/pokemon/([a-z0-9-]+)/([a-z0-9.-]+)/([a-z0-9-]+)/(\d+))['"]""",
-    re.IGNORECASE,
-)
+# Les deux motifs dependent du jeu vise (segment /fr/tcg/<slug>/ de l'URL),
+# donc ils sont CONSTRUITS A L'APPEL et non figes a l'import : une constante
+# compilee au chargement du module aurait ignore tout changement de reglage
+# ensuite, ce qui rend la configuration trompeuse et les tests impossibles.
+# Le resultat est mis en cache par slug, la construction ne coutant rien.
+_CACHE_MOTIFS: dict = {}
 
-_CARD_LINK_PATTERN = re.compile(
-    r"""href=['"](?:https://zebradex\.fr)?/fr/tcg/pokemon/[a-z0-9-]+/[a-z0-9.-]+/[a-z0-9-]+/"""
-    r"""([a-z0-9-]+)/([a-z0-9-]+)/(\d+)['"]""",
-    re.IGNORECASE,
-)
+
+def _motifs_du_jeu(slug: Optional[str] = None):
+    """Rend (motif_series, motif_cartes) pour le jeu vise."""
+    jeu = slug or settings.zebradex_tcg_slug
+    if jeu not in _CACHE_MOTIFS:
+        echappe = re.escape(jeu)
+        _CACHE_MOTIFS[jeu] = (
+            re.compile(
+                r"""href=['"](?:https://zebradex\.fr)?(/fr/tcg/"""
+                + echappe
+                + r"""/([a-z0-9-]+)/([a-z0-9.-]+)/([a-z0-9-]+)/(\d+))['"]""",
+                re.IGNORECASE,
+            ),
+            re.compile(
+                r"""href=['"](?:https://zebradex\.fr)?/fr/tcg/"""
+                + echappe
+                + r"""/[a-z0-9-]+/[a-z0-9.-]+/[a-z0-9-]+/"""
+                r"""([a-z0-9-]+)/([a-z0-9-]+)/(\d+)['"]""",
+                re.IGNORECASE,
+            ),
+        )
+    return _CACHE_MOTIFS[jeu]
 
 # Lookbehind (?<![+-]) : sinon la variation "+4,66EUR" serait prise pour un
 # prix (bug detecte en testant sur de vraies donnees ZebraDex le 04/08/2026).
@@ -198,7 +219,7 @@ class ZebraDexClient:
     def parse_series_index(html: str) -> List[ZebraDexSeries]:
         seen = set()
         out: List[ZebraDexSeries] = []
-        for match in _SERIES_LINK_PATTERN.finditer(html):
+        for match in _motifs_du_jeu()[0].finditer(html):
             path, bloc, code, slug, series_id = match.groups()
             if series_id in seen:
                 continue
@@ -255,7 +276,7 @@ class ZebraDexClient:
     def _parse_by_links(cls, html: str, series_name: str = "") -> List[ZebraDexCardPrice]:
         out: List[ZebraDexCardPrice] = []
         seen = set()
-        for match in _CARD_LINK_PATTERN.finditer(html):
+        for match in _motifs_du_jeu()[1].finditer(html):
             code_slug, name_slug, item_id = match.groups()
             if item_id in seen:
                 continue

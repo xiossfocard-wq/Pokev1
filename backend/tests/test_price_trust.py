@@ -89,10 +89,10 @@ class TestMargeDouteuseExclueDuScore(BaseDeTest):
         """Dix cartes "Pikachu ex" de 2 a 1130 EUR : la mediane retenue ne
         veut rien dire, la marge qui en decoule non plus."""
         self.db.add_all([
-            carte("pikachu-ex", "Pikachu Ex", f"SET{i} {i}", prix)
+            carte("monkey-d-luffy", "Monkey D. Luffy", f"OP0{i}-00{i}", prix)
             for i, prix in enumerate([2.0, 5.0, 9.0, 20.0, 75.0, 90.0, 300.0, 600.0, 900.0, 1130.0], 1)
         ])
-        listing = annonce("Carte Pokemon Pikachu ex", 5.0, "douteux")
+        listing = annonce("Carte One Piece Monkey D. Luffy", 5.0, "douteux")
         self.db.add(listing)
         self.db.commit()
 
@@ -111,10 +111,10 @@ class TestMargeDouteuseExclueDuScore(BaseDeTest):
         flotter en haut du classement, meme avec un excellent vendeur et une
         carte tres recherchee : le radar n'a rien a annoncer sur elle."""
         self.db.add_all([
-            carte("pikachu-ex", "Pikachu Ex", f"SET{i} {i}", prix)
+            carte("monkey-d-luffy", "Monkey D. Luffy", f"OP0{i}-00{i}", prix)
             for i, prix in enumerate([2.0, 900.0, 1130.0], 1)
         ])
-        listing = annonce("Carte Pokemon Pikachu ex neuve mint", 5.0, "plafond")
+        listing = annonce("Carte One Piece Monkey D. Luffy neuve mint", 5.0, "plafond")
         listing.seller_reliability_score = 100.0
         self.db.add(listing)
         self.db.commit()
@@ -131,12 +131,12 @@ class TestMargeDouteuseExclueDuScore(BaseDeTest):
         """Le plafond ne doit pas ecraser toutes les annonces douteuses au
         meme score : qualite et vendeur continuent de les departager."""
         self.db.add_all([
-            carte("pikachu-ex", "Pikachu Ex", f"SET{i} {i}", prix)
+            carte("monkey-d-luffy", "Monkey D. Luffy", f"OP0{i}-00{i}", prix)
             for i, prix in enumerate([2.0, 900.0, 1130.0], 1)
         ])
-        bonne = annonce("Carte Pokemon Pikachu ex neuve mint", 5.0, "bonne")
+        bonne = annonce("Carte One Piece Monkey D. Luffy neuve mint", 5.0, "bonne")
         bonne.seller_reliability_score = 100.0
-        mauvaise = annonce("Carte Pokemon Pikachu ex abimee pliee", 5.0, "mauvaise")
+        mauvaise = annonce("Carte One Piece Monkey D. Luffy abimee pliee", 5.0, "mauvaise")
         mauvaise.seller_reliability_score = 10.0
         self.db.add_all([bonne, mauvaise])
         self.db.commit()
@@ -149,8 +149,8 @@ class TestMargeDouteuseExclueDuScore(BaseDeTest):
     def test_prix_fiable_compte_toujours_dans_le_score(self):
         """Meme annonce, mais un code carte explicite rend le rapprochement
         sur : la marge doit alors compter normalement."""
-        self.db.add(carte("pikachu-ex", "Pikachu Ex", "PAF 232", 180.0))
-        listing = annonce("Carte Pokemon Pikachu ex PAF 232", 5.0, "fiable")
+        self.db.add(carte("monkey-d-luffy", "Monkey D. Luffy", "OP01-120", 180.0))
+        listing = annonce("Carte One Piece Monkey D. Luffy OP01-120", 5.0, "fiable")
         self.db.add(listing)
         self.db.commit()
 

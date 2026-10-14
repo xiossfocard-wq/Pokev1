@@ -43,6 +43,25 @@ class Settings:
         default_factory=lambda: _get_int("CHECK_INTERVAL_MINUTES", 20)
     )
 
+    # --- Jeu cible --------------------------------------------------------
+    # Le projet suit UN jeu de cartes a la fois. Ces trois reglages sont les
+    # seuls endroits qui le nomment : les changer suffit a viser un autre
+    # jeu, sans toucher au code.
+    #
+    # `zebradex_tcg_slug` est le segment de l'URL ZebraDex
+    # (/fr/tcg/<slug>/...). Il valait "pokemon" en dur jusqu'au 14/10/2026.
+    # ATTENTION : la couverture One Piece de ZebraDex n'a PAS pu etre
+    # verifiee — l'environnement de developpement n'a pas d'acces sortant
+    # vers zebradex.fr. Confirmer avec GET /api/admin/debug-zebradex avant
+    # de compter dessus, et ajuster ce slug si le site en utilise un autre.
+    tcg_nom: str = field(default_factory=lambda: os.environ.get("TCG_NAME", "One Piece"))
+    zebradex_tcg_slug: str = field(
+        default_factory=lambda: os.environ.get("ZEBRADEX_TCG_SLUG", "one-piece")
+    )
+    ebay_search_keywords: str = field(
+        default_factory=lambda: os.environ.get("EBAY_SEARCH_KEYWORDS", "one piece carte francais")
+    )
+
     # --- eBay (Browse API) ---
     ebay_client_id: Optional[str] = field(default_factory=lambda: os.environ.get("EBAY_CLIENT_ID"))
     ebay_client_secret: Optional[str] = field(default_factory=lambda: os.environ.get("EBAY_CLIENT_SECRET"))
@@ -55,7 +74,7 @@ class Settings:
         default_factory=lambda: _get_float("VINTED_REQUEST_DELAY_SECONDS", 8.0)
     )
     vinted_search_text: str = field(
-        default_factory=lambda: os.environ.get("VINTED_SEARCH_TEXT", "carte pokemon")
+        default_factory=lambda: os.environ.get("VINTED_SEARCH_TEXT", "carte one piece")
     )
 
     # --- Filtre langue (activé par défaut : cartes françaises uniquement) ---

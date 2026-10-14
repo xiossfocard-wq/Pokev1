@@ -1,20 +1,21 @@
 """
 Détection heuristique (mots-clés du titre/description) de trois signaux
-d'attrait pour un collectionneur, indépendants de l'état physique :
-- la RARETÉ moderne (Illustration Rare, Secret/Special Illustration Rare...)
-- le caractère VINTAGE (sets WOTC 1999-2003 : Base Set, Jungle, Fossil...)
-- la POPULARITÉ du Pokémon représenté (Pikachu, Mewtwo, Dracaufeu...)
+d'attrait pour un collectionneur ONE PIECE, indépendants de l'état physique :
+- la RARETÉ (Manga Rare, Secret Rare, alternative, Super Rare...)
+- le caractère PRÉCOCE (OP-01 « Romance Dawn » et les premiers tirages)
+- la POPULARITÉ du personnage représenté (Luffy, Zoro, Law, Shanks...)
 
-Recherche faite le 04/08/2026 pour établir ces listes (terminologie standard
-de l'industrie, cohérente entre Cardmarket/TCGplayer/eBay/communauté FR) :
-- Échelle de rareté moderne (du plus commun au plus recherché) : Rare <
-  Double Rare < Ultra Rare (UR) < Illustration Rare (IR) < Special/Secret
-  Illustration Rare (SIR) < Hyper Rare. Une carte SIR/IR se reconnaît
-  presque toujours par ces mots explicites dans le titre (les vendeurs
-  savent que ça vend, donc ils le précisent).
-- "Vintage" au sens collection Pokémon FR désigne généralement les sets de
-  l'ère Wizards of the Coast (1999-2003) : Set de Base, Jungle, Fossile,
-  Team Rocket, Gym, Neo Genesis/Découverte/Révélation/Destinée.
+Échelle de rareté du jeu, du plus commun au plus recherché : C < UC < R <
+SR < SEC, avec en plus les traitements qui se superposent à ce barème
+(alternative/parallèle, et Manga Rare, qui est le palier le plus convoité
+des séries récentes). Un vendeur qui détient une de ces cartes l'écrit
+presque toujours dans son titre : ça se vend, donc ça se précise.
+
+« Précoce » désigne ici OP-01 « Romance Dawn » et les tout premiers
+produits : ce jeu date de 2022, il n'a pas encore de vintage au sens où
+l'entendent les collectionneurs d'autres TCG. Le champ garde son nom
+`is_vintage` pour ne pas casser le schéma de base, mais il faut le lire
+comme « édition précoce ».
 
 Ce n'est PAS une base de données de cartes exhaustive — juste un signal
 supplémentaire ajouté au score final (voir pipeline.py). Un faux négatif
@@ -25,36 +26,34 @@ import re
 
 # Du plus recherché au moins recherché — le score reflète cet ordre.
 _RARITY_TIER_SCORES = [
-    (r"\bsecret\s+illustration\s+rare\b|\bspecial\s+illustration\s+rare\b|\bsir\b", "Special/Secret Illustration Rare", 30),
-    (r"\bhyper\s+rare\b", "Hyper Rare", 26),
-    (r"\billustration\s+rare\b|\bir\b(?!\w)", "Illustration Rare", 22),
-    (r"\bsecret\s+rare\b|\bsr\b(?!\w)", "Secret Rare", 20),
-    (r"\bultra\s+rare\b|\bur\b(?!\w)", "Ultra Rare", 14),
-    (r"\bdouble\s+rare\b", "Double Rare", 8),
-    (r"\bfull\s+art\b", "Full Art", 6),
-    (r"\bgold\b.{0,15}\bcard\b|\brainbow\b", "Gold/Rainbow", 18),
+    (r"\bmanga\s*rare\b", "Manga Rare", 30),
+    (r"\bsecret\s*rare\b|\bsec\b(?!\w)", "Secret Rare", 26),
+    (r"\balt(?:ernative)?\s*art\b|\bparall[eè]le?\b|\bparallel\b", "Alternative", 22),
+    (r"\bspecial\s*card\b|\bcarte\s*sp[eé]ciale\b", "Special Card", 18),
+    (r"\bsuper\s*rare\b|\bsr\b(?!\w)", "Super Rare", 14),
+    (r"\bleader\b|\bl\b(?!\w)", "Leader", 10),
+    (r"\bpromo\b|\bpromotionnelle?\b", "Promo", 8),
+    (r"\brare\b|\br\b(?!\w)", "Rare", 4),
 ]
 
 _VINTAGE_KEYWORDS = [
-    "set de base", "base set", "jungle", "fossile", "fossil",
-    "team rocket", "gym heroes", "gym challenge", "gym défi", "gym conquete",
-    "neo genesis", "neo découverte", "neo decouverte", "neo révélation",
-    "neo revelation", "neo destinée", "neo destinee",
-    "wizards of the coast", "1ère édition", "1ere edition", "first edition",
-    "1999", "2000", "2001", "2002", "shadowless",
+    "romance dawn", "op-01", "op01", "op 01",
+    "paramount war", "op-02", "op02",
+    "1ere edition", "1ère édition", "1st edition", "premiere edition",
+    "première édition", "edition limitee", "édition limitée",
+    "2022", "japonais 2022",
 ]
 
-# Pokémon régulièrement cités comme favoris de la communauté FR (starters
-# iconiques, légendaires les plus recherchés, et Pikachu/Mewtwo qui reviennent
-# systématiquement en tête des sondages communautaires) — liste volontairement
-# courte et non-exhaustive, à ajuster si besoin plutôt qu'une prétention
-# d'exhaustivité.
+# Personnages qui reviennent systématiquement en tête des ventes et des
+# sondages de la communauté One Piece — liste volontairement courte et
+# non-exhaustive, à ajuster si besoin plutôt qu'une prétention
+# d'exhaustivité. Les graphies françaises anciennes sont incluses.
 _POPULAR_POKEMON = [
-    "pikachu", "mewtwo", "mew", "dracaufeu", "charizard", "evoli", "eevee",
-    "lugia", "rayquaza", "ronflex", "snorlax", "leviator", "gyarados",
-    "salameche", "charmander", "bulbizarre", "bulbasaur", "carapuce",
-    "squirtle", "florizarre", "venusaur", "tortank", "blastoise",
-    "umbreon", "sylveon", "gardevoir", "lucario", "greninja",
+    "luffy", "zoro", "zorro", "law", "trafalgar", "shanks", "mihawk",
+    "ace", "portgas", "sabo", "nami", "robin", "sanji", "chopper",
+    "yamato", "hancock", "boa", "katakuri", "doflamingo", "kaido",
+    "newgate", "barbe blanche", "whitebeard", "teach", "barbe noire",
+    "kid", "eustass", "garp", "rayleigh", "roger", "gol d. roger", "uta",
 ]
 
 _POPULAR_PATTERN = re.compile(

@@ -23,11 +23,23 @@ from dataclasses import dataclass
 from typing import Optional
 
 # Mots à ignorer lors de l'extraction du nom de carte probable.
+#
+# Le nom du JEU doit en faire partie : presque toutes les annonces le citent,
+# et sans lui le nom deviné devenait « One-Piece-Monkey » au lieu de
+# « Monkey-D-Luffy ». Pokémon y figurait déjà ; One Piece a été ajouté avec
+# le changement de jeu, ainsi que le vocabulaire de rareté qui lui est propre
+# (SEC, SR, alternative, manga rare…), pour la même raison.
 NOISE_WORDS = {
-    "carte", "cartes", "pokemon", "pokémon", "fr", "français", "francaise",
+    # vocabulaire d'annonce, commun à tous les jeux
+    "carte", "cartes", "fr", "français", "francaise", "francais",
     "vf", "tbe", "be", "occasion", "vente", "vend", "lot", "lots", "vintage",
-    "rare", "holo", "reverse", "shiny", "edition", "1ere", "1ère", "neuve",
-    "neuf", "the", "card", "trading",
+    "rare", "holo", "reverse", "shiny", "edition", "édition", "1ere", "1ère",
+    "neuve", "neuf", "mint", "nm", "the", "card", "trading", "tcg", "booster",
+    # noms de jeu
+    "pokemon", "pokémon", "one", "piece", "onepiece",
+    # raretés et traitements One Piece
+    "sec", "sr", "ur", "alt", "alternative", "parallele", "parallèle",
+    "parallel", "manga", "leader", "promo", "full", "art",
 }
 
 SET_NUMBER_PATTERN = re.compile(r"\b(\d{1,3})\s*/\s*(\d{1,3})\b")

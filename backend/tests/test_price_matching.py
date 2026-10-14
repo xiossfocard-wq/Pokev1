@@ -201,3 +201,57 @@ class TestAbsenceDeMatch(PriceMatchingTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSeparateurDeCodeCarte(unittest.TestCase):
+    """Regression trouvee en basculant vers One Piece.
+
+    Le separateur du code depend du jeu et de la source : Pokemon ecrit
+    « PAF 232 » avec une espace, One Piece ecrit « OP01-120 » avec un tiret,
+    et les vendeurs melangent les deux. Le parseur de titre, lui, normalise
+    en espace.
+
+    Comparer les chaines telles quelles faisait echouer le rapprochement par
+    code sur TOUTES les cartes One Piece, en silence : le prix retombait sur
+    un rapprochement par nom, bien moins sur, sans que rien ne le signale.
+    """
+
+    def setUp(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(bind=engine)
+        self.db = sessionmaker(bind=engine)()
+        price_index._slug_cache = []
+        price_index._slug_cache_at = None
+        self.db.add(MarketCardPrice(
+            name_slug="monkey-d-luffy", display_name="Monkey D. Luffy",
+            card_code="OP01-120", price_eur=419.31, series_name="Romance Dawn",
+            source="zebradex",
+        ))
+        self.db.commit()
+
+    def tearDown(self):
+        self.db.close()
+
+    def test_le_tiret_du_titre_retrouve_le_tiret_de_l_index(self):
+        match = find_price_for_listing(self.db, "Carte One Piece Luffy OP01-120 SR")
+        self.assertIsNotNone(match, "le code avec tiret n'a pas ete rapproche")
+        self.assertEqual(match.confidence, "high")
+        self.assertEqual(match.row.display_name, "Monkey D. Luffy")
+
+    def test_l_espace_du_titre_retrouve_le_tiret_de_l_index(self):
+        """Un vendeur qui ecrit « OP01 120 » designe la meme carte."""
+        match = find_price_for_listing(self.db, "Carte One Piece Luffy OP01 120")
+        self.assertIsNotNone(match)
+        self.assertEqual(match.confidence, "high")
+
+    def test_la_casse_n_a_pas_d_importance(self):
+        match = find_price_for_listing(self.db, "carte one piece luffy op01-120")
+        self.assertIsNotNone(match)
+        self.assertEqual(match.confidence, "high")
+
+    def test_un_code_d_une_autre_carte_ne_rapproche_pas(self):
+        """Le garde-fou : normaliser le separateur ne doit pas rendre deux
+        codes differents equivalents."""
+        match = find_price_for_listing(self.db, "Carte One Piece Zoro OP01-025")
+        if match is not None:
+            self.assertNotEqual(match.confidence, "high")

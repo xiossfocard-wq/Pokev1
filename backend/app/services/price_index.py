@@ -314,12 +314,37 @@ def find_price_for_listing(db: Session, title: str, description: str = "") -> Op
     return match
 
 
+def _normaliser_code(code: Optional[str]) -> str:
+    """« OP01-120 », « OP01 120 » et « op01120 » designent la MEME carte.
+
+    Le separateur depend du jeu et de la source : Pokemon ecrit « PAF 232 »
+    avec une espace, One Piece ecrit « OP01-120 » avec un tiret, et les
+    vendeurs melangent les deux. Le parseur de titre, lui, normalise en
+    espace. Comparer les chaines telles quelles faisait donc echouer le
+    rapprochement par code sur TOUTES les cartes One Piece, en silence : le
+    prix retombait sur un rapprochement par nom, beaucoup moins sur.
+    """
+    return re.sub(r"[\s\-_.]+", "", (code or "").upper())
+
+
+def _variantes_de_code(code: str) -> set:
+    """Formes equivalentes d'un code, pour que le filtre SQL puisse
+    presélectionner sans dependre du separateur."""
+    haut = (code or "").upper()
+    return {haut, haut.replace(" ", "-"), haut.replace("-", " ")}
+
+
 def _match_by_card_code(db: Session, codes: List[str]) -> Optional[PriceMatch]:
     if not codes:
         return None
+
+    candidats = set()
+    for code in codes:
+        candidats |= _variantes_de_code(code)
+
     rows = (
         db.query(MarketCardPrice)
-        .filter(func.upper(MarketCardPrice.card_code).in_(codes))
+        .filter(func.upper(MarketCardPrice.card_code).in_(sorted(candidats)))
         .all()
     )
     if not rows:
@@ -327,10 +352,10 @@ def _match_by_card_code(db: Session, codes: List[str]) -> Optional[PriceMatch]:
 
     grouped: dict = {}
     for row in rows:
-        grouped.setdefault((row.card_code or "").upper(), []).append(row)
+        grouped.setdefault(_normaliser_code(row.card_code), []).append(row)
 
     for code in codes:  # ordre = celui d'apparition dans le titre
-        group = grouped.get(code)
+        group = grouped.get(_normaliser_code(code))
         if group:
             return PriceMatch(
                 _median_row(group), "high",

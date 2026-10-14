@@ -42,7 +42,7 @@ export default function SettingsPage() {
       <header className="sticky top-0 z-20 border-b border-ink-800 bg-ink-950/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2.5">
           <Link href="/" className="font-display text-lg leading-none text-parchment-100">
-            Pokéradar
+            Radar
           </Link>
           <span className="text-ink-600">/</span>
           <span className="text-sm text-parchment-100">Réglages</span>

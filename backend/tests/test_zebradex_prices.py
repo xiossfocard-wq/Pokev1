@@ -1,9 +1,27 @@
 import sys, os, unittest
+from unittest import mock
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from app.collectors import zebradex_prices
 from app.collectors.zebradex_prices import ZebraDexClient, slugify_name
 
 # ECHANTILLONS REELS recuperes le 04/08/2026 depuis zebradex.fr
 # (pas des reconstructions : copies de la structure reellement servie).
+#
+# Ils viennent des pages POKEMON, seul jeu dont la structure ait pu etre
+# observee pour de vrai. Le projet vise desormais One Piece, mais on ne
+# remplace pas "pokemon" par "one-piece" dans ces echantillons : ce serait
+# transformer une capture reelle en supposition sur une page jamais vue, et
+# le test ne prouverait plus rien. Les tests ci-dessous pointent donc le
+# collecteur sur "pokemon" le temps de lire ces echantillons — ce qui, au
+# passage, verifie que le segment de jeu est bien devenu un reglage.
+#
+# La structure des pages One Piece de ZebraDex reste A VERIFIER :
+# GET /api/admin/debug-zebradex rend la reponse brute pour la comparer.
+
+
+def _jeu(slug):
+    """Pointe le collecteur sur un jeu, le temps d'un test."""
+    return mock.patch.object(zebradex_prices.settings, "zebradex_tcg_slug", slug)
 REAL_SERIES_INDEX = '''
 <a href="https://zebradex.fr/fr/tcg/pokemon/ecarlate-et-violet/ev04-5/destinees-de-paldea/6">Destinees</a>
 <a href="https://zebradex.fr/fr/tcg/pokemon/wizards/set-de-base/set-de-base/119">Set de Base</a>
@@ -29,23 +47,31 @@ PAF 226 Pohm 1,83 € +0,04€ quantité : 0 Illustration Rare
 
 class TestSeriesIndexParsing(unittest.TestCase):
     def test_finds_card_series_only(self):
-        # 3 series de cartes ; les "produits scelles" sont exclus (ce ne
-        # sont pas des cartes a l'unite).
-        series = ZebraDexClient.parse_series_index(REAL_SERIES_INDEX)
-        self.assertEqual(len(series), 3)
-        self.assertNotIn("produits-scelles", " ".join(s.url for s in series))
+        with _jeu("pokemon"):
+            # 3 series de cartes ; les "produits scelles" sont exclus (ce ne
+            # sont pas des cartes a l'unite).
+            series = ZebraDexClient.parse_series_index(REAL_SERIES_INDEX)
+            self.assertEqual(len(series), 3)
+            self.assertNotIn("produits-scelles", " ".join(s.url for s in series))
 
     def test_extracts_bloc_and_code(self):
-        series = {s.series_id: s for s in ZebraDexClient.parse_series_index(REAL_SERIES_INDEX)}
-        self.assertEqual(series["6"].code, "EV04-5")
-        self.assertEqual(series["119"].bloc, "Wizards")
+        with _jeu("pokemon"):
+            series = {s.series_id: s for s in ZebraDexClient.parse_series_index(REAL_SERIES_INDEX)}
+            self.assertEqual(series["6"].code, "EV04-5")
+            self.assertEqual(series["119"].bloc, "Wizards")
 
     def test_empty_html_safe(self):
-        self.assertEqual(ZebraDexClient.parse_series_index(""), [])
+        with _jeu("pokemon"):
+            self.assertEqual(ZebraDexClient.parse_series_index(""), [])
 
 
 class TestSeriesPageParsing(unittest.TestCase):
     def setUp(self):
+        # Les echantillons viennent des pages Pokemon : on vise ce jeu le
+        # temps de les lire (voir la note en tete de fichier).
+        correctif = _jeu("pokemon")
+        correctif.start()
+        self.addCleanup(correctif.stop)
         self.cards = {c.card_code: c for c in
                       ZebraDexClient.parse_series_page(REAL_SERIES_PAGE, "Destinees de Paldea")}
 
@@ -92,6 +118,37 @@ class TestSeriesPageParsing(unittest.TestCase):
 class TestSlugify(unittest.TestCase):
     def test_accents_and_spaces(self):
         self.assertEqual(slugify_name("Salamèche ex"), "salameche-ex")
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class TestJeuParametrable(unittest.TestCase):
+    """Le segment de jeu dans l'URL ZebraDex est devenu un reglage, pour
+    viser One Piece sans toucher au code. Ces tests verifient qu'il est bien
+    pris en compte, et qu'il n'est pas fige au chargement du module."""
+
+    def test_le_motif_suit_le_jeu_configure(self):
+        with _jeu("one-piece"):
+            motif_series, _ = zebradex_prices._motifs_du_jeu()
+        self.assertIn("one", motif_series.pattern)
+        self.assertNotIn("/pokemon/", motif_series.pattern)
+
+    def test_un_echantillon_d_un_autre_jeu_n_est_pas_lu(self):
+        """Garde-fou : si le reglage ne servait a rien, les liens Pokemon
+        seraient lus alors que le projet vise One Piece."""
+        with _jeu("one-piece"):
+            self.assertEqual(ZebraDexClient.parse_series_index(REAL_SERIES_INDEX), [])
+        with _jeu("pokemon"):
+            self.assertEqual(len(ZebraDexClient.parse_series_index(REAL_SERIES_INDEX)), 3)
+
+    def test_le_changement_de_reglage_est_pris_en_compte_apres_import(self):
+        """Les motifs etaient compiles a l'import : un reglage change
+        ensuite n'avait aucun effet, ce qui rend la configuration trompeuse."""
+        with _jeu("un-autre-jeu"):
+            motif, _ = zebradex_prices._motifs_du_jeu()
+        self.assertIn("un\\-autre\\-jeu", motif.pattern)
 
 
 if __name__ == "__main__":
