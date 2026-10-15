@@ -96,5 +96,34 @@ def is_allowed(
     return allowed
 
 
+def etat_pour_diagnostic(
+    url: str,
+    user_agent: str = DEFAULT_USER_AGENT,
+    session: Optional[requests.Session] = None,
+) -> str:
+    """Pourquoi `is_allowed` a repondu ce qu'il a repondu.
+
+    `is_allowed` rend False dans DEUX cas tres differents : le site refuse,
+    ou robots.txt n'a pas pu etre lu. Les confondre est acceptable pour
+    decider d'y aller ou non — dans les deux cas on s'abstient — mais pas
+    dans un diagnostic : « le site dit non » et « je n'ai pas pu demander »
+    appellent des suites opposees, et les melanger ferait dire au
+    diagnostic le contraire de la realite.
+
+    Rend "autorise", "interdit" ou "illisible".
+    """
+    parsed = urlparse(url)
+    host_key = f"{parsed.scheme}://{parsed.netloc}"
+
+    cached = _cache.get(host_key)
+    if cached is None or time.time() - cached.fetched_at > CACHE_TTL_SECONDS:
+        is_allowed(url, user_agent=user_agent, session=session)
+        cached = _cache.get(host_key)
+
+    if cached is None or cached.parser is None:
+        return "illisible"
+    return "autorise" if cached.parser.can_fetch(user_agent, url) else "interdit"
+
+
 def reset_cache_for_tests():
     _cache.clear()

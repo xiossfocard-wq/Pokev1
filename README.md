@@ -166,7 +166,7 @@ l'environnement de développement ne peut pas joindre, et aucune n'a donc pu
 | Réglage | Défaut | À faire |
 |---|---|---|
 | `VINTED_BRAND_ID` | vide | Facultatif mais recommandé. Ouvre une annonce One Piece sur vinted.fr, suis le lien de la marque, relève le nombre dans `/brand/<id>-<nom>`. |
-| `ZEBRADEX_TCG_SLUG` | `one-piece` | Confirme avec `GET /api/admin/debug-zebradex` : la réponse indique le marqueur cherché et s'il a été trouvé. |
+| `ZEBRADEX_TCG_SLUG` | `one-piece` | ⚠️ **Sans objet : ZebraDex ne couvre pas One Piece.** Vérifié le 15/10/2026 dans un navigateur — le sitemap FR ne contient que `/fr/tcg/pokemon` (336 séries) et `/fr/tcg/one-piece` rend 404. Voir ci-dessous. |
 | `CARDMARKET_GAME_PATH` | `OnePiece` | Vérifie le segment dans l'URL d'une carte One Piece sur cardmarket.com. |
 | `CARD_IMAGE_BASE_URL` | liste officielle du jeu | Confirme avec `GET /api/admin/debug-card-images?code=OP01-001` : la réponse donne le code HTTP de chaque adresse essayée. |
 
@@ -177,6 +177,39 @@ le plus grave, et il était silencieux. Par défaut, plus aucun
 filtre de marque n'est appliqué : la recherche se fait sur le seul texte,
 moins précise mais juste. Mieux vaut trop d'annonces que les annonces d'un
 autre jeu.
+
+### ⚠️ Le catalogue n'a pas encore de source
+
+**ZebraDex ne couvre pas One Piece.** Constaté le 15/10/2026 depuis un
+navigateur réel, après déploiement : le sitemap FR ne liste que
+`/fr/tcg/pokemon`, et `/fr/tcg/one-piece` renvoie 404. Ce n'est pas un slug
+à corriger — la section n'existe pas.
+
+C'est le défaut le plus coûteux du projet, et sa cause est instructive : la
+couverture One Piece de ZebraDex avait été **supposée**, jamais constatée,
+parce que l'environnement de développement ne peut pas joindre le site. Tout
+le reste en dépendait. Sans catalogue : pas de codes de cartes, donc pas de
+prix de référence, donc pas de score d'affaire, et pas de visuels non plus
+puisqu'ils se déduisent du code.
+
+**Ce qu'il faut à la place.** Le catalogue a besoin, par carte : un code
+(`OP01-120`), un nom, une série, une rareté et un prix. Aucune source connue
+ne donne les cinq — la liste officielle du jeu donne tout sauf le prix, un
+guide de prix donne le prix et le nom mais rarement le code. L'architecture
+visée est donc à deux sources : la structure d'un côté, les prix de l'autre.
+
+**Comment on choisit, cette fois.** `GET /api/admin/debug-catalog-sources`
+interroge les sources candidates depuis le backend déployé — qui a un accès
+réseau normal, contrairement à l'environnement de développement — et
+rapporte ce que chacune répond : code HTTP, type de contenu, extrait brut, et
+si un code de carte y apparaît. **Elle ne parse rien et ne décide rien.** Le
+parseur sera écrit contre la forme réellement observée.
+
+La sonde distingue « robots.txt interdit » de « robots.txt illisible ». Les
+deux l'empêchent de sonder, mais appellent des suites opposées : le premier
+ferme la source, le second dit seulement que l'hôte n'a pas répondu. Les
+confondre ferait dire au diagnostic le contraire de la réalité — précisément
+l'erreur à ne pas refaire.
 
 ### Les visuels — ⚠️ format d'adresse non vérifié
 
@@ -327,9 +360,10 @@ compte : un score flatteur sur une carte mal identifiée est un piège.
 | `POST /api/admin/snapshot-card-prices` | Relevé de prix du jour (rattrapage manuel) |
 | `POST /api/admin/enrich-card-images` | Complète les visuels manquants |
 | `POST /api/admin/recompute-card-fields` | Rattrape les thèmes et la clé de recherche (à lancer une fois après le déploiement) |
+| `GET /api/admin/debug-catalog-sources` | Quelles sources peuvent alimenter le catalogue, et sous quelle forme |
 | `GET /api/admin/debug-card-images` | Détail de chaque adresse d'image essayée pour un code |
 
-**Tests** : `backend/tests/` — 406 tests. Lancer avec :
+**Tests** : `backend/tests/` — 427 tests. Lancer avec :
 
 ```bash
 cd backend

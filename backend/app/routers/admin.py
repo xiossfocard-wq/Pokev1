@@ -14,6 +14,7 @@ from app.services.price_index import (
     sync_series_batch, refresh_series_catalog, index_stats, find_price_for_listing,
 )
 from app.collectors.card_images import ClientImagesCartes
+from app.collectors.catalog_sources import SondeurDeSources
 from app.services import card_catalog
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -231,6 +232,29 @@ def recompute_card_fields(limit: int = Query(5000, ge=1, le=50000)):
         return card_catalog.recalculer_champs_derives(db, limite=limit)
     finally:
         db.close()
+
+
+@router.get("/debug-catalog-sources")
+def debug_catalog_sources():
+    """Quelles sources peuvent alimenter le catalogue One Piece ?
+
+    ZebraDex ne couvre PAS One Piece : verifie le 15/10/2026, son sitemap FR
+    ne contient que /fr/tcg/pokemon et /fr/tcg/one-piece rend 404. Le
+    catalogue restait donc vide, et avec lui tout ce qui en depend — prix de
+    reference, exploration par theme, visuels deduits du code carte.
+
+    Cette route interroge les sources candidates et rapporte ce que chacune
+    repond, SANS rien parser. Elle existe parce que l'environnement de
+    developpement n'a pas d'acces sortant vers ces hotes, alors que ce
+    backend, lui, en a un : on s'en sert pour constater la forme reelle
+    avant d'ecrire le parseur.
+
+    C'est exactement ce qui a manque la premiere fois. La couverture One
+    Piece de ZebraDex avait ete supposee, jamais constatee.
+
+    Copier la reponse entiere dans la conversation.
+    """
+    return SondeurDeSources().sonder_tout()
 
 
 @router.get("/debug-card-images")

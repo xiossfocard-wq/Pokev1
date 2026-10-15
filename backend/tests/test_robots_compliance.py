@@ -49,3 +49,74 @@ class TestRobotsCompliance(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestEtatPourDiagnostic(unittest.TestCase):
+    """`is_allowed` rend False dans deux cas tres differents : le site
+    refuse, ou robots.txt n'a pas pu etre lu. Pour decider d'y aller, les
+    confondre est sans danger — on s'abstient dans les deux cas. Pour un
+    DIAGNOSTIC, c'est l'inverse : les deux appellent des suites opposees."""
+
+    def setUp(self):
+        rc.reset_cache_for_tests()
+
+    def tearDown(self):
+        rc.reset_cache_for_tests()
+
+    def _session(self, contenu=None, status=200, leve=False):
+        import requests
+
+        class Rep:
+            def __init__(self):
+                self.status_code = status
+                self.text = contenu or ""
+
+        class Sess:
+            def get(self, url, **kwargs):
+                if leve:
+                    raise requests.ConnectionError("hote injoignable")
+                return Rep()
+
+        return Sess()
+
+    def test_autorise(self):
+        session = self._session("User-agent: *\nAllow: /\n")
+        self.assertEqual(
+            rc.etat_pour_diagnostic("https://exemple.test/cartes", session=session),
+            "autorise",
+        )
+
+    def test_interdit(self):
+        session = self._session("User-agent: *\nDisallow: /cartes\n")
+        self.assertEqual(
+            rc.etat_pour_diagnostic("https://exemple.test/cartes", session=session),
+            "interdit",
+        )
+
+    def test_illisible_n_est_pas_interdit(self):
+        """Le cas qui comptait : un hote injoignable ne doit pas etre
+        rapporte comme un site qui refuse."""
+        session = self._session(leve=True)
+        self.assertEqual(
+            rc.etat_pour_diagnostic("https://exemple.test/cartes", session=session),
+            "illisible",
+        )
+
+    def test_reste_coherent_avec_is_allowed(self):
+        """Les deux fonctions doivent s'accorder : tout ce qui n'est pas
+        "autorise" doit faire rendre False a `is_allowed`, sinon la sonde
+        irait quelque part ou le collecteur, lui, s'abstiendrait."""
+        for contenu, leve in [
+            ("User-agent: *\nAllow: /\n", False),
+            ("User-agent: *\nDisallow: /cartes\n", False),
+            (None, True),
+        ]:
+            with self.subTest(contenu=contenu, leve=leve):
+                rc.reset_cache_for_tests()
+                session = self._session(contenu, leve=leve)
+                etat = rc.etat_pour_diagnostic("https://exemple.test/cartes",
+                                               session=session)
+                rc.reset_cache_for_tests()
+                session = self._session(contenu, leve=leve)
+                autorise = rc.is_allowed("https://exemple.test/cartes", session=session)
+                self.assertEqual(autorise, etat == "autorise")
