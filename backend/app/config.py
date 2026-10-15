@@ -82,12 +82,25 @@ class Settings:
     # l'environnement de developpement refuse en.onepiece-cardgame.com. D'ou
     # ce reglage : GET /api/admin/debug-card-images rend le code HTTP de
     # chaque adresse essayee, et cette base se corrige sans toucher au code.
+    # Le site OFFICIEL FRANCAIS, pas l'anglais : le projet suit les cartes
+    # francaises, et c'est la liste francaise qui porte leurs noms et leurs
+    # visuels. Le sous-domaine est la seule difference d'adresse connue.
     card_image_base_url: str = field(
         default_factory=lambda: os.environ.get(
             "CARD_IMAGE_BASE_URL",
-            "https://en.onepiece-cardgame.com/images/cardlist/card",
+            "https://fr.onepiece-cardgame.com/images/cardlist/card",
         )
     )
+    # Source de PRIX. Une boutique francaise : ses prix portent sur des
+    # cartes francaises, ce qui est exactement ce qu'on veut comparer aux
+    # annonces. La liste officielle, elle, ne publie aucun prix — d'ou deux
+    # sources, la structure d'un cote et les prix de l'autre.
+    prix_source_url: str = field(
+        default_factory=lambda: os.environ.get(
+            "PRIX_SOURCE_URL", "https://www.opecards.fr"
+        )
+    )
+
     # Verifier chaque adresse (HEAD) avant de l'enregistrer en base. A
     # laisser VRAI : sans ca, une base mal reglee remplit l'interface de
     # cadres casses, ce qui est pire que l'absence de visuel puisque

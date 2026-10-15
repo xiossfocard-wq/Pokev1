@@ -198,12 +198,26 @@ ne donne les cinq — la liste officielle du jeu donne tout sauf le prix, un
 guide de prix donne le prix et le nom mais rarement le code. L'architecture
 visée est donc à deux sources : la structure d'un côté, les prix de l'autre.
 
+**Les deux sources retenues** (désignées le 15/10/2026) :
+
+| Source | Ce qu'elle apporte |
+|---|---|
+| `fr.onepiece-cardgame.com/cardlist/` | code, nom **français**, rareté, visuel — pas de prix |
+| `www.opecards.fr` | prix en euros, pour des cartes françaises |
+
+Le **français** n'est pas un détail de confort : l'édition anglaise porte
+d'autres noms imprimés, et un catalogue rempli avec elle ne se rapprocherait
+d'aucune annonce française. C'est aussi pourquoi `CARD_IMAGE_BASE_URL` vise
+`fr.`, pas `en.`.
+
 **Comment on choisit, cette fois.** `GET /api/admin/debug-catalog-sources`
-interroge les sources candidates depuis le backend déployé — qui a un accès
-réseau normal, contrairement à l'environnement de développement — et
-rapporte ce que chacune répond : code HTTP, type de contenu, extrait brut, et
-si un code de carte y apparaît. **Elle ne parse rien et ne décide rien.** Le
-parseur sera écrit contre la forme réellement observée.
+interroge ces sources depuis le backend déployé — qui a un accès réseau
+normal, contrairement à l'environnement de développement — et rapporte ce
+que chacune répond : code HTTP, type de contenu, extrait brut, **les liens
+internes rencontrés** (c'est eux qui révèlent comment le site adresse ses
+séries et ses fiches), le nombre de prix en euros visibles, et les mots
+français repérés. **Elle ne parse rien et ne décide rien.** Le parseur sera
+écrit contre la forme réellement observée.
 
 La sonde distingue « robots.txt interdit » de « robots.txt illisible ». Les
 deux l'empêchent de sonder, mais appellent des suites opposées : le premier
@@ -363,7 +377,7 @@ compte : un score flatteur sur une carte mal identifiée est un piège.
 | `GET /api/admin/debug-catalog-sources` | Quelles sources peuvent alimenter le catalogue, et sous quelle forme |
 | `GET /api/admin/debug-card-images` | Détail de chaque adresse d'image essayée pour un code |
 
-**Tests** : `backend/tests/` — 427 tests. Lancer avec :
+**Tests** : `backend/tests/` — 440 tests. Lancer avec :
 
 ```bash
 cd backend

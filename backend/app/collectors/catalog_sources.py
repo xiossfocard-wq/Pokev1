@@ -39,6 +39,7 @@ prix de l'autre. Cette sonde sert a etablir laquelle repond, et sous quelle
 forme.
 """
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from typing import List, Optional
@@ -70,50 +71,42 @@ class SourceCandidate:
 
 
 def candidates() -> List[SourceCandidate]:
-    """Les sources a sonder, de la plus prometteuse a la moins.
+    """Les sources a sonder.
 
-    `CARD_IMAGE_BASE_URL` sert de racine a la liste officielle : les deux
-    viennent du meme site, et le reglage existe deja.
+    Designees le 15/10/2026 : la liste officielle FRANCAISE pour la
+    structure et les visuels, une boutique francaise pour les prix. Le
+    francais n'est pas un detail — c'est le jeu de cartes que l'app suit,
+    et les noms imprimes changent d'une edition a l'autre.
+
+    ZebraDex ne figure plus ici : son absence de couverture One Piece a ete
+    constatee, la question est tranchee.
     """
     racine_officielle = settings.card_image_base_url.split("/images/")[0].rstrip("/")
 
-    liste = [
+    return [
         SourceCandidate(
-            cle="liste_officielle",
+            cle="liste_fr_index",
             url=f"{racine_officielle}/cardlist/",
-            apporte="code, nom, serie, rarete (pas de prix)",
-            remarque="Meme site que les illustrations. La source la plus complete "
-                     "pour la STRUCTURE du catalogue.",
+            apporte="l'enumeration des series (pas les cartes elles-memes)",
+            remarque="Sans l'identifiant de serie, cette page sert surtout a "
+                     "savoir COMMENT les series sont enumerees : c'est ce qui "
+                     "permettra de les parcourir toutes.",
         ),
         SourceCandidate(
-            cle="cardmarket_price_guide",
-            url=f"https://www.cardmarket.com/en/{settings.cardmarket_game_path}/Data/Price-Guide",
-            apporte="nom, prix (code rarement present)",
-            remarque="Un blocage anti-bot etait deja constate en aout 2026. Si "
-                     "c'est encore le cas, l'URL du fichier doit etre relevee a "
-                     "la main dans un navigateur, puis mise dans "
-                     "CARDMARKET_BULK_PRICE_GUIDE_URL.",
+            cle="liste_fr_serie",
+            url=f"{racine_officielle}/cardlist/?series=622117",
+            apporte="code, nom francais, rarete, visuel (pas de prix)",
+            remarque="Une serie reelle, fournie comme echantillon. C'est la "
+                     "forme de CETTE page que le parseur devra lire.",
         ),
         SourceCandidate(
-            cle="zebradex_jeu_vise",
-            url=f"https://zebradex.fr/fr/tcg/{settings.zebradex_tcg_slug}",
-            apporte="rien — sonde pour confirmer l'absence",
-            remarque="Constate 404 le 15/10/2026. Gardee dans la sonde pour que "
-                     "le constat soit refait par la machine et non de memoire.",
+            cle="prix_boutique_fr",
+            url=settings.prix_source_url,
+            apporte="prix en euros, pour des cartes francaises",
+            remarque="Page d'accueil : on cherche d'abord comment les fiches "
+                     "cartes sont adressees, pas encore les prix eux-memes.",
         ),
     ]
-
-    # Un fichier de prix deja releve a la main : on le sonde aussi, c'est
-    # lui qui servira si Cardmarket bloque la page publique.
-    if settings.cardmarket_bulk_price_guide_url:
-        liste.append(SourceCandidate(
-            cle="cardmarket_fichier_direct",
-            url=settings.cardmarket_bulk_price_guide_url,
-            apporte="nom, prix",
-            remarque="URL renseignee dans CARDMARKET_BULK_PRICE_GUIDE_URL.",
-        ))
-
-    return liste
 
 
 class SondeurDeSources:
@@ -190,6 +183,9 @@ class SondeurDeSources:
 
         # Quelques reperes de forme, pour orienter la lecture sans decider.
         rapport["indices"] = _indices_de_forme(texte, type_contenu)
+        # Les liens revelent comment le site adresse ses pages : c'est ce
+        # qui dira ou vivent les series, et ou vivent les fiches cartes.
+        rapport["liens_internes"] = _echantillon_de_liens(texte, reponse.url)
         rapport["conclusion"] = _conclure(reponse.status_code, rapport["indices"])
         return rapport
 
@@ -224,19 +220,75 @@ def _indices_de_forme(texte: str, type_contenu: str) -> dict:
         "premiere_ligne": premiere_ligne,
         # Un code carte visible prouve que la page porte bien des cartes.
         "contient_un_code_carte": _premier_code_carte(texte),
+        # Des euros prouvent que la page porte des prix. Une source de prix
+        # sans prix visible n'en est pas une.
+        "nombre_de_prix_en_euros": len(_MOTIF_PRIX.findall(texte)),
+        "premier_prix": (_MOTIF_PRIX.search(texte).group(0).strip()
+                         if _MOTIF_PRIX.search(texte) else None),
+        # Le jeu suivi est le jeu FRANCAIS : une page anglaise serait la
+        # mauvaise edition, avec les mauvais noms imprimes.
+        "indices_de_francais": _mots_francais(bas),
         "mentions_anti_bot": [m for m in ("captcha", "cloudflare", "are you human",
                                           "access denied", "datadome")
                               if m in bas],
     }
 
 
+# « 12,50 € », « 12.50€ », « € 12,50 ».
+_MOTIF_PRIX = re.compile(r"(?:\d{1,5}[.,]\d{2}\s*\u20ac|\u20ac\s*\d{1,5}[.,]\d{2})")
+
+# Mots qui n'apparaissent que sur une page francaise. La comparaison se
+# fait sur des MOTS ENTIERS : « serie » en sous-chaine matche l'anglais
+# « Series », et la sonde aurait alors pris une page anglaise pour une page
+# francaise — exactement le genre de faux positif qu'elle doit eviter,
+# puisque l'edition anglaise porte d'autres noms imprimes.
+_MOTS_FRANCAIS = (
+    "rareté", "rarete", "série", "serie", "prix", "disponible", "rupture",
+    "panier", "livraison", "épuisé", "epuise", "occasion", "neuf",
+)
+
+
+def _mots_francais(texte_minuscule: str) -> List[str]:
+    trouves = []
+    for mot in _MOTS_FRANCAIS:
+        if re.search(rf"(?<![a-zà-ÿ]){re.escape(mot)}(?![a-zà-ÿ])", texte_minuscule):
+            trouves.append(mot)
+    return trouves
+
+
+def _echantillon_de_liens(texte: str, url_base: str, maximum: int = 25) -> List[str]:
+    """Adresses internes rencontrees, dedoublonnees.
+
+    C'est le renseignement le plus utile pour une source dont on ne connait
+    pas l'organisation : savoir comment elle adresse ses pages dit ou
+    chercher les series et les fiches cartes. Les fichiers (images, styles,
+    scripts) sont ecartes, ils n'apprennent rien sur la navigation.
+    """
+    from urllib.parse import urljoin, urlparse
+
+    hote = urlparse(url_base).netloc
+    vus: List[str] = []
+    for href in re.findall(r'href=["\']([^"\']+)["\']', texte):
+        if href.startswith(("#", "mailto:", "tel:", "javascript:")):
+            continue
+        if re.search(r"\.(png|jpe?g|gif|svg|webp|css|js|ico|woff2?)(\?|$)", href, re.I):
+            continue
+        absolu = urljoin(url_base, href)
+        if urlparse(absolu).netloc != hote:
+            continue
+        if absolu not in vus:
+            vus.append(absolu)
+        if len(vus) >= maximum:
+            break
+    return vus
+
+
 def _premier_code_carte(texte: str) -> Optional[str]:
     """Premier motif ressemblant a un code One Piece dans le texte.
 
-    C'est le signal le plus utile de la sonde : si un code apparait, la
-    source porte bien des cartes du jeu, quelle que soit sa mise en forme.
+    Si un code apparait, la source porte bien des cartes du jeu, quelle que
+    soit sa mise en forme.
     """
-    import re
     trouve = re.search(r"\b((?:OP|ST|EB|PRB)\d{2}|P)-\d{3}\b", texte)
     return trouve.group(0) if trouve else None
 

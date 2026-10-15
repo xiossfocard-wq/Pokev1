@@ -165,33 +165,128 @@ class TestRobots(unittest.TestCase):
 
 
 class TestListeDesCandidates(unittest.TestCase):
-    def test_les_sources_essentielles_sont_sondees(self):
+    def test_les_trois_sources_designees_sont_sondees(self):
         cles = [c.cle for c in candidates()]
-        self.assertIn("liste_officielle", cles)
-        self.assertIn("cardmarket_price_guide", cles)
-        self.assertIn("zebradex_jeu_vise", cles,
-                      "l'absence de ZebraDex doit etre reconstatee par la machine")
+        self.assertEqual(cles, ["liste_fr_index", "liste_fr_serie", "prix_boutique_fr"])
 
-    def test_la_liste_officielle_derive_du_reglage_d_images(self):
-        """Les illustrations et la liste viennent du meme site : un seul
-        reglage, pas deux qui peuvent diverger."""
+    def test_zebradex_ne_figure_plus(self):
+        """Son absence de couverture a ete constatee : la question est
+        tranchee, la resonder ne ferait qu'ajouter du bruit."""
+        for c in candidates():
+            self.assertNotIn("zebradex", c.cle)
+            self.assertNotIn("zebradex", c.url)
+
+    def test_la_liste_derive_du_reglage_d_images(self):
+        """Les visuels et la liste viennent du meme site : un seul reglage,
+        pas deux qui peuvent diverger."""
         with mock.patch.object(catalog_sources.settings, "card_image_base_url",
                                "https://exemple.test/images/cardlist/card"):
-            url = next(c.url for c in candidates() if c.cle == "liste_officielle")
-        self.assertEqual(url, "https://exemple.test/cardlist/")
+            urls = {c.cle: c.url for c in candidates()}
+        self.assertEqual(urls["liste_fr_index"], "https://exemple.test/cardlist/")
+        self.assertTrue(urls["liste_fr_serie"].startswith(
+            "https://exemple.test/cardlist/?series="))
 
-    def test_le_fichier_de_prix_releve_a_la_main_est_sonde(self):
-        with mock.patch.object(catalog_sources.settings,
-                               "cardmarket_bulk_price_guide_url",
-                               "https://exemple.test/prix.csv"):
-            cles = [c.cle for c in candidates()]
-        self.assertIn("cardmarket_fichier_direct", cles)
+    def test_le_site_vise_est_le_francais(self):
+        """Le projet suit les cartes FRANCAISES : viser l'edition anglaise
+        donnerait les mauvais noms imprimes."""
+        from app.config import Settings
+        self.assertIn("fr.onepiece-cardgame.com", Settings().card_image_base_url)
 
-    def test_sans_fichier_releve_il_n_est_pas_sonde(self):
-        with mock.patch.object(catalog_sources.settings,
-                               "cardmarket_bulk_price_guide_url", None):
-            cles = [c.cle for c in candidates()]
-        self.assertNotIn("cardmarket_fichier_direct", cles)
+    def test_la_source_de_prix_suit_son_reglage(self):
+        with mock.patch.object(catalog_sources.settings, "prix_source_url",
+                               "https://boutique.test"):
+            url = next(c.url for c in candidates() if c.cle == "prix_boutique_fr")
+        self.assertEqual(url, "https://boutique.test")
+
+
+class TestReperesDePrixEtDeLangue(unittest.TestCase):
+    def setUp(self):
+        p = mock.patch.object(catalog_sources.robots_compliance,
+                              "etat_pour_diagnostic", return_value="autorise")
+        p.start()
+        self.addCleanup(p.stop)
+
+    def _sonde(self, page):
+        return _sondeur(SessionFactice(ReponseFactice(200, page))).sonder(_candidat())
+
+    def test_les_prix_en_euros_sont_comptes(self):
+        """Une source de prix sans prix visible n'en est pas une."""
+        rapport = self._sonde("Luffy 12,50 € — Zoro 7.00 € — Nami 120,00 €")
+        self.assertEqual(rapport["indices"]["nombre_de_prix_en_euros"], 3)
+        self.assertEqual(rapport["indices"]["premier_prix"], "12,50 €")
+
+    def test_une_page_sans_prix_le_dit(self):
+        rapport = self._sonde("<html>OP01-120 Monkey D. Luffy</html>")
+        self.assertEqual(rapport["indices"]["nombre_de_prix_en_euros"], 0)
+        self.assertIsNone(rapport["indices"]["premier_prix"])
+
+    def test_les_indices_de_francais_sont_releves(self):
+        rapport = self._sonde("<html>Rareté : SR — Série : Romance Dawn — Prix</html>")
+        self.assertIn("rareté", rapport["indices"]["indices_de_francais"])
+        self.assertIn("série", rapport["indices"]["indices_de_francais"])
+
+    def test_une_page_anglaise_ne_passe_pas_pour_francaise(self):
+        """L'edition anglaise porte d'autres noms imprimes : la confondre
+        avec la francaise remplirait le catalogue des mauvaises cartes."""
+        rapport = self._sonde("<html>Rarity: SR — Series: Romance Dawn — Add to cart</html>")
+        self.assertEqual(rapport["indices"]["indices_de_francais"], [])
+
+    def test_les_mots_anglais_qui_contiennent_un_mot_francais(self):
+        """Le faux positif qui a ete trouve en ecrivant ces tests : « serie »
+        cherche en sous-chaine matche l'anglais « Series », et « neuf »
+        matche... rien, mais « occasion » matche l'anglais « occasion ».
+        La comparaison se fait donc sur des MOTS ENTIERS."""
+        from app.collectors.catalog_sources import _mots_francais
+        for anglais in ("this series is available",
+                        "on this occasional basis",
+                        "priximity is not a word"):
+            with self.subTest(anglais=anglais):
+                self.assertEqual(_mots_francais(anglais), [], anglais)
+
+    def test_le_francais_sans_accents_compte_quand_meme(self):
+        """Tous les sites n'accentuent pas leurs libelles."""
+        from app.collectors.catalog_sources import _mots_francais
+        trouves = _mots_francais("serie romance dawn, prix 12,50 €, disponible")
+        self.assertIn("serie", trouves)
+        self.assertIn("prix", trouves)
+
+
+class TestEchantillonDeLiens(unittest.TestCase):
+    """Savoir comment un site adresse ses pages dit ou chercher les series
+    et les fiches cartes. C'est le renseignement principal pour une source
+    dont on ne connait pas l'organisation."""
+
+    BASE = "https://fr.exemple.test/cardlist/"
+
+    def _liens(self, html):
+        return catalog_sources._echantillon_de_liens(html, self.BASE)
+
+    def test_les_liens_relatifs_sont_absolus(self):
+        self.assertEqual(
+            self._liens('<a href="?series=622117">S</a>'),
+            ["https://fr.exemple.test/cardlist/?series=622117"],
+        )
+
+    def test_les_fichiers_sont_ecartes(self):
+        html = ('<a href="/page">p</a><a href="/i.png">x</a>'
+                '<a href="/s.css">y</a><a href="/j.js">z</a>')
+        self.assertEqual(self._liens(html), ["https://fr.exemple.test/page"])
+
+    def test_les_autres_sites_sont_ecartes(self):
+        html = '<a href="/interne">a</a><a href="https://ailleurs.test/z">b</a>'
+        self.assertEqual(self._liens(html), ["https://fr.exemple.test/interne"])
+
+    def test_les_ancres_et_protocoles_speciaux_sont_ecartes(self):
+        html = '<a href="#haut">a</a><a href="mailto:x@y.z">b</a><a href="/ok">c</a>'
+        self.assertEqual(self._liens(html), ["https://fr.exemple.test/ok"])
+
+    def test_les_doublons_sont_retires(self):
+        html = '<a href="/a">1</a><a href="/a">2</a><a href="/b">3</a>'
+        self.assertEqual(len(self._liens(html)), 2)
+
+    def test_le_nombre_est_plafonne(self):
+        html = "".join(f'<a href="/p{i}">x</a>' for i in range(80))
+        self.assertLessEqual(len(self._liens(html)), 25)
 
 
 class TestRapportComplet(unittest.TestCase):
