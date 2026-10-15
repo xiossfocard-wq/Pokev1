@@ -287,6 +287,12 @@ export interface CatalogCard {
   image_url: string | null;
   image_source: string | null;
   trend_7d: Trend7d;
+  // Annonces en vente pour cette carte, en ce moment. Portés jusqu'à la
+  // grille pour répondre d'un coup d'œil à « laquelle de ces cartes a
+  // quelque chose à prendre ? », au lieu d'ouvrir chaque fiche l'une après
+  // l'autre. Comptés avec EXACTEMENT les mêmes exclusions que la fiche.
+  listings_count: number;
+  best_deal_score: number | null;
   updated_at: string | null;
 }
 
@@ -328,6 +334,7 @@ export interface CardSearchParams {
   priceMax?: number;
   trend?: "hausse" | "baisse" | "toutes";
   withImage?: boolean;
+  withListings?: boolean;
   sortBy?: CardSortField;
   order?: SortOrder;
   limit?: number;
@@ -344,6 +351,8 @@ export function searchCards(params: CardSearchParams): Promise<CardSearchResult>
   if (params.priceMax !== undefined) qs.set("price_max", String(params.priceMax));
   if (params.trend) qs.set("trend", params.trend);
   if (params.withImage !== undefined) qs.set("with_image", String(params.withImage));
+  if (params.withListings !== undefined)
+    qs.set("with_listings", String(params.withListings));
   if (params.sortBy) qs.set("sort_by", params.sortBy);
   if (params.order) qs.set("order", params.order);
   if (params.limit !== undefined) qs.set("limit", String(params.limit));

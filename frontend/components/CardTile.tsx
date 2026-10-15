@@ -38,6 +38,17 @@ export default function CardTile({
   const tendance = carte.trend_7d;
   const couleur = COULEURS_TENDANCE[tendance.direction] ?? COULEURS_TENDANCE.inconnu;
 
+  // Une affaire se voit depuis la grille, pas seulement en ouvrant la fiche.
+  // Le ton suit le meilleur score pour que l'œil trie sans lire.
+  const annonces = carte.listings_count;
+  const meilleur = carte.best_deal_score;
+  const tonAffaire =
+    meilleur !== null && meilleur >= 80
+      ? "border-moss-500/50 bg-moss-500/15 text-moss-400"
+      : meilleur !== null && meilleur >= 60
+        ? "border-ember-500/50 bg-ember-500/15 text-ember-400"
+        : "border-ink-600 bg-ink-900/90 text-parchment-100/60";
+
   return (
     <button
       type="button"
@@ -63,6 +74,20 @@ export default function CardTile({
               Visuel pas encore récupéré
             </span>
           </div>
+        )}
+
+        {annonces > 0 && (
+          <span
+            title={
+              meilleur !== null
+                ? `${annonces} annonce${annonces > 1 ? "s" : ""} en vente · meilleur score d'affaire ${meilleur.toFixed(0)}/100`
+                : `${annonces} annonce${annonces > 1 ? "s" : ""} en vente`
+            }
+            className={`absolute left-1.5 top-1.5 rounded-sm border px-1.5 py-0.5 font-mono text-[10px] backdrop-blur-sm ${tonAffaire}`}
+          >
+            {annonces} en vente
+            {meilleur !== null && ` · ${meilleur.toFixed(0)}`}
+          </span>
         )}
       </div>
 

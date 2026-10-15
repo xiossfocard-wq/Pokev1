@@ -68,6 +68,25 @@ FUZZY_MAX_TRIES = 8
 # differentes, pas une faute de frappe.
 FUZZY_MAX_LENGTH_DELTA = 2
 
+# --- Rattrapage du nom usuel ---------------------------------------------
+# One Piece indexe ses cartes sous le nom COMPLET du personnage
+# (« Monkey D. Luffy », « Portgas D. Ace », « Charlotte Katakuri ») alors
+# que les vendeurs ecrivent le nom usuel : « Luffy », « Ace », « Katakuri ».
+# Sans ce rattrapage, la majorite des annonces du jeu ne trouvaient AUCUN
+# prix de reference, le nom complet n'apparaissant presque jamais dans un
+# titre Vinted.
+#
+# La regle est volontairement etroite : le candidat doit etre la FIN du nom
+# indexe, sur des mots entiers. « luffy » retrouve « monkey-d-luffy », et
+# « luffy-leader » retrouve « monkey-d-luffy-leader ». L'inverse — un
+# candidat qui serait le DEBUT du nom indexe — ne correspond a rien
+# d'observe : personne n'ecrit « Monkey » pour designer Luffy.
+PARTIEL_MIN_LENGTH = 3
+# Au-dela, le nom est trop porte pour qu'une mediane veuille dire quelque
+# chose : mieux vaut aucun prix qu'un chiffre tire de trente cartes allant
+# de 2 a 400 EUR.
+PARTIEL_MAX_CARTES = 12
+
 # La liste des noms connus est relue au plus toutes les 15 min : l'index
 # grossit lentement (6 series par cycle de 20 min) et la relire pour chaque
 # annonce couterait une requete lourde a chaque fois.
@@ -310,7 +329,13 @@ def find_price_for_listing(db: Session, title: str, description: str = "") -> Op
     # numero de set quand il est present.
     match = _match_by_name(db, names, set_number)
     if match is None:
-        # (c) Dernier recours : faute de frappe probable dans le titre.
+        # (c) Nom usuel : le vendeur ecrit « Luffy », l'index contient
+        # « Monkey D. Luffy ». Avant la faute de frappe, parce qu'une
+        # correspondance exacte sur des mots entiers est une preuve plus
+        # solide qu'une correction orthographique devinee.
+        match = _match_by_partial_name(db, names)
+    if match is None:
+        # (d) Dernier recours : faute de frappe probable dans le titre.
         match = _match_by_fuzzy_name(db, names, set_number)
 
     if match is not None:
@@ -409,6 +434,70 @@ def _best_in_group(name: str, group: List[MarketCardPrice], set_number) -> Price
         f"nom '{name}' present dans {len(group)} series - prix median retenu",
         group,
     )
+
+
+def _slugs_finissant_par(connus: List[str], candidat: str) -> List[str]:
+    """Noms indexes dont le candidat est la fin, sur des mots entiers.
+
+    Le tiret dans le suffixe est ce qui garantit « mots entiers » :
+    « ace » retrouve « portgas-d-ace » mais PAS « menace ».
+    """
+    suffixe = f"-{candidat}"
+    return [slug for slug in connus if slug.endswith(suffixe)]
+
+
+def _match_by_partial_name(db: Session, names: List[str]) -> Optional[PriceMatch]:
+    """Rattrape le nom usuel quand l'index porte le nom complet.
+
+    N'est atteint que si le nom complet n'a RIEN donne : une egalite exacte
+    aurait deja ete trouvee par `_match_by_name`. Ici on ne cherche donc que
+    des noms indexes PLUS LONGS que ce qu'a ecrit le vendeur.
+
+    Pas d'affinage par numero de set, contrairement aux autres niveaux :
+    One Piece numerote « OP01-120 » et non « 4/102 », donc ce signal
+    n'existe pas ici — le pretendre rendrait le code plus difficile a
+    suivre pour un gain nul.
+    """
+    if not names:
+        return None
+    connus = _known_slugs(db)
+    if not connus:
+        return None
+
+    # `names` est trie du plus specifique au moins specifique : on essaie
+    # donc « luffy-leader » avant « luffy ».
+    for name in names:
+        if len(name) < PARTIEL_MIN_LENGTH:
+            continue
+        slugs = _slugs_finissant_par(connus, name)
+        if not slugs:
+            continue
+
+        rows = db.query(MarketCardPrice).filter(
+            MarketCardPrice.name_slug.in_(slugs)
+        ).all()
+        if not rows or len(rows) > PARTIEL_MAX_CARTES:
+            # Trop de cartes : on passe au candidat suivant plutot que de
+            # rendre une mediane qui ne voudrait rien dire.
+            continue
+
+        if len(rows) == 1:
+            return PriceMatch(
+                rows[0], "medium",
+                f"nom usuel '{name}' : une seule carte de l'index porte ce "
+                f"nom ({rows[0].display_name})",
+                rows,
+            )
+
+        # Plusieurs cartes : la mediane est retenue mais l'ecart est expose,
+        # et `is_uncertain` s'en saisit pour prevenir l'utilisateur.
+        return PriceMatch(
+            _median_row(rows), "low",
+            f"nom usuel '{name}' : {len(rows)} cartes de l'index finissent "
+            f"par ce nom - prix median retenu",
+            rows,
+        )
+    return None
 
 
 def _match_by_fuzzy_name(db: Session, names: List[str], set_number) -> Optional[PriceMatch]:

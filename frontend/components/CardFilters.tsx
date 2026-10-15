@@ -19,6 +19,7 @@ export interface EtatFiltres {
   priceMax: string;
   trend: "toutes" | "hausse" | "baisse";
   withImageOnly: boolean;
+  withListingsOnly: boolean;
   sortBy: CardSortField;
   order: "asc" | "desc";
 }
@@ -32,6 +33,7 @@ export const FILTRES_VIDES: EtatFiltres = {
   priceMax: "",
   trend: "toutes",
   withImageOnly: false,
+  withListingsOnly: false,
   sortBy: "prix",
   order: "desc",
 };
@@ -241,6 +243,19 @@ export default function CardFilters({
           className="accent-ember-500"
         />
         Seulement les cartes avec visuel
+      </label>
+
+      <label
+        className="flex cursor-pointer items-center gap-2 text-[11px] text-parchment-100/55"
+        title="Les cartes pour lesquelles au moins une annonce est en vente en ce moment"
+      >
+        <input
+          type="checkbox"
+          checked={filtres.withListingsOnly}
+          onChange={(e) => onChange({ withListingsOnly: e.target.checked })}
+          className="accent-ember-500"
+        />
+        Seulement les cartes en vente
       </label>
 
       {valeurs && (

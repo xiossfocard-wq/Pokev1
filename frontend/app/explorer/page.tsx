@@ -73,6 +73,7 @@ export default function ExplorerPage() {
       priceMax: enNombre(f.priceMax),
       trend: f.trend,
       withImage: f.withImageOnly ? true : undefined,
+      withListings: f.withListingsOnly ? true : undefined,
       sortBy: f.sortBy,
       order: f.order,
       limit: PAR_PAGE,

@@ -48,6 +48,7 @@ def _requete_filtree(
     prix_max: Optional[float] = None,
     tendance: Optional[str] = None,
     avec_image: Optional[bool] = None,
+    avec_annonces: Optional[bool] = None,
 ):
     requete = db.query(MarketCardPrice)
 
@@ -107,6 +108,18 @@ def _requete_filtree(
     elif avec_image is False:
         requete = requete.filter(MarketCardPrice.image_url.is_(None))
 
+    if avec_annonces is True:
+        # EXISTS plutot qu'une jointure : une carte avec cinq annonces doit
+        # rester UNE ligne, sinon le total affiche et la pagination
+        # comptent des doublons.
+        from app.models import Listing  # local : evite un cycle
+
+        seuil = load_app_settings(db).get("min_listing_price") or 0.0
+        sous_requete = db.query(Listing.id).filter(
+            Listing.matched_card_id == MarketCardPrice.id
+        )
+        requete = requete.filter(_annonces_visibles(sous_requete, seuil).exists())
+
     return requete
 
 
@@ -120,6 +133,7 @@ def rechercher_cartes(
     prix_max: Optional[float] = None,
     tendance: Optional[str] = None,
     avec_image: Optional[bool] = None,
+    avec_annonces: Optional[bool] = None,
     tri: str = "prix",
     ordre: str = "desc",
     limite: int = 60,
@@ -133,7 +147,7 @@ def rechercher_cartes(
     requete = _requete_filtree(
         db, q=q, theme=theme, rarity=rarity, series=series,
         prix_min=prix_min, prix_max=prix_max, tendance=tendance,
-        avec_image=avec_image,
+        avec_image=avec_image, avec_annonces=avec_annonces,
     )
 
     total = requete.count()
@@ -143,16 +157,28 @@ def rechercher_cartes(
 
     lignes = requete.limit(limite).offset(decalage).all()
 
+    # Une seule requete agregee pour toute la page, pas une par carte.
+    compteurs = compteurs_d_annonces(db, [ligne.id for ligne in lignes])
+
     return {
         "total": total,
         "limite": limite,
         "decalage": decalage,
-        "cartes": [carte_en_dict(ligne) for ligne in lignes],
+        "cartes": [carte_en_dict(ligne, compteurs.get(ligne.id)) for ligne in lignes],
     }
 
 
-def carte_en_dict(ligne: MarketCardPrice) -> dict:
+def carte_en_dict(ligne: MarketCardPrice,
+                  annonces: Optional[dict] = None) -> dict:
+    """`annonces` vient de `compteurs_d_annonces` : {listings_count,
+    best_deal_score}. Absent (fiche carte, cartes en vogue) -> zero.
+
+    Le compte est porte jusqu'a la grille pour repondre d'un coup d'oeil a
+    « laquelle de ces cartes a quelque chose a prendre ? », au lieu de
+    devoir ouvrir chaque fiche l'une apres l'autre.
+    """
     tendance = tendance_7_jours(ligne.price_eur, ligne.variation_7d_eur)
+    annonces = annonces or {}
     return {
         "id": ligne.id,
         "card_code": ligne.card_code,
@@ -171,6 +197,8 @@ def carte_en_dict(ligne: MarketCardPrice) -> dict:
         "image_url": ligne.image_url,
         "image_source": ligne.image_source,
         "trend_7d": tendance.to_dict(),
+        "listings_count": annonces.get("listings_count", 0),
+        "best_deal_score": annonces.get("best_deal_score"),
         "updated_at": ligne.updated_at.isoformat() if ligne.updated_at else None,
     }
 
@@ -282,7 +310,19 @@ def cartes_en_vogue(
         key=lambda c: c["trend_7d"]["variation_pct"],
         reverse=(sens == "hausse"),
     )
-    return cartes[:limite]
+    cartes = cartes[:limite]
+
+    # Les compteurs d'annonces APRES la coupe : on vient d'en lire plusieurs
+    # centaines pour n'en garder qu'une douzaine, les compter toutes serait
+    # du travail jete. Sans ca, une carte du rail affichait « aucune
+    # annonce » alors que la grille en annonçait trois juste en dessous.
+    compteurs = compteurs_d_annonces(db, [c["id"] for c in cartes])
+    for carte in cartes:
+        compte = compteurs.get(carte["id"], {})
+        carte["listings_count"] = compte.get("listings_count", 0)
+        carte["best_deal_score"] = compte.get("best_deal_score")
+
+    return cartes
 
 
 # --- historique ----------------------------------------------------------
@@ -353,6 +393,59 @@ def historique_de_la_carte(db: Session, name_slug: str,
     return [(ligne.captured_on, ligne.price_eur) for ligne in lignes]
 
 
+def _annonces_visibles(requete, seuil: float):
+    """Les exclusions du tableau de bord, definies UNE SEULE FOIS.
+
+    Annonce ecartee, disparue de chez le vendeur, retiree, masquee a la
+    main, ou sous le prix plancher. Trois endroits s'en servent : la liste
+    des annonces d'une carte, le comptage affiche sur la grille, et le
+    filtre « seulement les cartes avec une annonce ». S'ils divergeaient,
+    la grille promettrait une affaire que la fiche ne montrerait pas — ce
+    qui est pire que de ne rien promettre du tout.
+    """
+    from app.models import Listing, ListingStatus  # local : evite un cycle
+
+    return (
+        requete
+        .filter(Listing.status.notin_([ListingStatus.IGNORED,
+                                       ListingStatus.UNAVAILABLE,
+                                       ListingStatus.REMOVED]))
+        .filter((Listing.manual_status.is_(None)) | (Listing.manual_status != "hidden"))
+        .filter(Listing.price > seuil)
+    )
+
+
+def compteurs_d_annonces(db: Session, card_ids: List[int]) -> dict:
+    """Combien d'annonces en vente par carte, et le meilleur score.
+
+    Une seule requete agregee pour toute la page de resultats : la grille
+    affiche des dizaines de cartes, et une requete par carte ferait des
+    dizaines d'allers-retours pour une information d'appoint.
+
+    Sert a repondre, depuis la grille, a « laquelle de ces cartes a quelque
+    chose a prendre en ce moment ? » sans avoir a les ouvrir une par une.
+    """
+    from app.models import Listing  # local : evite un cycle
+
+    if not card_ids:
+        return {}
+
+    seuil = load_app_settings(db).get("min_listing_price") or 0.0
+
+    requete = db.query(
+        Listing.matched_card_id,
+        func.count(Listing.id),
+        func.max(Listing.deal_score),
+    ).filter(Listing.matched_card_id.in_(card_ids))
+
+    requete = _annonces_visibles(requete, seuil).group_by(Listing.matched_card_id)
+
+    return {
+        card_id: {"listings_count": nombre, "best_deal_score": meilleur}
+        for card_id, nombre, meilleur in requete.all()
+    }
+
+
 def annonces_de_la_carte(db: Session, card_id: int, limite: int = 20) -> List[dict]:
     """Annonces en vente pour CETTE carte, les meilleures affaires d'abord.
 
@@ -369,17 +462,13 @@ def annonces_de_la_carte(db: Session, card_id: int, limite: int = 20) -> List[di
     l'exemplaire reel qui est en vente, avec son centrage, ses bords et son
     etat.
     """
-    from app.models import Listing, ListingStatus  # local : evite un cycle
+    from app.models import Listing  # local : evite un cycle
 
     seuil = load_app_settings(db).get("min_listing_price") or 0.0
 
+    requete = db.query(Listing).filter(Listing.matched_card_id == card_id)
     lignes = (
-        db.query(Listing)
-        .filter(Listing.matched_card_id == card_id)
-        .filter(Listing.status.notin_([ListingStatus.IGNORED, ListingStatus.UNAVAILABLE,
-                                       ListingStatus.REMOVED]))
-        .filter((Listing.manual_status.is_(None)) | (Listing.manual_status != "hidden"))
-        .filter(Listing.price > seuil)
+        _annonces_visibles(requete, seuil)
         .order_by(nullslast(Listing.deal_score.desc()))
         .limit(limite)
         .all()

@@ -237,6 +237,43 @@ Trois comportements à connaître :
   passage, toutes les 30 minutes). Sur un gros catalogue, les visuels se
   remplissent sur plusieurs heures, les cartes les plus chères d'abord.
 
+### Le rapprochement annonce → carte
+
+Une annonce ne vaut rien sans prix de référence : c'est lui qui dit si
+c'est une affaire. Le rapprochement se fait en cascade, du plus sûr au
+moins sûr, et **s'arrête au premier niveau qui répond** :
+
+1. **le code carte** (`OP01-120`) — le seul cas où on est vraiment sûr ;
+2. **le nom complet** (`Monkey D. Luffy`) ;
+3. **le nom usuel** (`Luffy`) — voir ci-dessous ;
+4. **la faute de frappe** (`zorro` → `zoro`), volontairement sévère.
+
+Le niveau 3 est propre à One Piece. Le jeu indexe ses cartes sous le nom
+complet du personnage, alors que les vendeurs écrivent le nom usuel : «
+Luffy », « Ace », « Katakuri ». Sans ce rattrapage, **la majorité des
+annonces du jeu ne trouvaient aucun prix** dès que le titre ne portait pas
+le code.
+
+La règle est étroite à dessein : le candidat doit être la **fin** du nom
+indexé, sur des mots entiers. « luffy » retrouve « monkey-d-luffy », «
+ace » retrouve « portgas-d-ace » mais **pas** « menace ». L'inverse — un
+candidat qui serait le début — ne correspond à rien d'observé : personne
+n'écrit « Monkey » pour désigner Luffy.
+
+Deux garde-fous :
+
+- **plusieurs cartes finissent par le même nom** → la médiane est retenue,
+  mais la confiance tombe à *basse*, l'écart de prix est exposé et
+  l'annonce est marquée incertaine. Trois cartes « Luffy » de 2,40 € à
+  412 € : le prix médian ne veut pas dire grand-chose, et l'utilisateur
+  doit le savoir ;
+- **plus de douze cartes** finissent par ce nom → **aucun prix**. Une
+  médiane tirée de trente cartes allant de 2 à 400 € est un chiffre qui
+  ment ; mieux vaut l'absence.
+
+Le code reste prioritaire sur tout : « Luffy OP01-120 » donne le prix de
+cette carte-là, en confiance haute.
+
 ### Les bonnes affaires dans la fiche carte
 
 Les deux moitiés de l'app sont reliées. Le catalogue sert à repérer une
@@ -248,6 +285,19 @@ rapprochement annonce → carte existait déjà, mais **seulement à l'intérieu
 d'un blob JSON** (`price_detail`), donc impossible à joindre en SQL : on ne
 pouvait pas demander « les annonces de cette carte ». La colonne est
 maintenant renseignée à l'enregistrement et indexée.
+
+**Depuis la grille, sans ouvrir les fiches.** Chaque vignette porte un badge
+« 3 en vente · 92 » quand des annonces existent, et le filtre *Seulement les
+cartes en vente* ne garde que celles-là. C'est ce qui rend la boucle
+utilisable : repérer une carte par thème ou par tendance, puis voir
+immédiatement laquelle mérite qu'on l'ouvre — au lieu de les ouvrir une par
+une. Le compte est agrégé en **une seule requête** pour toute la page.
+
+Les trois vues qui affichent ce compte — la grille, le rail « en vogue » et
+la fiche — passent par **le même prédicat d'exclusion**
+(`_annonces_visibles`). Si elles divergeaient, la grille promettrait une
+affaire que la fiche ne montrerait pas, ce qui est pire que pas de compteur
+du tout. Un test verrouille leur égalité.
 
 `GET /api/cards/{id}/listings` applique **les mêmes exclusions que le tableau
 de bord** — annonces ignorées, indisponibles, retirées, masquées à la main,
@@ -268,7 +318,7 @@ compte : un score flatteur sur une carte mal identifiée est un piège.
 
 | Route | Usage |
 |---|---|
-| `GET /api/cards` | Recherche filtrée : `q`, `theme`, `rarity`, `series`, `price_min`, `price_max`, `trend`, `with_image`, `sort_by`, `order`, `limit`, `offset` |
+| `GET /api/cards` | Recherche filtrée : `q`, `theme`, `rarity`, `series`, `price_min`, `price_max`, `trend`, `with_image`, `with_listings`, `sort_by`, `order`, `limit`, `offset` |
 | `GET /api/cards/themes` | Thèmes avec nombre de cartes et fourchette de prix |
 | `GET /api/cards/filters` | Valeurs réellement présentes en base, pour les listes déroulantes |
 | `GET /api/cards/trending` | Plus fortes variations 7 jours, en pourcentage |
@@ -279,7 +329,7 @@ compte : un score flatteur sur une carte mal identifiée est un piège.
 | `POST /api/admin/recompute-card-fields` | Rattrape les thèmes et la clé de recherche (à lancer une fois après le déploiement) |
 | `GET /api/admin/debug-card-images` | Détail de chaque adresse d'image essayée pour un code |
 
-**Tests** : `backend/tests/` — 368 tests. Lancer avec :
+**Tests** : `backend/tests/` — 406 tests. Lancer avec :
 
 ```bash
 cd backend

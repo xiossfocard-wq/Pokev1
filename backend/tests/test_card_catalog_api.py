@@ -465,3 +465,116 @@ class TestAnnoncesDeLaCarte(unittest.TestCase):
 
     def test_carte_inconnue_rend_404(self):
         self.assertEqual(self.client.get("/api/cards/999999/listings").status_code, 404)
+
+
+class TestAnnoncesDansLaGrille(TestAnnoncesDeLaCarte):
+    """Voir depuis la GRILLE quelles cartes ont une affaire en cours.
+
+    Herite du meme decor que la fiche carte, a dessein : c'est ce qui
+    permet de verifier que les deux vues comptent EXACTEMENT la meme chose.
+    Une grille qui promettrait une annonce que la fiche ne montre pas
+    serait pire que pas de compteur du tout.
+    """
+
+    def _carte_de_la_grille(self, nom, **params):
+        corps = self.client.get("/api/cards", params={"limit": 200, **params}).json()
+        for carte_json in corps["cartes"]:
+            if carte_json["display_name"] == nom:
+                return carte_json
+        return None
+
+    def test_compte_les_annonces_de_chaque_carte(self):
+        self._annonce("a", self.luffy.id, 120.0, 88.0)
+        self._annonce("b", self.luffy.id, 150.0, 61.0)
+        self._annonce("c", self.zoro.id, 60.0, 70.0)
+
+        self.assertEqual(self._carte_de_la_grille("Monkey D. Luffy")["listings_count"], 2)
+        self.assertEqual(self._carte_de_la_grille("Roronoa Zoro")["listings_count"], 1)
+
+    def test_meilleur_score_expose(self):
+        """C'est ce chiffre qui decide si la carte merite qu'on l'ouvre."""
+        self._annonce("a", self.luffy.id, 120.0, 61.0)
+        self._annonce("b", self.luffy.id, 110.0, 93.0)
+        self.assertEqual(self._carte_de_la_grille("Monkey D. Luffy")["best_deal_score"], 93.0)
+
+    def test_carte_sans_annonce(self):
+        carte_json = self._carte_de_la_grille("Roronoa Zoro")
+        self.assertEqual(carte_json["listings_count"], 0)
+        self.assertIsNone(carte_json["best_deal_score"])
+
+    def test_les_exclusions_valent_aussi_pour_le_compteur(self):
+        """Une annonce masquee ou disparue ne doit pas gonfler le compteur :
+        sinon la grille annonce une affaire que la fiche n'affiche pas."""
+        self._annonce("visible", self.luffy.id, 120.0, 88.0)
+        self._annonce("masquee", self.luffy.id, 130.0, 95.0, manual_status="hidden")
+        self._annonce("partie", self.luffy.id, 140.0, 97.0,
+                      status=self.ListingStatus.UNAVAILABLE)
+        self._annonce("ecartee", self.luffy.id, 150.0, 99.0,
+                      status=self.ListingStatus.IGNORED)
+
+        self.assertEqual(self._carte_de_la_grille("Monkey D. Luffy")["listings_count"], 1)
+
+    def test_la_grille_et_la_fiche_comptent_pareil(self):
+        """Le test qui verrouille les deux vues ensemble."""
+        self._annonce("a", self.luffy.id, 120.0, 88.0)
+        self._annonce("b", self.luffy.id, 130.0, 72.0)
+        self._annonce("masquee", self.luffy.id, 140.0, 95.0, manual_status="hidden")
+
+        depuis_grille = self._carte_de_la_grille("Monkey D. Luffy")["listings_count"]
+        depuis_fiche = self.client.get(f"/api/cards/{self.luffy.id}/listings").json()["count"]
+        self.assertEqual(depuis_grille, depuis_fiche)
+
+    def test_filtre_seulement_les_cartes_avec_annonce(self):
+        self._annonce("a", self.luffy.id, 120.0, 88.0)
+
+        corps = self.client.get("/api/cards", params={"with_listings": "true"}).json()
+        noms = [c["display_name"] for c in corps["cartes"]]
+        self.assertEqual(noms, ["Monkey D. Luffy"])
+        self.assertEqual(corps["total"], 1)
+
+    def test_le_filtre_ne_compte_pas_les_doublons(self):
+        """Une carte avec trois annonces reste UNE ligne : sinon le total
+        affiche et la pagination comptent des doublons."""
+        for ext in ("a", "b", "c"):
+            self._annonce(ext, self.luffy.id, 120.0, 88.0)
+
+        corps = self.client.get("/api/cards", params={"with_listings": "true"}).json()
+        self.assertEqual(corps["total"], 1)
+        self.assertEqual(len(corps["cartes"]), 1)
+
+    def test_le_filtre_ecarte_les_annonces_exclues(self):
+        self._annonce("masquee", self.luffy.id, 130.0, 95.0, manual_status="hidden")
+        corps = self.client.get("/api/cards", params={"with_listings": "true"}).json()
+        self.assertEqual(corps["total"], 0)
+
+    def test_sans_le_filtre_tout_le_catalogue_remonte(self):
+        self._annonce("a", self.luffy.id, 120.0, 88.0)
+        corps = self.client.get("/api/cards").json()
+        self.assertEqual(corps["total"], 2)
+
+    def test_le_rail_en_vogue_compte_aussi(self):
+        """Le rail « en vogue » et la grille montrent les memes cartes : si
+        l'un annonce trois annonces et l'autre aucune, c'est l'app qui se
+        contredit sous les yeux de l'utilisateur."""
+        self.luffy.variation_7d_eur = 40.0
+        self.db.commit()
+        self._annonce("a", self.luffy.id, 120.0, 88.0)
+        self._annonce("b", self.luffy.id, 130.0, 72.0)
+
+        vogue = self.client.get(
+            "/api/cards/trending", params={"direction": "hausse", "limit": 12}
+        ).json()["cartes"]
+        depuis_rail = next(c for c in vogue if c["display_name"] == "Monkey D. Luffy")
+
+        self.assertEqual(depuis_rail["listings_count"], 2)
+        self.assertEqual(depuis_rail["best_deal_score"], 88.0)
+        self.assertEqual(
+            depuis_rail["listings_count"],
+            self._carte_de_la_grille("Monkey D. Luffy")["listings_count"],
+        )
+
+    def test_la_fiche_compte_aussi(self):
+        self._annonce("a", self.luffy.id, 120.0, 88.0)
+        fiche = self.client.get(f"/api/cards/{self.luffy.id}").json()
+        self.assertEqual(fiche["listings_count"], 1)
+        self.assertEqual(fiche["best_deal_score"], 88.0)

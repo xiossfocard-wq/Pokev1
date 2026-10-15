@@ -35,6 +35,10 @@ def rechercher(
     price_max: Optional[float] = Query(None, ge=0),
     trend: str = Query("toutes", description="hausse | baisse | toutes"),
     with_image: Optional[bool] = Query(None),
+    with_listings: Optional[bool] = Query(
+        None,
+        description="true = seulement les cartes ayant au moins une annonce en vente",
+    ),
     sort_by: str = Query("prix", description=" | ".join(TRIS_ACCEPTES)),
     order: str = Query("desc", pattern="^(asc|desc)$"),
     limit: int = Query(60, ge=1, le=200),
@@ -76,7 +80,7 @@ def rechercher(
         q=q, theme=theme, rarity=rarity, series=series,
         prix_min=price_min, prix_max=price_max,
         tendance=None if trend == "toutes" else trend,
-        avec_image=with_image,
+        avec_image=with_image, avec_annonces=with_listings,
         tri=sort_by, ordre=order, limite=limit, decalage=offset,
     )
 
@@ -174,7 +178,9 @@ def detail_carte(card_id: int, horizon_jours: int = Query(30, ge=1, le=365),
 
     releves = card_catalog.historique_de_la_carte(db, ligne.name_slug, ligne.card_code)
 
-    charge = card_catalog.carte_en_dict(ligne)
+    charge = card_catalog.carte_en_dict(
+        ligne, card_catalog.compteurs_d_annonces(db, [ligne.id]).get(ligne.id)
+    )
     charge["themes_detail"] = [
         {
             "slug": theme.slug,

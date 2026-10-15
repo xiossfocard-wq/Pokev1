@@ -215,6 +215,129 @@ class TestAbsenceDeMatch(PriceMatchingTestCase):
         )
 
 
+class TestNomUsuel(PriceMatchingTestCase):
+    """Le vendeur ecrit « Luffy », l'index contient « Monkey D. Luffy ».
+
+    C'etait le plus gros trou du rapprochement sur One Piece : le nom
+    complet n'apparait presque jamais dans un titre Vinted, donc la
+    majorite des annonces ne trouvaient AUCUN prix de reference des que le
+    code carte manquait au titre.
+    """
+
+    def test_nom_usuel_unique(self):
+        m = self.match("Carte One Piece Katakuri super rare")
+        self.assertIsNotNone(m, "le nom usuel doit retrouver le nom complet")
+        self.assertEqual(m.row.display_name, "Charlotte Katakuri")
+        self.assertEqual(m.confidence, "medium")
+        self.assertIn("nom usuel", m.reason)
+
+    def test_nom_usuel_court(self):
+        """« Ace », « Law » : trois lettres, mais ce sont de vrais noms
+        usuels du jeu et ils doivent passer."""
+        for titre, attendu in [
+            ("Carte One Piece Ace tres bon etat", "Portgas D. Ace"),
+            ("Carte One Piece Doflamingo neuve", "Donquixote Doflamingo"),
+            ("Carte One Piece Newgate", "Edward Newgate"),
+        ]:
+            with self.subTest(titre=titre):
+                m = self.match(titre)
+                self.assertIsNotNone(m, titre)
+                self.assertEqual(m.row.display_name, attendu)
+
+    def test_nom_usuel_ambigu_reste_incertain(self):
+        """Trois cartes finissent par « luffy » a des prix sans rapport :
+        on rend la mediane mais on le DIT, sinon l'utilisateur lit un prix
+        sur la foi d'un nom qui n'identifie pas la carte."""
+        m = self.match("Carte One Piece Luffy secret rare FR")
+        self.assertIsNotNone(m)
+        self.assertEqual(m.confidence, "low")
+        self.assertEqual(len(m.candidates), 3)
+        self.assertTrue(m.is_uncertain)
+        self.assertGreater(m.price_spread_eur, 400)
+
+    def test_le_leader_garde_son_identite(self):
+        """« Luffy Leader » doit tomber sur la carte Leader, pas sur le
+        Personnage : ce sont deux cartes et deux prix."""
+        m = self.match("Carte One Piece Luffy Leader")
+        self.assertEqual(m.row.display_name, "Monkey D. Luffy Leader")
+        self.assertEqual(m.row.price_eur, 25.00)
+
+    def test_luffy_seul_ne_prend_pas_le_leader(self):
+        """L'inverse : « Luffy » tout court ne doit PAS ramasser le Leader,
+        dont le nom ne se termine pas par « luffy »."""
+        m = self.match("Carte One Piece Luffy secret rare")
+        for candidat in m.candidates:
+            self.assertNotIn("Leader", candidat.display_name)
+
+    def test_le_code_reste_prioritaire(self):
+        """Le nom usuel ne doit jamais passer devant un code explicite :
+        celui-ci identifie la carte, le nom non."""
+        m = self.match("Carte One Piece Luffy OP01-120 SR")
+        self.assertEqual(m.confidence, "high")
+        self.assertEqual(m.row.price_eur, 412.0)
+
+    def test_le_nom_complet_reste_prioritaire(self):
+        m = self.match("Carte One Piece Monkey D. Luffy")
+        self.assertIn("nom 'monkey-d-luffy'", m.reason)
+        self.assertNotIn("nom usuel", m.reason)
+
+    def test_mot_sans_rapport_ne_rapproche_rien(self):
+        self.assertIsNone(self.match("Carte One Piece Chopper holo"))
+
+
+class TestNomUsuelGardeFous(unittest.TestCase):
+    """Les deux garde-fous qui empechent ce rattrapage de devenir dangereux."""
+
+    def _index(self, cartes):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(bind=engine)
+        db = sessionmaker(bind=engine)()
+        db.add_all(cartes)
+        db.commit()
+        price_index._slug_cache = []
+        price_index._slug_cache_at = None
+        return db
+
+    def tearDown(self):
+        price_index._slug_cache = []
+        price_index._slug_cache_at = None
+
+    def test_mots_entiers_seulement(self):
+        """« ace » ne doit pas attraper « menace » : la correspondance se
+        fait sur des mots entiers, jamais sur une fin de chaine."""
+        db = self._index([
+            card("menace-fantome", "Menace Fantome", "OP09-001", 5.0),
+        ])
+        self.assertIsNone(find_price_for_listing(db, "Carte One Piece Ace neuve"))
+        db.close()
+
+    def test_trop_de_cartes_aucun_prix(self):
+        """Quand trop de cartes finissent par le meme nom, la mediane ne
+        veut plus rien dire : mieux vaut ne rendre aucun prix."""
+        beaucoup = [
+            card(f"personnage-{i}-commun", f"Personnage {i} Commun",
+                 f"OP01-{i:03d}", float(i * 30))
+            for i in range(1, 15)
+        ]
+        db = self._index(beaucoup)
+        self.assertIsNone(find_price_for_listing(db, "Carte One Piece commun neuve"))
+        db.close()
+
+    def test_juste_en_dessous_du_plafond_rapproche(self):
+        """Le garde-fou ne doit pas etre si serre qu'il bloque un cas
+        normal : sous le plafond, le rapprochement se fait."""
+        quelques = [
+            card(f"personnage-{i}-commun", f"Personnage {i} Commun",
+                 f"OP01-{i:03d}", float(i * 30))
+            for i in range(1, 4)
+        ]
+        db = self._index(quelques)
+        m = find_price_for_listing(db, "Carte One Piece commun neuve")
+        self.assertIsNotNone(m)
+        self.assertEqual(len(m.candidates), 3)
+        db.close()
+
+
 class TestSeparateurDeCodeCarte(unittest.TestCase):
     """Regression trouvee en basculant vers One Piece.
 
