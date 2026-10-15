@@ -6,9 +6,24 @@ name: Trigger deal check
 # la vérification, sans dépendre du scheduler interne qui serait, lui,
 # suspendu pendant la mise en veille. Voir README > "Hébergement 100% gratuit".
 #
-# Configuration requise : dans Settings -> Secrets and variables -> Actions
-# du repo, ajouter un secret BACKEND_URL avec l'URL du backend déployé (ex
-# https://<ton-service>.onrender.com, sans slash final).
+# Configuration : dans Settings -> Secrets and variables -> Actions du dépôt,
+# ajouter un secret BACKEND_URL avec l'URL du backend déployé (ex
+# https://<ton-service>.onrender.com, SANS slash final).
+#
+# Tant que ce secret n'existe pas, ce workflow ne fait rien et RÉUSSIT. Il
+# échouait auparavant, ce qui donnait un dépôt rouge en permanence — toutes
+# les 20 minutes — alors que rien n'était cassé : le backend n'était
+# simplement pas encore déployé. Une intégration non configurée n'est pas une
+# panne. En revanche, si le secret EST renseigné et que l'appel échoue, là
+# c'est une vraie panne et le workflow échoue.
+#
+# ⚠️ COÛT EN MINUTES ACTIONS : sur un dépôt PRIVÉ, GitHub facture au minimum
+# une minute par exécution. À raison d'une toutes les 20 minutes, cela fait
+# ~2160 minutes par mois, soit plus que le quota gratuit (2000). Trois
+# sorties : espacer le cron ci-dessous (toutes les heures = ~720 min),
+# rendre le dépôt public (minutes illimitées), ou supprimer ce workflow et
+# s'en remettre au scheduler interne du backend si l'hébergement ne se met
+# pas en veille.
 
 on:
   schedule:
@@ -20,10 +35,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Appeler /api/admin/run-check-now
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
         run: |
-          if [ -z "${{ secrets.BACKEND_URL }}" ]; then
-            echo "Secret BACKEND_URL non configuré — voir le commentaire en haut de ce fichier."
-            exit 1
+          if [ -z "$BACKEND_URL" ]; then
+            echo "::notice::Secret BACKEND_URL non configuré : rien à déclencher."
+            echo "Le backend n'est pas encore déployé, ou le secret n'a pas été"
+            echo "renseigné. Voir le commentaire en haut de ce fichier."
+            exit 0
           fi
           curl --fail --max-time 90 --retry 2 --retry-delay 10 \
-            -X POST "${{ secrets.BACKEND_URL }}/api/admin/run-check-now"
+            -X POST "$BACKEND_URL/api/admin/run-check-now"
