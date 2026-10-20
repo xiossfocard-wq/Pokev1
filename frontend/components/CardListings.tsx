@@ -205,9 +205,11 @@ export default function CardListings({ cardId }: { cardId: number }) {
       {donnees && donnees.count > 0 && (
         <>
           <p className="mb-2 font-mono text-[10px] text-parchment-100/35">
-            {donnees.count} annonce{donnees.count > 1 ? "s" : ""} · référence{" "}
-            {donnees.reference_price_eur.toFixed(2)} € · photos du vendeur, donc
-            de l&apos;exemplaire réel
+            {donnees.count} annonce{donnees.count > 1 ? "s" : ""} ·{" "}
+            {donnees.reference_price_eur === null
+              ? "pas de prix de référence, donc pas de score"
+              : `référence ${donnees.reference_price_eur.toFixed(2)} €`}{" "}
+            · photos du vendeur, donc de l&apos;exemplaire réel
           </p>
           <ul className="flex list-none flex-col gap-2 p-0">
             {donnees.listings.map((a) => (

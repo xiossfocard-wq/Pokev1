@@ -264,9 +264,21 @@ def _score_listing(db: Session, listing: Listing, skip_vision: bool = False):
     if reference_price is None and vision_result and vision_result.ocr_confidence in ("medium", "high"):
         ocr_text = f"{vision_result.printed_name} {vision_result.printed_set_number}".strip()
         if ocr_text:
-            reference_price, source_label, price_detail = _get_or_fetch_reference_price(db, ocr_text)
-            if reference_price is not None:
-                source_label = f"{source_label} (via OCR photo)"
+            prix_ocr, source_ocr, detail_ocr = _get_or_fetch_reference_price(db, ocr_text)
+            if prix_ocr is not None:
+                reference_price = prix_ocr
+                source_label = f"{source_ocr} (via OCR photo)"
+                price_detail = detail_ocr
+            elif detail_ocr is not None and price_detail is None:
+                # L'OCR n'a pas donne de prix, mais il a identifie la carte
+                # la ou le titre n'identifiait rien. On garde cette
+                # identification : elle vaut le visuel et la fiche.
+                #
+                # On n'ecrase JAMAIS un price_detail deja rempli par un
+                # resultat vide : le titre avait pu identifier la carte sans
+                # connaitre son prix, et le repli echouant aurait alors fait
+                # perdre l'identification acquise.
+                source_label, price_detail = source_ocr, detail_ocr
 
     if reference_price is None:
         # NB (04/08/2026) : avant, ce cas utilisait IGNORED, ce qui faisait
@@ -281,16 +293,34 @@ def _score_listing(db: Session, listing: Listing, skip_vision: bool = False):
         # l'index a change) gardait son ancien prix, son ancienne marge et
         # son ancien score — et continuait de trôner en haut du classement
         # sur la foi d'un chiffre qu'on venait justement de retirer.
+        #
+        # NB (20/10/2026) : « pas de prix » et « pas de carte » sont deux
+        # choses differentes, et ce bloc les traitait pareil. Depuis que le
+        # catalogue peut contenir une carte dont le prix n'est pas connu, le
+        # cas « j'ai reconnu la carte mais j'ignore ce qu'elle vaut » est
+        # courant — et effacer matched_card_id y jetait une identification
+        # correcte, donc le visuel et le lien vers la fiche, pour la seule
+        # raison qu'un chiffre manquait.
+        #
+        # On efface donc ce qui derive du prix, et on garde ce qui derive de
+        # l'identification. price_detail non vide = une carte a ete reconnue.
         listing.reference_price = None
         listing.reference_price_source = None
         listing.margin_net = None
         listing.margin_ratio = None
         listing.price_low_eur = None
         listing.price_high_eur = None
-        listing.price_match_confidence = None
-        listing.price_detail = None
-        listing.matched_card_id = None
         listing.deal_score = None
+        if price_detail:
+            listing.price_detail = price_detail
+            listing.price_match_confidence = price_detail.get("confidence")
+            listing.matched_card_id = price_detail.get("matched_card_id")
+            if price_detail.get("rarity"):
+                listing.rarity_tier = price_detail["rarity"]
+        else:
+            listing.price_detail = None
+            listing.price_match_confidence = None
+            listing.matched_card_id = None
         listing.status = ListingStatus.NO_PRICE_MATCH
         listing.scored_at = datetime.utcnow()
         db.commit()

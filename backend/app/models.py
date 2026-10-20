@@ -194,7 +194,20 @@ class MarketCardPrice(Base):
     series_name = Column(String(256), nullable=True, index=True)
     rarity = Column(String(64), nullable=True, index=True)
 
-    price_eur = Column(Float, nullable=False)
+    # Nullable depuis le 20/10/2026. Cette table porte DEUX faits distincts
+    # qu'elle confondait : « cette carte existe » (code, nom, serie, rarete,
+    # visuel) et « elle vaut environ X ». Ils ne viennent pas de la meme
+    # source et n'arrivent pas en meme temps : la liste officielle donne
+    # l'existence, une place de marche donne le prix.
+    #
+    # Les fusionner obligeait a inventer un prix pour inscrire une carte au
+    # catalogue. Un 0.0 de remplissage aurait ete pire que l'absence : il se
+    # lit comme « cette carte ne vaut rien » et fausse marges et scores.
+    #
+    # None veut donc dire exactement une chose : le prix n'est pas connu.
+    # Tout ce qui en derive (marge, score, tendance) doit s'abstenir, jamais
+    # se rabattre sur une valeur par defaut.
+    price_eur = Column(Float, nullable=True)
     price_low_eur = Column(Float, nullable=True)
     price_high_eur = Column(Float, nullable=True)
     variation_7d_eur = Column(Float, nullable=True)

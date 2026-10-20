@@ -260,8 +260,10 @@ export default function CardFilters({
 
       {valeurs && (
         <p className="border-t border-ink-700 pt-2.5 text-[11px] leading-relaxed text-parchment-100/35">
-          {valeurs.total_cards.toLocaleString("fr-FR")} cartes dans le catalogue.
-          Il se remplit au fil de la synchronisation des séries.
+          {valeurs.total_cards.toLocaleString("fr-FR")} cartes dans le catalogue,
+          d&apos;après la liste officielle du jeu. Elle dit quelles cartes
+          existent, pas ce qu&apos;elles valent : les prix de référence
+          viennent d&apos;une autre source et arrivent carte par carte.
         </p>
       )}
     </aside>

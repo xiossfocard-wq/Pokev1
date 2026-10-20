@@ -15,6 +15,7 @@ from app.services.price_index import (
 )
 from app.collectors.card_images import ClientImagesCartes
 from app.collectors.catalog_sources import SondeurDeSources
+from app.collectors import opcg_dataset
 from app.services import catalog_import
 from app.services import card_catalog
 
@@ -267,6 +268,40 @@ async def import_catalog(request: Request):
     db = SessionLocal()
     try:
         return catalog_import.importer_catalogue(db, lignes)
+    finally:
+        db.close()
+
+
+@router.post("/load-opcg-catalog")
+def load_opcg_catalog(
+    rafraichir: bool = Query(
+        False,
+        description="Aller rechercher la derniere version publiee au lieu de "
+                    "lire l'instantane versionne du depot.",
+    ),
+):
+    """Remplit le catalogue depuis le releve de la liste OFFICIELLE du jeu.
+
+    C'est le chemin a prendre pour partir d'un catalogue vide : il donne les
+    ~3870 fiches reelles (code, nom, serie, rarete, et le visuel qui se
+    deduit du code), sans fichier a fournir ni page a explorer.
+
+    Sans parametre, il lit l'instantane versionne dans le depot : hors ligne,
+    immediat, et identique a ce que les tests ont valide.
+    `?rafraichir=true` va chercher la derniere version publiee et reecrit
+    l'instantane au passage.
+
+        curl -X POST http://localhost:8000/api/admin/load-opcg-catalog
+
+    CE QU'IL NE FAIT PAS : cette source ne publie aucun prix. Les cartes
+    entrent donc sans prix de reference, et le rapport le dit (`sans_prix`).
+    Les marges et les scores d'affaire resteront vides jusqu'a ce qu'une
+    source de prix soit branchee — par exemple un import de fichier avec une
+    colonne prix, qui met a jour les memes fiches sans les dupliquer.
+    """
+    db = SessionLocal()
+    try:
+        return opcg_dataset.charger_catalogue(db, rafraichir=rafraichir)
     finally:
         db.close()
 

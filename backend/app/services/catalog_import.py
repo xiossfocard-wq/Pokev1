@@ -87,9 +87,21 @@ def _nettoyer_prix(brut) -> Optional[float]:
     if not texte:
         return None
 
-    # Retire la devise, les espaces (y compris insecables) et tout ce qui
-    # n'est ni chiffre ni separateur.
-    texte = re.sub(r"[^\d,.\-]", "", texte.replace(" ", "").replace(" ", ""))
+    # La devise est retiree, pas ignoree : on l'enleve explicitement,
+    # puis on REFUSE ce qui contient encore une lettre.
+    #
+    # Pourquoi refuser plutot que nettoyer plus fort : effacer toute
+    # lettre au milieu des chiffres transforme « 1O0 » (la lettre O a la
+    # place du zero, faute de frappe courante sur un pave numerique) en 10.
+    # Pas en erreur : en un prix dix fois trop petit, accepte sans un mot.
+    # Une erreur de saisie doit etre dite a celui qui l'a faite, pas
+    # devinee a sa place.
+    sans_espace = re.sub(r"[\s\u00a0\u202f]", "", texte)
+    sans_devise = re.sub(r"€|EUR|eur|Eur|\$|£", "", sans_espace)
+    if re.search(r"[^\d,.\-]", sans_devise):
+        return None
+
+    texte = sans_devise
     if not texte:
         return None
 
@@ -182,13 +194,14 @@ def importer_catalogue(db: Session, lignes: List[dict]) -> dict:
             "erreur": f"fichier trop grand ({len(lignes)} lignes, maximum {MAX_LIGNES})",
         }
 
-    creees, mises_a_jour = 0, 0
+    creees, mises_a_jour, sans_prix = 0, 0, 0
     rejets: List[dict] = []
 
     for numero, ligne in enumerate(lignes, start=1):
         code_brut = _colonne(ligne, "card_code")
         nom = _colonne(ligne, "display_name")
-        prix = _nettoyer_prix(_colonne(ligne, "price_eur"))
+        prix_brut = _colonne(ligne, "price_eur")
+        prix = _nettoyer_prix(prix_brut)
 
         code = code_canonique(code_brut) if code_brut else None
 
@@ -202,11 +215,21 @@ def importer_catalogue(db: Session, lignes: List[dict]) -> dict:
             rejets.append({"ligne": numero, "code": code,
                            "raison": "nom de carte absent"})
             continue
-        if prix is None:
+        # Un prix ABSENT est accepte : une liste officielle de cartes dit
+        # quelles cartes existent, pas ce qu'elles valent. La carte entre au
+        # catalogue sans prix, et tout ce qui en derive s'abstient.
+        #
+        # Un prix PRESENT mais illisible reste un rejet. Les confondre
+        # reviendrait a avaler un « 12,5O € » (avec la lettre O) comme une
+        # absence de prix : l'erreur de saisie disparaitrait sans que
+        # personne l'apprenne, et la carte serait silencieusement privee du
+        # prix qu'on avait pourtant voulu lui donner.
+        if prix is None and prix_brut not in (None, ""):
             rejets.append({"ligne": numero, "code": code,
-                           "raison": f"prix absent ou illisible "
-                                     f"({_colonne(ligne, 'price_eur')!r})"})
+                           "raison": f"prix illisible ({prix_brut!r})"})
             continue
+        if prix is None:
+            sans_prix += 1
 
         serie = _colonne(ligne, "series_name")
         rarete = _colonne(ligne, "rarity")
@@ -216,7 +239,6 @@ def importer_catalogue(db: Session, lignes: List[dict]) -> dict:
             display_name=nom,
             series_name=serie,
             rarity=rarete,
-            price_eur=prix,
             source=SOURCE,
             # Derives, recalcules a chaque import : les listes de themes
             # evoluent, et une carte importee avant l'ajout d'un theme doit
@@ -224,6 +246,13 @@ def importer_catalogue(db: Session, lignes: List[dict]) -> dict:
             theme_slugs=encoder_themes(themes_de_la_carte(nom, rarete)),
             search_key=cle_de_recherche(nom, code),
         )
+        # Le prix n'est ecrit que s'il est fourni. Un import qui n'en porte
+        # pas DECRIT des cartes, il ne revalorise rien : s'il ecrivait None,
+        # importer la liste officielle par-dessus un catalogue deja chiffre
+        # effacerait tous les prix de reference d'un coup — et avec eux
+        # toutes les marges et tous les scores.
+        if prix is not None:
+            valeurs["price_eur"] = prix
 
         existante = (
             db.query(MarketCardPrice)
@@ -241,8 +270,9 @@ def importer_catalogue(db: Session, lignes: List[dict]) -> dict:
     db.commit()
 
     logger.info(
-        "Import catalogue : %d lue(s), %d creee(s), %d mise(s) a jour, %d rejet(s)",
-        len(lignes), creees, mises_a_jour, len(rejets),
+        "Import catalogue : %d lue(s), %d creee(s), %d mise(s) a jour, "
+        "%d sans prix, %d rejet(s)",
+        len(lignes), creees, mises_a_jour, sans_prix, len(rejets),
     )
     return {
         "lues": len(lignes),
@@ -250,6 +280,11 @@ def importer_catalogue(db: Session, lignes: List[dict]) -> dict:
         "mises_a_jour": mises_a_jour,
         "importees": creees + mises_a_jour,
         "rejetees": len(rejets),
+        # Dit a voix haute combien de cartes sont entrees sans prix.
+        # Sans ce compte, un import de liste officielle se lirait comme
+        # un succes complet alors qu'aucune marge ne pourra etre
+        # calculee sur ces cartes.
+        "sans_prix": sans_prix,
         # Toutes les raisons, pas un echantillon : un rejet silencieux est
         # exactement ce qu'on cherche a ne plus jamais avoir.
         "rejets": rejets,

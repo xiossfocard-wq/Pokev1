@@ -153,7 +153,12 @@ def rechercher_cartes(
     total = requete.count()
 
     colonne = TRIS.get(tri, MarketCardPrice.price_eur)
-    requete = requete.order_by(colonne.desc() if ordre == "desc" else colonne.asc())
+    sens = colonne.desc() if ordre == "desc" else colonne.asc()
+    # Les cartes dont la valeur triee est inconnue vont a la fin, dans les
+    # deux sens. Sans ca, un prix inconnu remonterait en tete du tri
+    # croissant (SQLite place NULL en premier) et se lirait comme « la moins
+    # chere » — exactement l'inverse de ce qu'on sait d'elle.
+    requete = requete.order_by(sens.nullslast())
 
     lignes = requete.limit(limite).offset(decalage).all()
 

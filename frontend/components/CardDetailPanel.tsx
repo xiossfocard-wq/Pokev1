@@ -134,9 +134,26 @@ export default function CardDetailPanel({
             )}
 
             <div>
-              <p className="font-mono text-2xl text-parchment-100">
-                {carte.price_eur.toFixed(2)} €
-              </p>
+              {carte.price_eur === null ? (
+                // Dire ce qui manque ET pourquoi : sans cela, l'utilisateur
+                // conclurait a un bug de l'application plutot qu'a une
+                // donnee que la source ne publie pas.
+                <>
+                  <p className="font-mono text-lg italic text-parchment-100/45">
+                    Prix de référence inconnu
+                  </p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-parchment-100/35">
+                    Cette carte vient de la liste officielle, qui dit quelles
+                    cartes existent mais pas ce qu&apos;elles valent. Aucune
+                    marge ni score d&apos;affaire n&apos;est calculé pour elle
+                    tant qu&apos;un prix n&apos;est pas connu.
+                  </p>
+                </>
+              ) : (
+                <p className="font-mono text-2xl text-parchment-100">
+                  {carte.price_eur.toFixed(2)} €
+                </p>
+              )}
               <p className="text-xs text-parchment-100/50">{carte.trend_7d.label}</p>
               {carte.price_low_eur !== null && carte.price_high_eur !== null && (
                 <p className="mt-1 text-[11px] leading-relaxed text-parchment-100/35">

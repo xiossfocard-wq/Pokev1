@@ -14,7 +14,7 @@ export interface VisionDetail {
 }
 
 export interface PriceDetail {
-  price_eur: number;
+  price_eur: number | null;
   price_low_eur: number | null;
   price_high_eur: number | null;
   variation_7d_eur: number | null;
@@ -277,7 +277,7 @@ export interface CatalogCard {
   display_name: string;
   series_name: string | null;
   rarity: string | null;
-  price_eur: number;
+  price_eur: number | null;
   price_low_eur: number | null;
   price_high_eur: number | null;
   // Rappel porte depuis le backend : la fourchette vient de la volatilite
@@ -480,7 +480,7 @@ export interface CardListing {
 export interface CardListingsResult {
   card_id: number;
   display_name: string;
-  reference_price_eur: number;
+  reference_price_eur: number | null;
   count: number;
   listings: CardListing[];
 }

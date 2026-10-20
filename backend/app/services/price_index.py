@@ -319,9 +319,17 @@ def find_price_for_listing(db: Session, title: str, description: str = "") -> Op
     set_number = extract_set_number(text)
     variant = extract_variant(text)
 
-    # (a) Code carte explicite : le seul cas ou on est vraiment sur, donc
-    # le seul ou une variante non retrouvee dans le nom n'est pas suspecte.
-    match = _match_by_card_code(db, codes)
+    # (a) Code carte explicite : le rapprochement le plus sur.
+    #
+    # La variante lui est passee depuis le 20/10/2026. Avant, ce chemin
+    # sortait sans la regarder, ce qui se tenait quand un code ne designait
+    # qu'une carte. Depuis que le catalogue tient la liste officielle, un
+    # code designe l'impression ordinaire ET son illustration alternative :
+    # « Zoro parallele OP01-001 » tombait alors sur l'ordinaire, dont le prix
+    # n'a rien a voir.
+    # Le signalement d'une variante discordante est fait DANS la fonction,
+    # qui seule sait si le code etait ambigu.
+    match = _match_by_card_code(db, codes, variant)
     if match is not None:
         return match
 
@@ -363,7 +371,8 @@ def _variantes_de_code(code: str) -> set:
     return {haut, haut.replace(" ", "-"), haut.replace("-", " ")}
 
 
-def _match_by_card_code(db: Session, codes: List[str]) -> Optional[PriceMatch]:
+def _match_by_card_code(db: Session, codes: List[str],
+                        variant: Optional[str] = None) -> Optional[PriceMatch]:
     if not codes:
         return None
 
@@ -386,10 +395,27 @@ def _match_by_card_code(db: Session, codes: List[str]) -> Optional[PriceMatch]:
     for code in codes:  # ordre = celui d'apparition dans le titre
         group = grouped.get(_normaliser_code(code))
         if group:
-            return PriceMatch(
-                _median_row(group), "high",
-                f"code carte {code} trouve dans le titre", group,
-            )
+            # Un code peut designer plusieurs fiches (ordinaire / parallele).
+            # On tranche avec la variante annoncee AVANT de prendre la
+            # mediane, sinon la mediane departagerait des cartes qui ne sont
+            # pas comparables.
+            retenues = _choisir_selon_variante(group, variant)
+            motif = f"code carte {code} trouve dans le titre"
+            if len(retenues) < len(group):
+                precision = ("variante « %s » annoncee" % variant) if variant \
+                    else "aucune variante annoncee, impression ordinaire retenue"
+                motif = f"{motif} ({precision})"
+            match = PriceMatch(_median_row(retenues), "high", motif, retenues)
+            # On ne signale une variante non retrouvee que si le code etait
+            # AMBIGU. Quand il ne designe qu'une fiche, le code EST
+            # l'identification : rien d'autre ne porte ce numero, et avertir
+            # « verifie toi-meme » sans proposer d'alternative n'apprend rien
+            # a personne. Une alerte qui se declenche sans enjeu use la
+            # credibilite de celles qui en ont un.
+            if (variant and len(group) > 1
+                    and not any(_variante_satisfaite(l, variant) for l in group)):
+                _flag_variant_mismatch(match, variant)
+            return match
     return None
 
 
@@ -545,6 +571,75 @@ def _variant_tail(slug: str) -> Optional[str]:
     return tail if tail in NAME_SUFFIXES else None
 
 
+# Mots differents, meme chose. Un vendeur ecrit « parallele », « alt »,
+# « alt art » ou « alternative » pour la meme realite : une illustration
+# alternative. Le catalogue, lui, n'en retient qu'une orthographe.
+_FAMILLES_VARIANTE = {
+    "parallele": {"parallele", "alternative", "alt"},
+    "alternative": {"parallele", "alternative", "alt"},
+    "alt": {"parallele", "alternative", "alt"},
+    "secret": {"secret", "sec"},
+    "sec": {"secret", "sec"},
+    "manga": {"manga"},
+    "leader": {"leader"},
+}
+
+# Une variante annoncee dans le titre peut etre confirmee par la RARETE de
+# la carte au lieu de son nom. « Zoro OP01-001 Leader » annonce « leader »,
+# et OP01-001 est bien un Leader — sa rarete le dit — alors que son nom ne
+# porte aucun suffixe. Sans cette corroboration, presque toutes les annonces
+# de Leaders seraient signalees comme douteuses a tort, et une alerte qui se
+# declenche tout le temps ne s'ecoute plus.
+_RARETE_CORROBORE = {
+    "leader": r"\bleader\b|^l$",
+    "secret": r"secret|^sec$",
+    "sec": r"secret|^sec$",
+    "manga": r"manga",
+}
+
+
+def _variante_satisfaite(ligne, variant: str) -> bool:
+    """Vrai si `ligne` porte bien la variante annoncee, par son nom ou sa rarete."""
+    famille = _FAMILLES_VARIANTE.get(variant, {variant})
+    if _variant_tail((ligne.name_slug or "").lower()) in famille:
+        return True
+    motif = _RARETE_CORROBORE.get(variant)
+    if motif and re.search(motif, (ligne.rarity or "").lower()):
+        return True
+    return False
+
+
+def _choisir_selon_variante(group: List[MarketCardPrice],
+                            variant: Optional[str]) -> List[MarketCardPrice]:
+    """Restreint un groupe de cartes partageant un code a celles dont la
+    variante correspond a ce que le titre annonce.
+
+    Pourquoi c'est necessaire : la liste officielle donne DEUX fiches pour un
+    meme code — l'impression ordinaire et l'illustration alternative — et sur
+    ce marche l'alternative vaut plusieurs fois l'ordinaire. Prendre l'une
+    pour l'autre ne produit pas une petite imprecision mais un prix de
+    reference faux, donc une marge fausse, donc une « bonne affaire » qui
+    n'existe pas (ou, pire, une vraie qu'on n'a pas vue).
+
+    Les deux sens comptent. Un titre qui dit « parallele » doit retenir
+    l'alternative ; un titre qui ne dit RIEN doit retenir l'ordinaire, et
+    c'est le cas le plus courant.
+    """
+    if len(group) < 2:
+        return group
+
+    if variant:
+        correspondantes = [l for l in group if _variante_satisfaite(l, variant)]
+        # Groupe inchange si aucune ne correspond : on ne sait pas choisir,
+        # et _flag_variant_mismatch le signalera plutot que de trancher au
+        # hasard.
+        return correspondantes or group
+
+    ordinaires = [l for l in group
+                  if _variant_tail((l.name_slug or "").lower()) is None]
+    return ordinaires or group
+
+
 def _is_plausible_typo(candidate: str, corrected: str) -> bool:
     """
     Garde-fou du rattrapage orthographique. Une similarite elevee ne suffit
@@ -565,6 +660,11 @@ def _flag_variant_mismatch(match: PriceMatch, variant: Optional[str]) -> None:
     explicitement au lieu de le presenter comme sur.
     """
     if not variant:
+        return
+    # Meme regle que pour le choix de la fiche : le nom OU la rarete peut
+    # confirmer la variante. Deux criteres differents ici et la aboutiraient
+    # a retenir la bonne carte puis a la declarer douteuse.
+    if _variante_satisfaite(match.row, variant):
         return
     slug = (match.row.name_slug or "").lower()
     if slug.endswith(f"-{variant}") or f"-{variant}-" in slug:
@@ -605,7 +705,20 @@ def _known_slugs(db: Session) -> List[str]:
 
 
 def _median_row(rows: List[MarketCardPrice]) -> MarketCardPrice:
-    ordered = sorted(rows, key=lambda r: r.price_eur)
+    """Carte representative parmi des homonymes : celle du prix median.
+
+    Les cartes sans prix connu sont ecartees du calcul — prendre la mediane
+    d'un ensemble ou la moitie des valeurs manquent ne veut rien dire, et
+    `None` n'est de toute facon pas comparable a un flottant.
+
+    Quand AUCUNE n'a de prix, on rend quand meme une ligne : elle ne servira
+    pas a chiffrer une marge, mais elle identifie la carte, ce qui suffit a
+    afficher son visuel et a pointer vers sa fiche.
+    """
+    chiffrees = [r for r in rows if r.price_eur is not None]
+    if not chiffrees:
+        return rows[0]
+    ordered = sorted(chiffrees, key=lambda r: r.price_eur)
     return ordered[len(ordered) // 2]
 
 

@@ -107,9 +107,19 @@ export default function CardTile({
 
         <div className="mt-auto flex items-end justify-between gap-2 pt-1.5">
           <div>
-            <p className="font-mono text-base text-parchment-100">
-              {carte.price_eur.toFixed(2)} €
-            </p>
+            {/* Une carte peut etre au catalogue sans qu'on connaisse son
+                prix : la liste officielle dit quelles cartes existent, pas
+                ce qu'elles valent. On l'ecrit, au lieu d'afficher un
+                « 0,00 € » qui se lirait comme « cette carte ne vaut rien ». */}
+            {carte.price_eur === null ? (
+              <p className="text-xs italic text-parchment-100/40">
+                Prix de référence inconnu
+              </p>
+            ) : (
+              <p className="font-mono text-base text-parchment-100">
+                {carte.price_eur.toFixed(2)} €
+              </p>
+            )}
             {carte.price_low_eur !== null && carte.price_high_eur !== null && (
               // Titre au survol : la fourchette est derivee de la volatilite
               // recente, pas des ventes conclues. Le dire la ou le chiffre
