@@ -54,6 +54,14 @@ def _job_images():
 
 
 def start_scheduler():
+    if not settings.scheduler_enabled:
+        logger.info(
+            "Scheduler desactive (SCHEDULER_ENABLED=false) : aucune collecte "
+            "automatique. Les routes /api/admin/* restent utilisables pour "
+            "declencher un passage a la main."
+        )
+        return
+
     scheduler.add_job(
         _job,
         "interval",

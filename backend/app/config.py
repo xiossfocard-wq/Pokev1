@@ -42,6 +42,17 @@ class Settings:
     check_interval_minutes: int = field(
         default_factory=lambda: _get_int("CHECK_INTERVAL_MINUTES", 20)
     )
+    # Collecte en arriere-plan. Vrai par defaut : c'est elle qui fait vivre
+    # l'app, et en local c'est elle qui remplace le cron externe dont
+    # l'hebergement gratuit avait besoin pour rester eveille.
+    #
+    # La mettre a faux sert a regarder l'interface, relire des donnees deja
+    # collectees ou travailler sur le code sans qu'une collecte parte toute
+    # seule derriere. Les routes /api/admin/* restent disponibles pour
+    # declencher un passage a la main.
+    scheduler_enabled: bool = field(
+        default_factory=lambda: _get_bool("SCHEDULER_ENABLED", True)
+    )
 
     # --- Jeu cible --------------------------------------------------------
     # Le projet suit UN jeu de cartes a la fois : One Piece. Les reglages de

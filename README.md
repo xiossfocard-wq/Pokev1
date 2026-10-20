@@ -377,7 +377,7 @@ compte : un score flatteur sur une carte mal identifiée est un piège.
 | `GET /api/admin/debug-catalog-sources` | Quelles sources peuvent alimenter le catalogue, et sous quelle forme |
 | `GET /api/admin/debug-card-images` | Détail de chaque adresse d'image essayée pour un code |
 
-**Tests** : `backend/tests/` — 440 tests. Lancer avec :
+**Tests** : `backend/tests/` — 444 tests. Lancer avec :
 
 ```bash
 cd backend
@@ -425,33 +425,71 @@ chemins-là ne peuvent être validés que sur ton installation, avec de
 vraies clés : je reste disponible pour déboguer à partir des erreurs que
 tu me copieras-colleras.
 
-## Lancer en local
+## Lancer en local (le chemin recommandé)
+
+Pour un usage personnel, le local est le meilleur choix, et pas seulement
+par simplicité :
+
+- **Vinted répond mieux depuis une connexion résidentielle.** Son anti-bot
+  est nettement plus hostile aux IP de datacenter. C'est le gain le plus
+  concret ;
+- **pas de mise en veille** : l'hébergement gratuit s'endort après 15 min
+  et le réveil coûte 30 à 60 secondes ;
+- **pas de cron externe** : le planificateur tourne dans l'app. Le workflow
+  GitHub `trigger-check` n'existe que pour réveiller un hébergement
+  endormi, et avec lui disparaît la question du quota Actions ;
+- **pas de base à provisionner** : SQLite, créée au premier démarrage.
+
+Le compromis : **ça ne collecte que quand le PC est allumé**, et il n'y a
+pas d'accès depuis le téléphone. Les deux ne s'excluent pas — même code,
+deux configurations.
+
+### Aucune configuration n'est nécessaire
+
+Vérifié le 20/10/2026 sur un clone neuf, sans `.env` et sans aucune
+variable d'environnement : le backend démarre en une seconde, crée
+`dev.db` et ses sept tables, et le frontend lui parle sans réglage — les
+deux pointent déjà sur `localhost:8000`.
 
 ### Backend
 
 ```bash
 cd backend
-python3 -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate   # Windows : .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env   # puis remplir au moins EBAY_CLIENT_ID/SECRET si tu veux du eBay réel
 uvicorn app.main:app --reload
 ```
 
-Par défaut `DATABASE_URL=sqlite:///./dev.db` (rien à installer). L'API
-répond sur http://localhost:8000 — vérifier avec `curl http://localhost:8000/api/health`.
+API sur http://localhost:8000 — vérifier avec `curl http://localhost:8000/api/health`.
+
+Copier `.env.example` en `.env` seulement pour ajouter des clés
+optionnelles (eBay, Telegram, Anthropic). Rien n'est obligatoire.
 
 ### Frontend
+
+Dans un second terminal :
 
 ```bash
 cd frontend
 npm install
-cp .env.example .env.local   # NEXT_PUBLIC_API_URL=http://localhost:8000 par défaut
 npm run dev
 ```
 
-Dashboard sur http://localhost:3000.
+Dashboard sur http://localhost:3000, explorateur sur /explorer.
 
-## Déploiement (100% gratuit possible)
+### Couper la collecte automatique
+
+Par défaut l'app collecte toute seule toutes les 20 minutes. Pour regarder
+l'interface ou travailler sur le code sans qu'un passage parte derrière :
+
+```bash
+SCHEDULER_ENABLED=false uvicorn app.main:app --reload
+```
+
+Les routes `/api/admin/*` restent disponibles pour déclencher un passage à
+la main.
+
+## Déploiement (si tu veux une collecte permanente)
 
 | Composant | Service | Pourquoi |
 |---|---|---|
