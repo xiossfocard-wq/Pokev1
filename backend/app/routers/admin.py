@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from typing import Optional
 
 from app.config import settings
@@ -15,6 +15,7 @@ from app.services.price_index import (
 )
 from app.collectors.card_images import ClientImagesCartes
 from app.collectors.catalog_sources import SondeurDeSources
+from app.services import catalog_import
 from app.services import card_catalog
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -230,6 +231,42 @@ def recompute_card_fields(limit: int = Query(5000, ge=1, le=50000)):
     db = SessionLocal()
     try:
         return card_catalog.recalculer_champs_derives(db, limite=limit)
+    finally:
+        db.close()
+
+
+@router.post("/import-catalog")
+async def import_catalog(request: Request):
+    """Remplit le catalogue depuis un fichier CSV ou JSON.
+
+    Le catalogue n'avait qu'une seule facon d'etre rempli, et quand cette
+    source s'est revelee ne pas couvrir One Piece il n'est rien reste. Ce
+    chemin-ci ne depend ni du reseau ni de la forme d'une page : on donne
+    un fichier, il remplit.
+
+    Le corps de la requete EST le fichier — CSV ou JSON, reconnu tout seul.
+    Pas de formulaire, pas de dependance supplementaire :
+
+        curl -X POST http://localhost:8000/api/admin/import-catalog \
+             --data-binary @cartes.csv
+
+    Colonnes : card_code, display_name, price_eur (obligatoires),
+    series_name, rarity (facultatives). Les intitules courants en francais
+    sont acceptes — « code », « nom », « prix », « serie », « rarete ».
+
+    Chaque ligne refusee est rendue avec son numero et sa raison.
+    """
+    corps = (await request.body()).decode("utf-8", errors="replace")
+
+    lignes, erreur = catalog_import.analyser(corps)
+    if erreur:
+        raise HTTPException(status_code=400, detail=erreur)
+    if not lignes:
+        raise HTTPException(status_code=400, detail="aucune ligne exploitable")
+
+    db = SessionLocal()
+    try:
+        return catalog_import.importer_catalogue(db, lignes)
     finally:
         db.close()
 

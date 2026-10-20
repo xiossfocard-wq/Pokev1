@@ -284,6 +284,52 @@ Trois comportements à connaître :
   passage, toutes les 30 minutes). Sur un gros catalogue, les visuels se
   remplissent sur plusieurs heures, les cartes les plus chères d'abord.
 
+### Remplir le catalogue depuis un fichier
+
+Le catalogue n'avait **qu'une seule** façon d'être rempli : la
+synchronisation ZebraDex. Quand cette source s'est révélée ne pas couvrir
+One Piece, il n'est rien resté. Le défaut n'était pas le choix de la
+source, c'était qu'il n'y avait qu'un chemin.
+
+`POST /api/admin/import-catalog` en ouvre un second, qui ne dépend ni du
+réseau ni de la forme d'une page :
+
+```bash
+curl -X POST http://localhost:8000/api/admin/import-catalog \
+     --data-binary @cartes.csv
+```
+
+Le corps de la requête **est** le fichier — CSV (`;` ou `,`) ou JSON,
+reconnu tout seul.
+
+| Colonne | | Exemple |
+|---|---|---|
+| `card_code` | **obligatoire** | `OP01-120`, `OP01 120`, `OP01-4` |
+| `display_name` | **obligatoire** | le nom **français** imprimé |
+| `price_eur` | **obligatoire** | `12,50 €`, `1 234,56`, `12.50` |
+| `series_name` | facultatif | `Romance Dawn` |
+| `rarity` | facultatif | `Secret Rare` |
+
+Les intitulés français courants sont acceptés : `code`, `nom`, `prix`,
+`serie`, `rarete`. La virgule décimale est le cas normal, pas l'exception.
+
+Rien d'autre n'est demandé. **Les thèmes, la clé de recherche et le visuel
+sont dérivés** — le visuel se déduit du code et se remplit tout seul au
+passage suivant de l'enrichissement.
+
+**Chaque ligne refusée est rendue avec son numéro et sa raison**, et
+`lues = importées + rejetées` est vérifié par un test. Un import qui
+avalerait silencieusement la moitié d'un fichier reproduirait exactement le
+silence qui a laissé croire que le catalogue se remplissait alors qu'il
+restait vide.
+
+Un défaut trouvé en important de vraies cartes, qui valait d'être corrigé :
+le slug écrit par l'import doit avoir **exactement** la forme que le parseur
+de titre produit. « Monkey D. Luffy » donnait `monkey-d.-luffy` avec le
+point, là où le parseur cherche `monkey-d-luffy` : les deux ne se
+rencontraient jamais, et le prix retombait sur le nom usuel — moins sûr —
+sans que rien ne le signale. Un test verrouille leur égalité.
+
 ### Le rapprochement annonce → carte
 
 Une annonce ne vaut rien sans prix de référence : c'est lui qui dit si
@@ -374,10 +420,11 @@ compte : un score flatteur sur une carte mal identifiée est un piège.
 | `POST /api/admin/snapshot-card-prices` | Relevé de prix du jour (rattrapage manuel) |
 | `POST /api/admin/enrich-card-images` | Complète les visuels manquants |
 | `POST /api/admin/recompute-card-fields` | Rattrape les thèmes et la clé de recherche (à lancer une fois après le déploiement) |
+| `POST /api/admin/import-catalog` | Remplit le catalogue depuis un CSV ou un JSON |
 | `GET /api/admin/debug-catalog-sources` | Quelles sources peuvent alimenter le catalogue, et sous quelle forme |
 | `GET /api/admin/debug-card-images` | Détail de chaque adresse d'image essayée pour un code |
 
-**Tests** : `backend/tests/` — 444 tests. Lancer avec :
+**Tests** : `backend/tests/` — 466 tests. Lancer avec :
 
 ```bash
 cd backend
