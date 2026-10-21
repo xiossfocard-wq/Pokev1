@@ -491,6 +491,18 @@ Le compromis : **ça ne collecte que quand le PC est allumé**, et il n'y a
 pas d'accès depuis le téléphone. Les deux ne s'excluent pas — même code,
 deux configurations.
 
+### En une commande
+
+```bash
+bash scripts/demarrer.sh
+```
+
+Il installe ce qui manque, lance l'API, **remplit le catalogue**, récupère
+les visuels puis démarre l'interface. `Ctrl+C` arrête tout.
+
+Sous Windows : depuis Git Bash ou WSL. Sinon, suivre les étapes manuelles
+ci-dessous, qui font exactement la même chose.
+
 ### Aucune configuration n'est nécessaire
 
 Vérifié le 20/10/2026 sur un clone neuf, sans `.env` et sans aucune
@@ -511,6 +523,43 @@ API sur http://localhost:8000 — vérifier avec `curl http://localhost:8000/api
 
 Copier `.env.example` en `.env` seulement pour ajouter des clés
 optionnelles (eBay, Telegram, Anthropic). Rien n'est obligatoire.
+
+### Remplir le catalogue — l'étape qu'on ne devine pas
+
+Le catalogue ne se remplit **pas** tout seul au premier démarrage. Sans
+cette étape l'application se lance correctement, n'affiche aucune carte,
+et rien n'indique que c'est normal.
+
+```bash
+curl -X POST http://localhost:8000/api/admin/load-opcg-catalog
+```
+
+Environ 3 870 cartes, lues dans un instantané versionné du dépôt : ni
+réseau ni fichier à fournir. Ajouter `?rafraichir=true` pour aller
+chercher la dernière version publiée à la place.
+
+Puis les visuels, qui se déduisent du code de la carte. Ils arrivent par
+lots de 200, donc il faut relancer l'appel une vingtaine de fois — ou
+laisser le script le faire :
+
+```bash
+python3 scripts/etapes_demarrage.py visuels
+```
+
+**Ce que cette source ne donne pas : les prix.** Elle dit quelles cartes
+existent, pas ce qu'elles valent. Les cartes entrent donc sans prix de
+référence, et l'interface l'écrit noir sur blanc plutôt que d'afficher un
+`0,00 €` qui se lirait comme « cette carte ne vaut rien ». Les marges et
+les scores d'affaire restent vides tant qu'une source de prix n'est pas
+branchée — par exemple un fichier avec une colonne prix :
+
+```bash
+curl -X POST http://localhost:8000/api/admin/import-catalog \
+     --data-binary @mes-prix.csv
+```
+
+Il met à jour les mêmes fiches sans les dupliquer, et un import sans
+colonne prix n'efface jamais les prix déjà connus.
 
 ### Frontend
 
