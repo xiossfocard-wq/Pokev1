@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -62,7 +63,9 @@ def _job_sources_du_jour():
     from app.collectors.cardlist_fr import ClientListeFR
     from app.collectors.opecards_prices import ClientOPECards
     from app.services.catalog_fr import appliquer_noms_francais
-    from app.services.catalog_prices import appliquer_prix
+    from app.services.catalog_prices import (
+        appliquer_prix, oublier_les_prix_non_confirmes,
+    )
 
     db = SessionLocal()
     try:
@@ -87,10 +90,13 @@ def _job_sources_du_jour():
         try:
             client = ClientOPECards()
             prix = []
+            series_en_echec = 0
+            debut_des_prix = datetime.utcnow()
             for serie in client.series():
                 try:
                     prix.extend(client.prix_de_serie(serie))
                 except Exception as erreur:  # noqa: BLE001
+                    series_en_echec += 1
                     logger.warning("Prix : serie %s illisible (%s)", serie, erreur)
             if prix:
                 rapport = appliquer_prix(db, prix)
@@ -104,6 +110,20 @@ def _job_sources_du_jour():
                                    "le plus bas retenu", conflit["code"],
                                    conflit["concurrents"][1],
                                    conflit["concurrents"][0])
+
+                # Un prix mal rapproche par une version precedente peut
+                # n'avoir plus aucune candidature legitime : plus rien ne
+                # vient l'ecraser. Ce balayage est la seule chose qui
+                # l'enleve. Il ne joue que si TOUT a ete lu : une serie
+                # manquee n'est pas une serie perimee.
+                if series_en_echec:
+                    logger.warning("Prix : balayage reporte, %d serie(s) non lue(s)",
+                                   series_en_echec)
+                else:
+                    oubli = oublier_les_prix_non_confirmes(db, debut_des_prix)
+                    if oubli["oubliees"]:
+                        logger.info("Prix : %d prix perime(s) oublie(s)",
+                                    oubli["oubliees"])
                 for ecart in rapport["ecarts_suspects"][:10]:
                     logger.warning("Prix : ecart x%s sur %s (%s EUR -> %s EUR)",
                                    ecart["facteur"], ecart["code"],

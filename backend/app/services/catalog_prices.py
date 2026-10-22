@@ -66,6 +66,56 @@ def code_rarete(brut: Optional[str]) -> Optional[str]:
     return _SUFFIXE_CARD.sub("", texte).strip() or None
 
 
+def oublier_les_prix_non_confirmes(db: Session, anterieurs_a: datetime,
+                                   source: str = SOURCE) -> dict:
+    """Efface les prix que la source n'a pas reconfirmés pendant ce passage.
+
+    POURQUOI UN BALAYAGE APRES, ET PAS UNE REMISE A ZERO AVANT
+    ----------------------------------------------------------
+    Vider les prix puis recharger paraît plus simple, mais ça ouvre une
+    fenêtre pendant laquelle le catalogue n'a plus aucun prix — donc plus
+    aucune marge, plus aucun score. Et si le rechargement échoue en route,
+    cette fenêtre ne se referme pas : on a détruit des données valides pour
+    les remplacer par rien.
+
+    Ici, un prix n'est effacé que parce que la source vient de passer et ne
+    l'a PAS reconfirmé. On ne retire donc jamais que ce qu'on sait être
+    périmé, et jamais avant d'avoir obtenu le remplacement.
+
+    A QUOI CA SERT
+    --------------
+    Un prix mal rapproché par une version précédente peut n'avoir plus
+    aucune candidature légitime : plus rien ne vient l'écraser, et il reste
+    en base indéfiniment. C'est exactement le chiffre qui invente une
+    bonne affaire. Le balayage est la seule chose qui l'enlève.
+
+    Seuls les prix de CETTE source sont touchés. Les autres gardent les
+    leurs : ce balayage répare un rapprochement, il n'arbitre pas entre les
+    sources.
+    """
+    cibles = (db.query(MarketCardPrice)
+              .filter(MarketCardPrice.source == source,
+                      MarketCardPrice.price_eur.isnot(None),
+                      MarketCardPrice.updated_at < anterieurs_a)
+              .all())
+
+    exemples = [{"code": l.card_code, "nom": l.display_name,
+                 "prix_oublie": round(l.price_eur, 2)}
+                for l in cibles[:25]]
+
+    for ligne in cibles:
+        ligne.price_eur = None
+        ligne.variation_7d_eur = None
+        ligne.updated_at = datetime.utcnow()
+    db.commit()
+
+    logger.info("Prix %s : %d prix non reconfirme(s) oublie(s)",
+                source, len(cibles))
+
+    return {"oubliees": len(cibles), "exemples": exemples,
+            "anterieurs_a": anterieurs_a.isoformat()}
+
+
 def appliquer_prix(db: Session, prix: List[PrixCarte],
                    ecart_suspect: float = ECART_SUSPECT) -> dict:
     """Écrit les prix de référence. Rend un compte rendu.

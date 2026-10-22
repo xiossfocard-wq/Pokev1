@@ -18,6 +18,7 @@ seule, et le module n'a besoin que de la bibliothèque standard.
     python3 scripts/etapes_demarrage.py bilan      [url]
 """
 import json
+import math
 import sys
 import time
 import urllib.error
@@ -237,6 +238,7 @@ def charger_les_prix(base: str) -> None:
     echecs = []
     suspects = []
     conflits = []
+    depart = time.monotonic()
 
     for i, (valeur, libelle) in enumerate(series.items(), start=1):
         _progression(i, total, libelle)
@@ -269,6 +271,46 @@ def charger_les_prix(base: str) -> None:
         print(f"     série « {libelle[:34]} » en échec : {raison}")
     if len(echecs) > 3:
         print(f"     … et {len(echecs) - 3} autre(s) série(s) en échec")
+
+    _balayer_les_prix_perimes(base, depart, chiffrees, echecs)
+
+
+def _balayer_les_prix_perimes(base: str, depart: float, chiffrees: int,
+                              echecs: list) -> None:
+    """Oublie les prix que la source vient de passer sans reconfirmer.
+
+    Recharger ne suffit pas à réparer un mauvais rapprochement : un prix
+    écrit par erreur peut n'avoir plus aucune candidature légitime, donc
+    plus rien pour l'écraser. Ce balayage est la seule chose qui l'enlève.
+
+    IL NE SE LANCE QUE SI TOUT A ETE LU.
+    Une série non lue, c'est un paquet de cartes que la source n'a pas eu
+    l'occasion de confirmer : les effacer les prendrait pour périmées alors
+    qu'elles sont seulement manquées. On préfère garder un prix douteux une
+    nuit de plus que d'en détruire des centaines de valides.
+    """
+    if echecs:
+        print(f"   balayage reporté : {len(echecs)} série(s) non lue(s)")
+        print("   (effacer maintenant retirerait des prix encore valides)")
+        return
+    if not chiffrees:
+        return
+
+    # La borne doit COUVRIR la durée du rechargement : tout ce qui a été
+    # touché pendant est gardé. On arrondit vers le haut, ce qui recule la
+    # borne — donc garde davantage. L'erreur conservatrice est de ce côté.
+    minutes = math.ceil((time.monotonic() - depart) / 60) + 1
+    try:
+        r = _appeler(f"{base}/api/admin/sweep-fr-prices?minutes={minutes}",
+                     methode="POST", delai=300)
+    except Exception as erreur:
+        print(f"   balayage impossible : {str(erreur)[:60]}")
+        return
+
+    oubliees = r.get("oubliees", 0)
+    if oubliees:
+        print(f"   {oubliees} prix périmé(s) oublié(s) : la source ne les")
+        print("   confirme plus. Une carte sans prix vaut mieux qu'un faux.")
 
 
 def premiere_collecte(base: str) -> None:

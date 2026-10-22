@@ -414,5 +414,89 @@ class TestNormalisationDeLaRarete(unittest.TestCase):
             self.assertIsNone(code_rarete(vide))
 
 
+class TestBalayageDesPrixPerimes(unittest.TestCase):
+    """Recharger ne suffit pas à réparer un mauvais rapprochement.
+
+    Un prix écrit par erreur peut n'avoir plus aucune candidature
+    légitime — plus rien ne vient donc l'écraser, et il reste en base
+    indéfiniment. C'est exactement le chiffre qui invente une bonne
+    affaire. Ce balayage est la seule chose qui l'enlève.
+    """
+
+    def setUp(self):
+        from datetime import datetime, timedelta
+        moteur = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(moteur)
+        self.db = sessionmaker(bind=moteur)()
+        self.veille = datetime.utcnow() - timedelta(days=1)
+        self.debut = datetime.utcnow() - timedelta(minutes=5)
+        self.db.add_all([
+            # Mal rapprochée hier, plus aucune candidature aujourd'hui.
+            MarketCardPrice(card_code="OP17-022", display_name="Shanks",
+                            name_slug="shanks", price_eur=850.0,
+                            source="opecards", updated_at=self.veille),
+            # Reconfirmée pendant le passage.
+            MarketCardPrice(card_code="OP17-005", display_name="Kaido",
+                            name_slug="kaido", price_eur=7.0,
+                            source="opecards", updated_at=datetime.utcnow()),
+            # Une AUTRE source : ce balayage n'a pas à en décider.
+            MarketCardPrice(card_code="OP17-099", display_name="Nami",
+                            name_slug="nami", price_eur=42.0,
+                            source="catalogue", updated_at=self.veille),
+            # Jamais chiffrée : rien à oublier, et rien ne doit casser.
+            MarketCardPrice(card_code="OP17-100", display_name="Usopp",
+                            name_slug="usopp", price_eur=None,
+                            source="opecards", updated_at=self.veille),
+        ])
+        self.db.commit()
+
+    def tearDown(self):
+        self.db.close()
+
+    def balayer(self):
+        from app.services.catalog_prices import oublier_les_prix_non_confirmes
+        return oublier_les_prix_non_confirmes(self.db, self.debut)
+
+    def prix(self, code):
+        return self.db.query(MarketCardPrice).filter_by(card_code=code).one().price_eur
+
+    def test_un_prix_non_reconfirme_est_oublie(self):
+        """Le cas qui justifie la fonction : plus rien ne venait l'écraser."""
+        self.assertEqual(self.balayer()["oubliees"], 1)
+        self.assertIsNone(self.prix("OP17-022"))
+
+    def test_un_prix_reconfirme_est_garde(self):
+        self.balayer()
+        self.assertEqual(self.prix("OP17-005"), 7.0)
+
+    def test_les_autres_sources_ne_sont_pas_touchees(self):
+        """Ce balayage répare un rapprochement, il n'arbitre pas entre les
+        sources."""
+        self.balayer()
+        self.assertEqual(self.prix("OP17-099"), 42.0)
+
+    def test_une_carte_sans_prix_ne_compte_pas_pour_un_oubli(self):
+        """Sinon le compte rendu annoncerait des centaines d'oublis à chaque
+        passage, et le chiffre ne voudrait plus rien dire."""
+        self.assertEqual(self.balayer()["oubliees"], 1)
+        self.assertIsNone(self.prix("OP17-100"))
+
+    def test_la_variation_part_avec_le_prix(self):
+        """Une variation sans prix n'a aucun sens, et alimenterait une
+        tendance sur un chiffre disparu."""
+        self.db.query(MarketCardPrice).filter_by(
+            card_code="OP17-022").one().variation_7d_eur = -12.0
+        self.db.commit()
+        self.balayer()
+        fiche = self.db.query(MarketCardPrice).filter_by(card_code="OP17-022").one()
+        self.assertIsNone(fiche.variation_7d_eur)
+
+    def test_ce_qui_est_oublie_est_nomme(self):
+        """Un effacement silencieux empêche de voir qu'il part trop large."""
+        rapport = self.balayer()
+        self.assertEqual(rapport["exemples"][0]["code"], "OP17-022")
+        self.assertEqual(rapport["exemples"][0]["prix_oublie"], 850.0)
+
+
 if __name__ == "__main__":
     unittest.main()

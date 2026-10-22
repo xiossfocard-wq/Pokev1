@@ -1,4 +1,5 @@
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+from datetime import datetime, timedelta
 from typing import Optional
 
 from app.config import settings
@@ -456,6 +457,45 @@ def load_fr_prices(
     rapport["series_demandees"] = len(voulues)
     rapport["series_en_echec"] = echecs
     return rapport
+
+
+@router.post("/sweep-fr-prices")
+def sweep_fr_prices(
+    minutes: int = Query(
+        ...,
+        ge=1,
+        description="Duree que vient de prendre le rechargement des prix. "
+                    "Un prix non reconfirme depuis au moins ce delai est "
+                    "considere comme perime et efface.",
+    ),
+):
+    """Oublie les prix de reference que la source ne confirme plus.
+
+    A LANCER APRES load-fr-prices, JAMAIS AVANT
+    -------------------------------------------
+    Recharger les prix ne suffit pas a reparer un mauvais rapprochement :
+    un prix ecrit par erreur peut n'avoir plus aucune candidature
+    legitime, donc plus rien pour l'ecraser. Il reste alors en base
+    indefiniment — et c'est precisement le chiffre qui invente une bonne
+    affaire qui n'existe pas.
+
+    Cette route efface ces prix-la, et seulement eux : ceux que la source
+    vient de passer sans reconfirmer. D'ou le parametre « minutes », qui
+    doit couvrir la duree du rechargement : tout ce qui a ete touche
+    pendant est garde.
+
+    L'ordre compte. Vider les prix AVANT de recharger ouvrirait une fenetre
+    sans aucun prix au catalogue, et un rechargement qui echoue en route la
+    laisserait ouverte.
+
+        curl -X POST "http://localhost:8000/api/admin/sweep-fr-prices?minutes=90"
+    """
+    db = SessionLocal()
+    try:
+        return catalog_prices.oublier_les_prix_non_confirmes(
+            db, datetime.utcnow() - timedelta(minutes=minutes))
+    finally:
+        db.close()
 
 
 @router.get("/debug-catalog-sources")
