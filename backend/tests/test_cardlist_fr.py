@@ -22,8 +22,8 @@ from sqlalchemy.orm import sessionmaker
 
 from app.collectors import card_images
 from app.collectors.cardlist_fr import (
-    MARQUE_ALTERNATIVE, analyser_page, nombre_annonce, series_disponibles,
-    _nettoyer_serie, _texte,
+    MARQUE_ALTERNATIVE, analyser_page, nom_avec_variante, nombre_annonce,
+    rang_de_parallele, series_disponibles, _nettoyer_serie, _texte,
 )
 from app.database import Base
 from app.models import MarketCardPrice
@@ -91,7 +91,7 @@ class TestAnalysePage(unittest.TestCase):
         « Baggy » ne rencontrait jamais la fiche anglaise."""
         noms = {c.display_name for c in self.cartes}
         self.assertIn("Ruche", noms)
-        self.assertIn(f"Baggy ({MARQUE_ALTERNATIVE})", noms)
+        self.assertIn(nom_avec_variante("Baggy", 1), noms)
         self.assertIn("Caborage et Chavipère", noms)
 
     def test_apostrophes_et_guillemets_intacts(self):
@@ -105,13 +105,19 @@ class TestAnalysePage(unittest.TestCase):
         parseur qui ne lirait que le code les confondrait."""
         variantes = self.par_code["OP17-001"]
         self.assertEqual(len(variantes), 2)
-        self.assertEqual({v.variante for v in variantes}, {None, "p1"})
+        self.assertEqual({v.rang_variante for v in variantes}, {0, 1})
         self.assertEqual({v.card_code for v in variantes}, {"OP17-001"})
 
-    def test_la_parallele_est_marquee_dans_le_nom(self):
-        alt = next(c for c in self.cartes if c.variante == "p1"
+    def test_le_rang_de_la_parallele_est_dans_le_nom(self):
+        """Le RANG, pas seulement la mention. Releve le 22/10/2026 sur
+        OPECards : les trois impressions de OP15-118-SEC valent 10,50 €,
+        22,00 € et 695,00 €. Les regrouper sous un seul « (Parallèle) »,
+        c'etait accepter de se tromper d'un facteur soixante-six."""
+        alt = next(c for c in self.cartes if c.rang_variante == 1
                    and c.card_code == "OP17-001")
-        self.assertEqual(alt.display_name, f"Edward Newgate ({MARQUE_ALTERNATIVE})")
+        self.assertEqual(alt.display_name, "Edward Newgate (Parallèle 1)")
+        autre = next(c for c in self.cartes if c.card_code == "OP17-005")
+        self.assertEqual(autre.display_name, "Edward Newgate (Parallèle 2)")
 
     def test_images_en_webp_et_absolues(self):
         """Le site FR sert du WEBP. Tant que le code attendait du PNG,
@@ -127,7 +133,7 @@ class TestAnalysePage(unittest.TestCase):
             self.assertNotIn("?", carte.image_url)
 
     def test_raretes_et_types(self):
-        leader = next(c for c in self.cartes if c.variante is None
+        leader = next(c for c in self.cartes if c.rang_variante == 0
                       and c.card_code == "OP17-001")
         self.assertEqual(leader.rarity, "L")
         self.assertEqual(leader.card_type, "LEADER")
@@ -187,7 +193,7 @@ class TestApplicationDesNomsFrancais(unittest.TestCase):
         # de reference qu'il ne faut surtout pas perdre.
         importer_catalogue(self.db, [
             {"card_code": "OP17-057", "display_name": "Hive", "price_eur": "0,80"},
-            {"card_code": "P-084", "display_name": "Buggy (Parallèle)",
+            {"card_code": "P-084", "display_name": "Buggy (Parallèle 1)",
              "price_eur": "120,00"},
             {"card_code": "OP17-001", "display_name": "Edward Newgate",
              "price_eur": "9,00"},
@@ -199,9 +205,9 @@ class TestApplicationDesNomsFrancais(unittest.TestCase):
     def appliquer(self):
         return appliquer_noms_francais(self.db, analyser_page(page()))
 
-    def fiche(self, code, parallele=False):
+    def fiche(self, code, rang=0):
         for l in self.db.query(MarketCardPrice).filter_by(card_code=code).all():
-            if (MARQUE_ALTERNATIVE in (l.display_name or "")) == parallele:
+            if rang_de_parallele(l.name_slug) == rang:
                 return l
         return None
 
@@ -212,13 +218,13 @@ class TestApplicationDesNomsFrancais(unittest.TestCase):
         self.appliquer()
         fiches = self.db.query(MarketCardPrice).filter_by(card_code="P-084").all()
         self.assertEqual(len(fiches), 1)
-        self.assertEqual(fiches[0].display_name, f"Baggy ({MARQUE_ALTERNATIVE})")
+        self.assertEqual(fiches[0].display_name, nom_avec_variante("Baggy", 1))
 
     def test_le_prix_de_reference_survit_au_renommage(self):
         """Cette source dit comment la carte s'appelle, pas ce qu'elle vaut."""
         self.appliquer()
         self.assertEqual(self.fiche("OP17-057").price_eur, 0.80)
-        self.assertEqual(self.fiche("P-084", parallele=True).price_eur, 120.0)
+        self.assertEqual(self.fiche("P-084", rang=1).price_eur, 120.0)
 
     def test_le_slug_suit_le_nouveau_nom(self):
         """Sans cela le rapprochement par nom chercherait encore l'anglais."""
@@ -270,7 +276,7 @@ class TestApplicationDesNomsFrancais(unittest.TestCase):
 
     def test_les_themes_suivent_le_nom_francais(self):
         self.appliquer()
-        parallele = self.fiche("P-084", parallele=True)
+        parallele = self.fiche("P-084", rang=1)
         self.assertIn("alternative", parallele.theme_slugs or "")
 
 

@@ -74,6 +74,32 @@ USER_AGENT = (
 # deux bouts de la chaine se rencontrent sans table de correspondance.
 MARQUE_ALTERNATIVE = "Parallèle"
 
+
+def nom_avec_variante(nom: str, rang: int) -> str:
+    """« Ener », 2 -> « Ener (Parallèle 2) ». Rang 0 = impression ordinaire.
+
+    Le RANG est dans le nom, pas seulement la mention « Parallèle ». Verifie
+    le 22/10/2026 sur OPECards : les trois impressions de OP15-118-SEC
+    valent 10,50 €, 22,00 € et 695,00 €. Les regrouper sous une seule fiche
+    « (Parallèle) », comme le faisait la version precedente, revenait a
+    annoncer 22 € pour une carte qui en vaut 695.
+    """
+    return f"{nom} ({MARQUE_ALTERNATIVE} {rang})" if rang else nom
+
+
+def rang_de_parallele(name_slug: Optional[str]) -> int:
+    """Rang de variante lu dans un slug. 0 si c'est l'impression ordinaire.
+
+    « ener »              -> 0
+    « ener-parallele-2 »  -> 2
+    « ener-parallele »    -> 1   (ancienne forme, sans rang)
+    """
+    slug = (name_slug or "").lower()
+    trouve = re.search(r"-(?:parallele|alternative|alt)(?:-(\d+))?$", slug)
+    if not trouve:
+        return 0
+    return int(trouve.group(1)) if trouve.group(1) else 1
+
 # --- Motifs, tires du code source observe -------------------------------
 
 # Un bloc carte complet. `.*?` non gourmand : les blocs se suivent, et un
@@ -109,7 +135,7 @@ _SERIE_OPTION = re.compile(
 _NOMBRE_RESULTATS = re.compile(r'<div class="countCol">\s*(\d+)')
 
 # Suffixe de variante dans l'id du bloc.
-_SUFFIXE_VARIANTE = re.compile(r'_(p\d+)$')
+_SUFFIXE_VARIANTE = re.compile(r'_p(\d+)$')
 
 
 def _texte(brut: Optional[str]) -> str:
@@ -180,7 +206,7 @@ class CarteFR:
     card_type: Optional[str]      # LEADER | PERSONNAGE | ÉVÉNEMENTS | LIEU
     series_name: Optional[str]
     image_url: Optional[str]
-    variante: Optional[str]       # « p1 », « p2 »… ou None pour l'ordinaire
+    rang_variante: int            # 0 = impression ordinaire, 1+ = alternative
 
     def en_ligne_d_import(self) -> dict:
         """Au contrat de services/catalog_import.
@@ -201,11 +227,19 @@ class CarteFR:
 def analyser_page(contenu: str, racine: str = RACINE) -> List[CarteFR]:
     """Extrait les cartes d'une page de liste.
 
-    Les variantes multiples d'un meme code (« _p1 », « _p2 ») sont REGROUPEES
-    sous une seule fiche « (Parallèle) ». Une annonce francaise dit
-    « parallele » et jamais de quel coffret elle vient : une distinction que
-    le titre ne porte pas est une distinction qu'on ne saurait pas
-    rapprocher, et deux fiches homonymes ne feraient qu'ajouter du bruit.
+    Chaque variante donne sa PROPRE fiche, numerotee.
+
+    La version precedente les regroupait sous une seule fiche « (Parallèle) »,
+    au motif qu'une annonce francaise dit « parallele » sans preciser
+    laquelle. Le releve des prix a montre que ce raisonnement coutait cher :
+    les trois impressions de OP15-118-SEC valent 10,50 €, 22,00 € et
+    695,00 €. Regrouper, c'etait accepter de se tromper d'un facteur
+    soixante-six sur le prix de reference.
+
+    L'ambiguite d'une annonce qui ne precise pas sa version est reelle, mais
+    elle se traite la ou elle se pose — au rapprochement, qui sait deja
+    signaler un ecart de prix suspect entre homonymes — et non en effacant
+    l'information a la source.
     """
     cartes: List[CarteFR] = []
     deja_vues = set()
@@ -230,9 +264,9 @@ def analyser_page(contenu: str, racine: str = RACINE) -> List[CarteFR]:
             continue
 
         suffixe = _SUFFIXE_VARIANTE.search(identifiant)
-        variante = suffixe.group(1) if suffixe else None
+        rang = int(suffixe.group(1)) if suffixe else 0
 
-        cle = (code.upper(), bool(variante))
+        cle = (code.upper(), rang)
         if cle in deja_vues:
             continue
         deja_vues.add(cle)
@@ -244,14 +278,14 @@ def analyser_page(contenu: str, racine: str = RACINE) -> List[CarteFR]:
 
         cartes.append(CarteFR(
             card_code=code,
-            display_name=f"{nom_fr} ({MARQUE_ALTERNATIVE})" if variante else nom_fr,
+            display_name=nom_avec_variante(nom_fr, rang),
             rarity=_texte(info.group("rarete")) or None,
             card_type=_texte(info.group("type")) or None,
             series_name=_nettoyer_serie(
                 _EXTENSION.search(corps).group("serie")
                 if _EXTENSION.search(corps) else None),
             image_url=url_image,
-            variante=variante,
+            rang_variante=rang,
         ))
 
     return cartes

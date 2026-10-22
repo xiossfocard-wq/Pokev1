@@ -12,6 +12,7 @@ seule, et le module n'a besoin que de la bibliothèque standard.
     python3 scripts/etapes_demarrage.py attendre   [url]
     python3 scripts/etapes_demarrage.py catalogue  [url]
     python3 scripts/etapes_demarrage.py noms-fr    [url]
+    python3 scripts/etapes_demarrage.py prix       [url]
     python3 scripts/etapes_demarrage.py visuels    [url]
 """
 import json
@@ -159,6 +160,36 @@ def passer_aux_noms_francais(base: str) -> None:
         print(f"     série {echec['serie']} en échec : {echec['raison'][:70]}")
 
 
+def charger_les_prix(base: str) -> None:
+    """Écrit les prix de référence en euros, depuis OPECards.fr.
+
+    C'est ce qui allume les marges et les scores d'affaire : sans prix, une
+    annonce peut être identifiée mais pas jugée.
+
+    Demande Internet, et c'est long — plusieurs centaines de pages, avec une
+    pause entre chaque pour ne pas marteler un site communautaire.
+    """
+    try:
+        r = _appeler(f"{base}/api/admin/load-fr-prices", methode="POST", delai=5400)
+    except Exception as erreur:
+        print(f"   impossible de joindre la source de prix : {erreur}")
+        print("   les cartes restent sans prix : le catalogue est consultable,")
+        print("   mais aucune marge n'est calculée.")
+        return
+
+    print(f"   {r.get('chiffrees', 0)} carte(s) chiffrée(s), "
+          f"{r.get('inchangees', 0)} inchangée(s)")
+    restantes = r.get("sans_prix_restantes")
+    if restantes:
+        print(f"   {restantes} carte(s) encore sans prix")
+    for e in (r.get("exemples") or [])[:5]:
+        avant = "—" if e.get("avant") is None else f"{e['avant']}€"
+        print(f"     {e['nom'][:34]} : {avant} → {e['apres']}€")
+    for e in (r.get("ecarts_suspects") or [])[:5]:
+        print(f"     écart suspect ×{e['facteur']} sur {e['code']} "
+              f"({e['avant']}€ → {e['apres']}€)")
+
+
 def main() -> int:
     etape = sys.argv[1] if len(sys.argv) > 1 else ""
     base = (sys.argv[2] if len(sys.argv) > 2 else API_PAR_DEFAUT).rstrip("/")
@@ -169,6 +200,9 @@ def main() -> int:
         return 0 if remplir_catalogue(base) > 0 else 1
     if etape == "noms-fr":
         passer_aux_noms_francais(base)
+        return 0
+    if etape == "prix":
+        charger_les_prix(base)
         return 0
     if etape == "visuels":
         remplir_visuels(base)

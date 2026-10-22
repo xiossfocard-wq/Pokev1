@@ -30,8 +30,7 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from app.collectors.card_images import code_canonique
-from app.collectors.cardlist_fr import CarteFR
-from app.matching.title_parser import NAME_SUFFIXES
+from app.collectors.cardlist_fr import CarteFR, rang_de_parallele
 from app.models import MarketCardPrice
 from app.services.card_themes import (
     cle_de_recherche, encoder_themes, themes_de_la_carte,
@@ -41,19 +40,6 @@ from app.services.catalog_import import slug_de_nom
 logger = logging.getLogger(__name__)
 
 SOURCE = "cardlist-fr"
-
-# Suffixes de slug qui designent une illustration alternative. Sous-ensemble
-# de NAME_SUFFIXES : « leader » et « secret » n'y figurent pas, ce sont un
-# type de carte et une rarete, pas des variantes d'illustration.
-SUFFIXES_PARALLELE = {"parallele", "alternative", "alt"} & NAME_SUFFIXES
-
-
-def _est_parallele(name_slug: Optional[str]) -> bool:
-    slug = (name_slug or "").lower()
-    if "-" not in slug:
-        return False
-    return slug.rsplit("-", 1)[-1] in SUFFIXES_PARALLELE
-
 
 def appliquer_noms_francais(db: Session, cartes: List[CarteFR]) -> dict:
     """Reecrit le catalogue avec les noms francais. Rend un compte rendu.
@@ -80,7 +66,7 @@ def appliquer_noms_francais(db: Session, cartes: List[CarteFR]) -> dict:
                            "raison": "code de carte non reconnu"})
             continue
 
-        est_parallele = bool(carte.variante)
+        rang = carte.rang_variante
         nom = carte.display_name
         slug = slug_de_nom(nom)
         if not slug:
@@ -88,8 +74,12 @@ def appliquer_noms_francais(db: Session, cartes: List[CarteFR]) -> dict:
             continue
 
         existantes = index.get(code.upper(), [])
+        # La cle est (code, RANG de variante). Pas (code, nom) : les noms
+        # different d'une langue a l'autre, c'est tout l'objet de
+        # l'operation. Pas (code) seul : un code designe jusqu'a quatre
+        # cartes dont les prix vont de 10 € a 695 €.
         cible = next(
-            (l for l in existantes if _est_parallele(l.name_slug) == est_parallele),
+            (l for l in existantes if rang_de_parallele(l.name_slug) == rang),
             None,
         )
 

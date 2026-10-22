@@ -563,6 +563,34 @@ aurait laissé « Buggy » et « Baggy » côte à côte pour la même carte. Le
 prix de référence ne sont pas touchés, et les visuels sont rangés au
 passage : la page publie leur adresse exacte.
 
+### Puis les prix — c'est ce qui allume les marges
+
+```bash
+curl -X POST http://localhost:8000/api/admin/load-fr-prices
+```
+
+Prix de référence en euros, depuis **OPECards.fr** (qui les relève chez
+Cardmarket), avec leur variation récente. Sans eux, une annonce peut être
+identifiée mais pas jugée : pas de marge, pas de score, pas de bonne
+affaire.
+
+**Le rapprochement se fait sur (code, rang de variante), et pas sur le code
+seul.** La raison tient en trois lignes, relevées le 22/10/2026 :
+
+| `OP15-118-SEC` | prix |
+|---|---|
+| Ener | 10,50 € |
+| Ener (Version 2) | 22,00 € |
+| Ener (Version 3) | **695,00 €** |
+
+Un code désigne jusqu'à quatre cartes dont les prix vont de 10 € à 695 €.
+Les confondre ne fait pas une petite imprécision : ça fabrique une marge
+fausse, et une marge fausse ne se voit pas.
+
+Une carte absente du catalogue n'est pas créée ici — cette source dit ce
+que valent les cartes, pas lesquelles existent. Lancer `load-fr-names`
+avant.
+
 ### Et les visuels
 
 Pour les cartes que l'étape précédente n'a pas couvertes. Ils se déduisent

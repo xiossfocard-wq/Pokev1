@@ -89,6 +89,11 @@ fi
 bleu "→ noms français (liste officielle)"
 python3 "$ETAPES" noms-fr "$API"
 
+# --- 4ter. Prix de référence ---------------------------------------------
+# C'est ce qui allume les marges et les scores d'affaire.
+bleu "→ prix de référence (peut prendre un long moment)"
+python3 "$ETAPES" prix "$API"
+
 # --- 5. Visuels ----------------------------------------------------------
 # Les visuels se déduisent du code de la carte. Cette étape a besoin
 # d'Internet ; si elle échoue, le reste fonctionne, les cartes s'affichent

@@ -18,6 +18,8 @@ from app.collectors.catalog_sources import SondeurDeSources
 from app.collectors import opcg_dataset
 from app.collectors.cardlist_fr import ClientListeFR
 from app.services import catalog_fr
+from app.collectors.opecards_prices import ClientOPECards
+from app.services import catalog_prices
 from app.services import catalog_import
 from app.services import card_catalog
 
@@ -366,6 +368,66 @@ def load_fr_names(
     db = SessionLocal()
     try:
         rapport = catalog_fr.appliquer_noms_francais(db, cartes)
+    finally:
+        db.close()
+
+    rapport["series_demandees"] = len(voulues)
+    rapport["series_en_echec"] = echecs
+    return rapport
+
+
+@router.post("/load-fr-prices")
+def load_fr_prices(
+    series: str = Query(
+        "",
+        description="Valeurs de serie a charger, separees par des virgules. "
+                    "Vide = toutes les series FRANCAISES proposees par le site.",
+    ),
+):
+    """Ecrit les prix de reference en euros, depuis OPECards.fr.
+
+    C'etait la moitie manquante : le catalogue savait quelles cartes
+    existent et comment elles s'appellent, mais pas ce qu'elles valent —
+    donc aucune marge, aucun score, aucune bonne affaire.
+
+    La cle de rapprochement est (code carte, RANG de variante). Pas le nom,
+    qui differe d'une source a l'autre ; pas le code seul, parce qu'un code
+    designe jusqu'a quatre cartes : les trois impressions de OP15-118-SEC
+    valent 10,50 €, 22,00 € et 695,00 €.
+
+    Une carte absente du catalogue n'est PAS creee ici : cette source dit ce
+    que valent les cartes, pas lesquelles existent. Lancer d'abord
+    POST /api/admin/load-fr-names.
+
+        curl -X POST http://localhost:8000/api/admin/load-fr-prices
+    """
+    client = ClientOPECards()
+    try:
+        voulues = [s.strip() for s in series.split(",") if s.strip()]
+        if not voulues:
+            voulues = list(client.series().keys())
+    except Exception as erreur:   # noqa: BLE001
+        raise HTTPException(
+            status_code=502,
+            detail=f"liste des series illisible : {erreur}",
+        )
+
+    prix, echecs = [], []
+    for valeur in voulues:
+        try:
+            prix.extend(client.prix_de_serie(valeur))
+        except Exception as erreur:   # noqa: BLE001
+            echecs.append({"serie": valeur, "raison": str(erreur)})
+
+    if not prix:
+        raise HTTPException(
+            status_code=502,
+            detail={"message": "aucun prix lu", "echecs": echecs},
+        )
+
+    db = SessionLocal()
+    try:
+        rapport = catalog_prices.appliquer_prix(db, prix)
     finally:
         db.close()
 
