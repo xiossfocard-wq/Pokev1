@@ -504,12 +504,26 @@ décompresser et ouvrir un terminal dans le dossier.
 
 ### En une commande
 
+À lancer sur **votre** machine : c'est elle qui joint les sites de
+référence. Le script dit d'emblée ce qui manque, et le dit en une fois.
+
+**Windows** — dans le terminal fourni avec Windows (PowerShell) :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\demarrer.ps1
+```
+
+Le `-ExecutionPolicy Bypass` ne vaut que pour ce lancement ; il n'affaiblit
+rien durablement. Sans lui, Windows refuse d'exécuter un script téléchargé
+sans dire pourquoi.
+
+**macOS, Linux** (ou Git Bash / WSL sous Windows) :
+
 ```bash
 bash scripts/demarrer.sh
 ```
 
-À lancer sur **votre** machine : c'est elle qui joint les sites de
-référence. Le script dit d'emblée ce qui manque, et le dit en une fois.
+Les deux font exactement les mêmes étapes, dans le même ordre.
 
 Il installe ce qui manque, lance l'API, **remplit le catalogue**, récupère
 les visuels puis démarre l'interface. `Ctrl+C` arrête tout.
