@@ -90,7 +90,16 @@ INDICES_ALTERNATIVE = (
 
 SUFFIXES_ALTERNATIVE = ("_p1", "_p2")
 
-EXTENSION_IMAGE = "png"
+# Le site FR sert ses illustrations en WEBP, pas en PNG. Verifie le
+# 22/10/2026 sur le code source de /cardlist/ :
+#
+#     data-src="../images/cardlist/card/OP17-001.webp?261007"
+#
+# Tant que c'etait « png », CHAQUE visuel echouait — en silence, puisqu'un
+# 404 se lit comme « cette carte n'a pas d'image » et non comme « on a
+# demande la mauvaise adresse ». Le png reste essaye en second : les autres
+# locales du jeu l'emploient, et la liste sert aussi a elles.
+EXTENSIONS_IMAGE = ("webp", "png")
 
 
 @dataclass
@@ -145,7 +154,13 @@ def urls_candidates(card_code: Optional[str],
     if _est_alternative(display_name):
         suffixes = [*SUFFIXES_ALTERNATIVE, ""]
 
-    return [f"{base}/{code}{suffixe}.{EXTENSION_IMAGE}" for suffixe in suffixes]
+    # Extension la plus probable d'abord, pour chaque suffixe : on veut
+    # trouver l'illustration en un aller-retour dans le cas courant.
+    return [
+        f"{base}/{code}{suffixe}.{extension}"
+        for suffixe in suffixes
+        for extension in EXTENSIONS_IMAGE
+    ]
 
 
 class ClientImagesCartes:

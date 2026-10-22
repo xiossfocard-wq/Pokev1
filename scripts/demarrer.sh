@@ -85,6 +85,10 @@ else
   rouge "✗ le catalogue est resté vide — voir backend/api.log"
 fi
 
+# --- 4bis. Noms français -------------------------------------------------
+bleu "→ noms français (liste officielle)"
+python3 "$ETAPES" noms-fr "$API"
+
 # --- 5. Visuels ----------------------------------------------------------
 # Les visuels se déduisent du code de la carte. Cette étape a besoin
 # d'Internet ; si elle échoue, le reste fonctionne, les cartes s'affichent

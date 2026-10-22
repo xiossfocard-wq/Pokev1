@@ -108,7 +108,10 @@ class TestUrlsCandidates(unittest.TestCase):
     def test_illustration_de_base_en_premier(self):
         with _reglages():
             urls = urls_candidates("OP01-120", "Monkey D. Luffy")
-        self.assertEqual(urls[0], f"{BASE_TEST}/OP01-120.png")
+        # Le site FR sert du WEBP ; le PNG reste essaye ensuite pour les
+        # autres locales du jeu.
+        self.assertEqual(urls[0], f"{BASE_TEST}/OP01-120.webp")
+        self.assertIn(f"{BASE_TEST}/OP01-120.png", urls)
 
     def test_alternative_annoncee_par_le_nom_passe_devant(self):
         """Si la carte en base est l'illustration alternative, c'est CELLE-LA
@@ -116,13 +119,13 @@ class TestUrlsCandidates(unittest.TestCase):
         sous ce prix tromperait l'acheteur."""
         with _reglages():
             urls = urls_candidates("OP01-120", "Monkey D. Luffy (Parallel)")
-        self.assertTrue(urls[0].endswith("OP01-120_p1.png"))
-        self.assertIn(f"{BASE_TEST}/OP01-120.png", urls)
+        self.assertTrue(urls[0].endswith("OP01-120_p1.webp"), urls[0])
+        self.assertIn(f"{BASE_TEST}/OP01-120.webp", urls)
 
     def test_base_url_configurable(self):
         with _reglages(base="https://autre.test/img/"):
             urls = urls_candidates("OP01-120")
-        self.assertEqual(urls[0], "https://autre.test/img/OP01-120.png")
+        self.assertEqual(urls[0], "https://autre.test/img/OP01-120.webp")
 
     def test_sans_code_aucune_candidate(self):
         with _reglages():
@@ -145,8 +148,9 @@ class TestChercherImage(unittest.TestCase):
         with _reglages():
             image = _client(session).chercher_image("Roronoa Zoro", "OP01-025")
         self.assertIsNone(image)
-        # Trois adresses essayees : la base et les deux variantes.
-        self.assertEqual(len(session.appels), 3)
+        # Six adresses : la base et les deux variantes, chacune en
+        # webp puis en png.
+        self.assertEqual(len(session.appels), 6)
 
     def test_variante_servie_quand_la_base_manque(self):
         variante = f"{BASE_TEST}/OP01-120_p1.png"
@@ -206,7 +210,7 @@ class TestChercherImage(unittest.TestCase):
         session = SessionFactice()
         with _reglages(verifier=False):
             image = _client(session).chercher_image("Monkey D. Luffy", "OP01-120")
-        self.assertEqual(image.image_url, f"{BASE_TEST}/OP01-120.png")
+        self.assertEqual(image.image_url, f"{BASE_TEST}/OP01-120.webp")
         self.assertEqual(session.appels, [])
 
 
@@ -215,8 +219,8 @@ class TestDiagnostic(unittest.TestCase):
     deviner : il doit rendre le detail de CHAQUE tentative."""
 
     def test_detaille_chaque_tentative(self):
-        url = f"{BASE_TEST}/OP01-120.png"
-        session = SessionFactice({url: ReponseFactice(200, "image/png")})
+        url = f"{BASE_TEST}/OP01-120.webp"
+        session = SessionFactice({url: ReponseFactice(200, "image/webp")})
         with _reglages():
             rapport = _client(session).diagnostic("OP01 120")
 
@@ -224,7 +228,7 @@ class TestDiagnostic(unittest.TestCase):
         self.assertEqual(rapport["base_url"], BASE_TEST)
         self.assertEqual(rapport["url_retenue"], url)
         self.assertEqual(rapport["tentatives"][0]["status_code"], 200)
-        self.assertEqual(rapport["tentatives"][0]["content_type"], "image/png")
+        self.assertEqual(rapport["tentatives"][0]["content_type"], "image/webp")
 
     def test_dit_pourquoi_quand_le_code_est_inexploitable(self):
         session = SessionFactice()
@@ -234,7 +238,7 @@ class TestDiagnostic(unittest.TestCase):
         self.assertNotIn("tentatives", rapport)
 
     def test_rapporte_la_panne_reseau(self):
-        url = f"{BASE_TEST}/OP01-120.png"
+        url = f"{BASE_TEST}/OP01-120.webp"
         session = SessionFactice({url: requests.ConnectionError("403 CONNECT")})
         with _reglages():
             rapport = _client(session).diagnostic("OP01-120")

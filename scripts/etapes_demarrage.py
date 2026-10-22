@@ -11,6 +11,7 @@ seule, et le module n'a besoin que de la bibliothèque standard.
 
     python3 scripts/etapes_demarrage.py attendre   [url]
     python3 scripts/etapes_demarrage.py catalogue  [url]
+    python3 scripts/etapes_demarrage.py noms-fr    [url]
     python3 scripts/etapes_demarrage.py visuels    [url]
 """
 import json
@@ -128,6 +129,36 @@ def remplir_visuels(base: str) -> None:
         print(f"   {total} visuels récupérés")
 
 
+def passer_aux_noms_francais(base: str) -> None:
+    """Remplace les noms anglais par les noms FRANÇAIS officiels.
+
+    L'instantané du dépôt vient d'un relevé de la liste ANGLAISE : pour les
+    personnages cela passe, mais « Buggy » s'appelle « Baggy » en français,
+    « Hive » s'appelle « Ruche », et les cartes Événement sont intégralement
+    traduites. Sans cette étape, un vendeur français qui écrit « Baggy » ne
+    rencontre jamais la fiche.
+
+    Demande Internet. Si le site est hors d'atteinte, on le dit et le reste
+    continue : les cartes gardent leur nom anglais, ce qui est dégradé mais
+    pas faux.
+    """
+    try:
+        r = _appeler(f"{base}/api/admin/load-fr-names", methode="POST", delai=1800)
+    except Exception as erreur:
+        print(f"   impossible de joindre la liste officielle : {erreur}")
+        print("   les cartes gardent leur nom anglais pour l'instant.")
+        return
+
+    renommees = r.get("renommees", 0)
+    creees = r.get("creees", 0)
+    visuels = r.get("visuels", 0)
+    print(f"   {renommees} renommée(s), {creees} créée(s), {visuels} visuel(s)")
+    for exemple in (r.get("exemples") or [])[:5]:
+        print(f"     {exemple['avant']} → {exemple['apres']}")
+    for echec in (r.get("series_en_echec") or [])[:3]:
+        print(f"     série {echec['serie']} en échec : {echec['raison'][:70]}")
+
+
 def main() -> int:
     etape = sys.argv[1] if len(sys.argv) > 1 else ""
     base = (sys.argv[2] if len(sys.argv) > 2 else API_PAR_DEFAUT).rstrip("/")
@@ -136,6 +167,9 @@ def main() -> int:
         return 0 if attendre_api(base) else 1
     if etape == "catalogue":
         return 0 if remplir_catalogue(base) > 0 else 1
+    if etape == "noms-fr":
+        passer_aux_noms_francais(base)
+        return 0
     if etape == "visuels":
         remplir_visuels(base)
         return 0

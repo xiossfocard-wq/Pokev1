@@ -538,9 +538,36 @@ Environ 3 870 cartes, lues dans un instantané versionné du dépôt : ni
 réseau ni fichier à fournir. Ajouter `?rafraichir=true` pour aller
 chercher la dernière version publiée à la place.
 
-Puis les visuels, qui se déduisent du code de la carte. Ils arrivent par
-lots de 200, donc il faut relancer l'appel une vingtaine de fois — ou
-laisser le script le faire :
+### Puis les noms français
+
+L'instantané vient d'un relevé de la liste **anglaise**. Pour les
+personnages cela passe — « Roronoa Zoro » s'écrit pareil des deux côtés —
+mais c'est faux là où ça compte :
+
+| anglais | français |
+|---|---|
+| Buggy | **Baggy** |
+| Hive | **Ruche** |
+| Three Sweet Commanders | **Trois généraux sucrés** |
+
+Les cartes Événement sont intégralement traduites. Sans cette étape, un
+vendeur français qui écrit « Baggy » ne rencontre jamais la fiche.
+
+```bash
+curl -X POST http://localhost:8000/api/admin/load-fr-names
+```
+
+L'opération **renomme** les fiches existantes au lieu d'en créer de
+nouvelles — le catalogue est indexé sur (code, nom), et un import classique
+aurait laissé « Buggy » et « Baggy » côte à côte pour la même carte. Les
+prix de référence ne sont pas touchés, et les visuels sont rangés au
+passage : la page publie leur adresse exacte.
+
+### Et les visuels
+
+Pour les cartes que l'étape précédente n'a pas couvertes. Ils se déduisent
+du code, arrivent par lots de 200, donc il faut relancer l'appel une
+vingtaine de fois — ou laisser le script le faire :
 
 ```bash
 python3 scripts/etapes_demarrage.py visuels

@@ -16,6 +16,8 @@ from app.services.price_index import (
 from app.collectors.card_images import ClientImagesCartes
 from app.collectors.catalog_sources import SondeurDeSources
 from app.collectors import opcg_dataset
+from app.collectors.cardlist_fr import ClientListeFR
+from app.services import catalog_fr
 from app.services import catalog_import
 from app.services import card_catalog
 
@@ -304,6 +306,72 @@ def load_opcg_catalog(
         return opcg_dataset.charger_catalogue(db, rafraichir=rafraichir)
     finally:
         db.close()
+
+
+@router.post("/load-fr-names")
+def load_fr_names(
+    series: str = Query(
+        "",
+        description="Valeurs de serie a charger, separees par des virgules "
+                    "(ex. « 622117,622116 »). Vide = toutes celles que le "
+                    "menu deroulant du site propose.",
+    ),
+):
+    """Passe le catalogue aux noms FRANCAIS, depuis la liste officielle.
+
+    Les noms venaient jusqu'ici d'un releve de la liste ANGLAISE. Pour les
+    personnages cela passait — « Roronoa Zoro » s'ecrit pareil des deux
+    cotes — mais c'est faux la ou ca compte : l'anglais « Buggy » s'appelle
+    « Baggy » en francais, « Hive » s'appelle « Ruche », et les cartes
+    Evenement sont integralement traduites. Un vendeur francais qui ecrit
+    « Baggy » ne rencontrait donc jamais la fiche.
+
+    L'operation RENOMME les fiches existantes au lieu d'en creer de
+    nouvelles : le catalogue est indexe sur (code, nom), et un import
+    classique aurait laisse « Buggy » et « Baggy » cote a cote pour la meme
+    carte. Les prix de reference ne sont pas touches.
+
+    Les visuels sont ranges au passage : la page publie leur adresse exacte,
+    ce qui evite un aller-retour reseau par carte.
+
+        curl -X POST http://localhost:8000/api/admin/load-fr-names
+    """
+    client = ClientListeFR()
+    try:
+        voulues = [s.strip() for s in series.split(",") if s.strip()]
+        if not voulues:
+            voulues = list(client.series().keys())
+    except Exception as erreur:   # noqa: BLE001 - on rend la raison, on ne masque pas
+        raise HTTPException(
+            status_code=502,
+            detail=f"liste des series illisible : {erreur}",
+        )
+
+    cartes, echecs = [], []
+    for valeur in voulues:
+        try:
+            cartes.extend(client.cartes_de_serie(valeur))
+        except Exception as erreur:   # noqa: BLE001
+            # Une serie qui echoue ne doit pas emporter les autres, mais
+            # elle doit etre DITE : un rapport qui tairait les series
+            # manquantes se lirait comme un passage complet.
+            echecs.append({"serie": valeur, "raison": str(erreur)})
+
+    if not cartes:
+        raise HTTPException(
+            status_code=502,
+            detail={"message": "aucune carte lue", "echecs": echecs},
+        )
+
+    db = SessionLocal()
+    try:
+        rapport = catalog_fr.appliquer_noms_francais(db, cartes)
+    finally:
+        db.close()
+
+    rapport["series_demandees"] = len(voulues)
+    rapport["series_en_echec"] = echecs
+    return rapport
 
 
 @router.get("/debug-catalog-sources")
