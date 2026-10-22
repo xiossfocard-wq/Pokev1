@@ -74,6 +74,7 @@ export default function ExplorerPage() {
       trend: f.trend,
       withImage: f.withImageOnly ? true : undefined,
       withListings: f.withListingsOnly ? true : undefined,
+      language: f.language || undefined,
       sortBy: f.sortBy,
       order: f.order,
       limit: PAR_PAGE,

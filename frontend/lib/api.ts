@@ -286,6 +286,11 @@ export interface CatalogCard {
   themes: string[];
   image_url: string | null;
   image_source: string | null;
+  // Langue du NOM affiché, et d'où il vient. « en » signale une carte que
+  // la liste officielle française ne contient pas — le jeu français
+  // commence à OP09 — et non une carte absente du marché français.
+  language: "fr" | "en" | null;
+  language_note: string | null;
   trend_7d: Trend7d;
   // Annonces en vente pour cette carte, en ce moment. Portés jusqu'à la
   // grille pour répondre d'un coup d'œil à « laquelle de ces cartes a
@@ -314,6 +319,10 @@ export interface CardFilterValues {
   price_max_eur: number | null;
   themes: { slug: string; label: string; famille: "sujet" | "type" }[];
   total_cards: number;
+  // Combien de fiches dans chaque langue. Sans ce compte, « 3 868 cartes »
+  // laisserait croire à un catalogue français complet alors qu'une partie
+  // porte encore son nom anglais.
+  languages: { code: string | null; label: string; count: number }[];
 }
 
 export interface CardSearchResult {
@@ -335,6 +344,7 @@ export interface CardSearchParams {
   trend?: "hausse" | "baisse" | "toutes";
   withImage?: boolean;
   withListings?: boolean;
+  language?: "fr" | "en" | "inconnue";
   sortBy?: CardSortField;
   order?: SortOrder;
   limit?: number;
@@ -353,6 +363,7 @@ export function searchCards(params: CardSearchParams): Promise<CardSearchResult>
   if (params.withImage !== undefined) qs.set("with_image", String(params.withImage));
   if (params.withListings !== undefined)
     qs.set("with_listings", String(params.withListings));
+  if (params.language) qs.set("language", params.language);
   if (params.sortBy) qs.set("sort_by", params.sortBy);
   if (params.order) qs.set("order", params.order);
   if (params.limit !== undefined) qs.set("limit", String(params.limit));

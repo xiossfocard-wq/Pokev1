@@ -110,7 +110,10 @@ class TestConversion(unittest.TestCase):
             entree("OP01-001", "Roronoa Zoro", "L", alternative=True),
         ])
         noms = sorted(l["display_name"] for l in lignes)
-        self.assertEqual(noms, ["Roronoa Zoro", "Roronoa Zoro (Parallèle)"])
+        # Le rang est dans le nom, meme ici ou cette source n'en distingue
+        # qu'un seul : la liste officielle FR numerote les siennes, et les
+        # deux doivent se rapprocher sur la meme cle.
+        self.assertEqual(noms, ["Roronoa Zoro", "Roronoa Zoro (Parallèle 1)"])
 
     def test_un_code_donne_deux_fiches_au_plus(self):
         """La source republie une meme alternative dans plusieurs coffrets.
@@ -124,6 +127,13 @@ class TestConversion(unittest.TestCase):
                    serie="Premium Card Collection -25th Edition-"),
         ])
         self.assertEqual(len(lignes), 2)
+
+    def test_la_langue_est_dite(self):
+        """Cette source publie « en » et « jp », jamais « fr ». Le nom repris
+        est donc l'anglais, et la fiche doit le dire — sinon l'utilisateur
+        croit lire un nom francais."""
+        lignes = convertir([entree("OP01-001", "Roronoa Zoro")])
+        self.assertEqual(lignes[0]["language"], "en")
 
     def test_aucun_prix_n_est_invente(self):
         lignes = convertir([entree("OP01-001", "Roronoa Zoro")])

@@ -236,6 +236,12 @@ class MarketCardPrice(Base):
     image_source = Column(String(32), nullable=True)
     image_checked_at = Column(DateTime, nullable=True, index=True)
 
+    # Langue du NOM affiche sur cette fiche, et d'ou il vient. Voir
+    # core/langues.py pour ce que la valeur dit exactement : « en » ne
+    # prouve pas qu'une carte n'existe pas en francais, seulement qu'on ne
+    # l'a pas trouvee dans les series francaises chargees jusqu'ici.
+    language = Column(String(8), nullable=True, index=True)
+
 
 class CardPriceSnapshot(Base):
     """

@@ -64,6 +64,7 @@ ALIAS = {
     "card_code": ("card_code", "code", "numero", "num", "card number", "cardnumber"),
     "display_name": ("display_name", "nom", "name", "carte", "card", "titre"),
     "price_eur": ("price_eur", "prix", "price", "prix_eur", "tarif", "montant"),
+    "language": ("language", "langue", "lang", "locale"),
     "series_name": ("series_name", "serie", "série", "series", "set", "extension"),
     "rarity": ("rarity", "rarete", "rareté", "raretè"),
 }
@@ -233,6 +234,7 @@ def importer_catalogue(db: Session, lignes: List[dict]) -> dict:
 
         serie = _colonne(ligne, "series_name")
         rarete = _colonne(ligne, "rarity")
+        langue = (_colonne(ligne, "language") or "").strip().lower() or None
         name_slug = slug_de_nom(nom)
 
         valeurs = dict(
@@ -246,6 +248,10 @@ def importer_catalogue(db: Session, lignes: List[dict]) -> dict:
             theme_slugs=encoder_themes(themes_de_la_carte(nom, rarete)),
             search_key=cle_de_recherche(nom, code),
         )
+        # La langue n'est ecrite que si la source la donne : un import muet
+        # ne doit pas effacer ce qu'une autre source avait etabli.
+        if langue:
+            valeurs["language"] = langue
         # Le prix n'est ecrit que s'il est fourni. Un import qui n'en porte
         # pas DECRIT des cartes, il ne revalorise rien : s'il ecrivait None,
         # importer la liste officielle par-dessus un catalogue deja chiffre

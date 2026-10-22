@@ -56,6 +56,8 @@ _COLONNES_AJOUTEES = {
         ("image_url", "VARCHAR(1024)"),
         ("image_source", "VARCHAR(32)"),
         ("image_checked_at", "TIMESTAMP"),
+        # Langue du nom affiche (22/10/2026).
+        ("language", "VARCHAR(8)"),
     ],
 }
 

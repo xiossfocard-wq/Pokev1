@@ -553,6 +553,12 @@ mais c'est faux là où ça compte :
 Les cartes Événement sont intégralement traduites. Sans cette étape, un
 vendeur français qui écrit « Baggy » ne rencontre jamais la fiche.
 
+Les cartes que la liste française ne contient pas **restent au catalogue**,
+marquées « nom anglais » : le jeu français n'a commencé qu'à la série OP09,
+donc les séries antérieures n'y figurent pas du tout. Elles sont signalées,
+pas masquées — un filtre « Langue du nom » permet de les isoler ou de les
+écarter.
+
 ```bash
 curl -X POST http://localhost:8000/api/admin/load-fr-names
 ```

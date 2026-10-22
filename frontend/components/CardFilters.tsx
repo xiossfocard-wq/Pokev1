@@ -20,6 +20,8 @@ export interface EtatFiltres {
   trend: "toutes" | "hausse" | "baisse";
   withImageOnly: boolean;
   withListingsOnly: boolean;
+  // "" = toutes. "fr" / "en" = langue du NOM affiché sur la fiche.
+  language: "" | "fr" | "en";
   sortBy: CardSortField;
   order: "asc" | "desc";
 }
@@ -34,6 +36,7 @@ export const FILTRES_VIDES: EtatFiltres = {
   trend: "toutes",
   withImageOnly: false,
   withListingsOnly: false,
+  language: "",
   sortBy: "prix",
   order: "desc",
 };
@@ -168,6 +171,31 @@ export default function CardFilters({
       </div>
 
       <div>
+        <label className={classeEtiquette} htmlFor="filtre-langue">
+          Langue du nom
+        </label>
+        <select
+          id="filtre-langue"
+          value={filtres.language}
+          onChange={(e) =>
+            onChange({ language: e.target.value as EtatFiltres["language"] })
+          }
+          className={classeChamp}
+        >
+          <option value="">Toutes</option>
+          {/* Le compte est affiché avec chaque option : sans lui, choisir
+              « Anglais » et tomber sur 3 861 cartes serait une surprise. */}
+          {(valeurs?.languages ?? [])
+            .filter((l) => l.code === "fr" || l.code === "en")
+            .map((l) => (
+              <option key={l.code} value={l.code ?? ""}>
+                {l.label} ({l.count.toLocaleString("fr-FR")})
+              </option>
+            ))}
+        </select>
+      </div>
+
+      <div>
         <label className={classeEtiquette} htmlFor="filtre-serie">
           Série
         </label>
@@ -260,10 +288,26 @@ export default function CardFilters({
 
       {valeurs && (
         <p className="border-t border-ink-700 pt-2.5 text-[11px] leading-relaxed text-parchment-100/35">
-          {valeurs.total_cards.toLocaleString("fr-FR")} cartes dans le catalogue,
-          d&apos;après la liste officielle du jeu. Elle dit quelles cartes
-          existent, pas ce qu&apos;elles valent : les prix de référence
-          viennent d&apos;une autre source et arrivent carte par carte.
+          {valeurs.total_cards.toLocaleString("fr-FR")} cartes dans le
+          catalogue.{" "}
+          {(() => {
+            // Le détail par langue plutôt qu'un total seul : dire « 3 870
+            // cartes » laisserait croire à un catalogue français complet
+            // alors que la plupart portent encore leur nom anglais.
+            const en = valeurs.languages?.find((l) => l.code === "en")?.count ?? 0;
+            const fr = valeurs.languages?.find((l) => l.code === "fr")?.count ?? 0;
+            if (!en) return null;
+            return (
+              <>
+                {fr.toLocaleString("fr-FR")} ont été retrouvées dans la liste
+                officielle française ; {en.toLocaleString("fr-FR")} portent
+                encore leur nom anglais — le jeu français n&apos;a commencé
+                qu&apos;à la série OP09.{" "}
+              </>
+            );
+          })()}
+          Les prix de référence viennent d&apos;une autre source et arrivent
+          carte par carte.
         </p>
       )}
     </aside>

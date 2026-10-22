@@ -22,6 +22,7 @@ from sqlalchemy import func, nullslast
 from sqlalchemy.orm import Session
 
 from app.models import CardPriceSnapshot, MarketCardPrice
+from app.core import langues
 from app.services import card_themes
 from app.services.card_trends import tendance_7_jours
 from app.settings_service import load_app_settings
@@ -49,8 +50,17 @@ def _requete_filtree(
     tendance: Optional[str] = None,
     avec_image: Optional[bool] = None,
     avec_annonces: Optional[bool] = None,
+    langue: Optional[str] = None,
 ):
     requete = db.query(MarketCardPrice)
+
+    if langue:
+        # « inconnue » est une valeur comme une autre : ce sont les fiches
+        # venues d'un import qui n'a pas dit la langue, et les masquer
+        # reviendrait a pretendre qu'elles n'existent pas.
+        requete = (requete.filter(MarketCardPrice.language.is_(None))
+                   if langue == "inconnue"
+                   else requete.filter(MarketCardPrice.language == langue))
 
     if q:
         # La requete est normalisee exactement comme `search_key` l'a ete a
@@ -134,6 +144,7 @@ def rechercher_cartes(
     tendance: Optional[str] = None,
     avec_image: Optional[bool] = None,
     avec_annonces: Optional[bool] = None,
+    langue: Optional[str] = None,
     tri: str = "prix",
     ordre: str = "desc",
     limite: int = 60,
@@ -147,7 +158,7 @@ def rechercher_cartes(
     requete = _requete_filtree(
         db, q=q, theme=theme, rarity=rarity, series=series,
         prix_min=prix_min, prix_max=prix_max, tendance=tendance,
-        avec_image=avec_image, avec_annonces=avec_annonces,
+        avec_image=avec_image, avec_annonces=avec_annonces, langue=langue,
     )
 
     total = requete.count()
@@ -201,6 +212,11 @@ def carte_en_dict(ligne: MarketCardPrice,
         "themes": card_themes.decoder_themes(ligne.theme_slugs),
         "image_url": ligne.image_url,
         "image_source": ligne.image_source,
+        "language": ligne.language,
+        # L'explication accompagne la valeur plutot que d'etre reecrite dans
+        # l'interface : une carte anglaise decrite autrement d'un ecran a
+        # l'autre laisserait croire a deux situations differentes.
+        "language_note": langues.EXPLICATIONS.get(ligne.language or ""),
         "trend_7d": tendance.to_dict(),
         "listings_count": annonces.get("listings_count", 0),
         "best_deal_score": annonces.get("best_deal_score"),
@@ -274,6 +290,18 @@ def valeurs_de_filtres(db: Session) -> dict:
             for t in card_themes.TOUS_LES_THEMES
         ],
         "total_cards": db.query(MarketCardPrice).count(),
+        # Combien de fiches dans chaque langue. Sans ce compte, « 3868
+        # cartes » laisserait croire a un catalogue francais complet alors
+        # qu'une partie porte encore son nom anglais.
+        "languages": [
+            {"code": code, "label": langues.libelle(code), "count": nombre}
+            for code, nombre in (
+                db.query(MarketCardPrice.language, func.count(MarketCardPrice.id))
+                .group_by(MarketCardPrice.language)
+                .order_by(func.count(MarketCardPrice.id).desc()).all()
+            )
+            if nombre
+        ],
     }
 
 

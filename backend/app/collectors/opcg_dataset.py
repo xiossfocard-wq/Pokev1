@@ -61,6 +61,9 @@ from typing import List, Optional, Tuple
 
 import requests
 
+from app.collectors.cardlist_fr import nom_avec_variante
+from app.core.langues import ANGLAIS
+
 logger = logging.getLogger(__name__)
 
 PAQUET = "one-piece-card-game-json"
@@ -232,12 +235,20 @@ def convertir(brutes: List[dict]) -> List[dict]:
 
         lignes.append({
             "card_code": code,
-            "display_name": f"{nom} ({MARQUE_ALTERNATIVE})" if alternative else nom,
+            # Rang 1 pour toute alternative : cette source ne distingue pas
+            # les illustrations alternatives entre elles (un seul booleen).
+            # La liste officielle FR, elle, les numerote — elle renommera
+            # celle-ci et creera les suivantes.
+            "display_name": nom_avec_variante(nom, 1 if alternative else 0),
             "series_name": _nettoyer_serie(carte.get("card_sets")),
             "rarity": _rarete_lisible(carte.get("rarity")),
             # Pas de prix : cette source n'en publie pas. La colonne est
             # laissee vide plutot que remplie d'un zero (voir l'en-tete).
             "price_eur": "",
+            # Le paquet publie « en » et « jp », jamais « fr ». Le nom repris
+            # ici est donc l'ANGLAIS, et la fiche le dit. Elle passera au
+            # francais si la liste officielle FR la retrouve.
+            "language": ANGLAIS,
         })
 
     return lignes
@@ -245,7 +256,8 @@ def convertir(brutes: List[dict]) -> List[dict]:
 
 # --- instantane local ----------------------------------------------------
 
-COLONNES = ("card_code", "display_name", "series_name", "rarity", "price_eur")
+COLONNES = ("card_code", "display_name", "series_name", "rarity",
+            "price_eur", "language")
 
 
 def ecrire_instantane(lignes: List[dict], chemin: Optional[Path] = None) -> Path:

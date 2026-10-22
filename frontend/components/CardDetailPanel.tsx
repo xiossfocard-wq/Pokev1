@@ -172,7 +172,29 @@ export default function CardDetailPanel({
               <dd className="text-parchment-100/80">{carte.series_name ?? "—"}</dd>
               <dt className="text-parchment-100/40">Rareté</dt>
               <dd className="text-parchment-100/80">{carte.rarity ?? "—"}</dd>
+              <dt className="text-parchment-100/40">Langue du nom</dt>
+              <dd className="text-parchment-100/80">
+                {carte.language === "fr"
+                  ? "Français"
+                  : carte.language === "en"
+                    ? "Anglais"
+                    : "—"}
+              </dd>
             </dl>
+
+            {/* La fiche a la place d'expliquer ce que la pastille de la
+                grille ne peut que signaler. La formulation vient du
+                backend, pour qu'une carte anglaise soit décrite de la même
+                façon partout : décrite autrement d'un écran à l'autre, elle
+                laisserait croire à deux situations différentes. */}
+            {carte.language === "en" && carte.language_note && (
+              <p className="rounded border border-ink-700 bg-ink-800/60 p-2.5 text-[11px] leading-relaxed text-parchment-100/50">
+                {carte.language_note} Le jeu français n&apos;a commencé
+                qu&apos;à la série OP09 : les séries antérieures n&apos;y
+                figurent pas. La carte reste au catalogue, mais son nom et
+                son visuel sont ceux de l&apos;édition anglaise.
+              </p>
+            )}
 
             {carte.themes_detail.length > 0 && (
               <div>

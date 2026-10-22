@@ -101,6 +101,20 @@ export default function CardTile({
           {carte.series_name ?? "Série inconnue"}
         </p>
 
+        {/* Seule la carte ANGLAISE est signalée. Marquer aussi les
+            françaises couvrirait toute la grille d'étiquettes pour dire
+            « normal » : une pastille qui s'allume partout ne se lit plus.
+            Le titre au survol porte la raison exacte. */}
+        {carte.language === "en" && (
+          <p
+            className="inline-flex w-fit items-center gap-1 rounded border border-ink-600 bg-ink-800 px-1.5 py-0.5 text-[10px] text-parchment-100/55"
+            title={carte.language_note ?? undefined}
+          >
+            <span aria-hidden>EN</span>
+            <span>nom anglais</span>
+          </p>
+        )}
+
         {carte.rarity && (
           <p className="text-[11px] text-ember-400/80">{carte.rarity}</p>
         )}

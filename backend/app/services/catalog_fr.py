@@ -30,6 +30,7 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from app.collectors.card_images import code_canonique
+from app.core.langues import FRANCAIS
 from app.collectors.cardlist_fr import CarteFR, rang_de_parallele
 from app.models import MarketCardPrice
 from app.services.card_themes import (
@@ -86,6 +87,9 @@ def appliquer_noms_francais(db: Session, cartes: List[CarteFR]) -> dict:
         derives = dict(
             theme_slugs=encoder_themes(themes_de_la_carte(nom, carte.rarity)),
             search_key=cle_de_recherche(nom, code),
+            # Etre dans la liste officielle francaise, c'est la definition
+            # meme d'une carte francaise : la fiche cesse d'etre anglaise.
+            language=FRANCAIS,
         )
 
         if cible is None:

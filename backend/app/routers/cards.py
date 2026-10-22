@@ -39,6 +39,13 @@ def rechercher(
         None,
         description="true = seulement les cartes ayant au moins une annonce en vente",
     ),
+    language: Optional[str] = Query(
+        None,
+        description="fr | en | inconnue — langue du NOM affiché sur la fiche. "
+                    "« en » signale une carte que la liste officielle "
+                    "française ne contient pas (le jeu français commence à "
+                    "OP09), pas une carte absente du marché français.",
+    ),
     sort_by: str = Query("prix", description=" | ".join(TRIS_ACCEPTES)),
     order: str = Query("desc", pattern="^(asc|desc)$"),
     limit: int = Query(60, ge=1, le=200),
@@ -80,7 +87,7 @@ def rechercher(
         q=q, theme=theme, rarity=rarity, series=series,
         prix_min=price_min, prix_max=price_max,
         tendance=None if trend == "toutes" else trend,
-        avec_image=with_image, avec_annonces=with_listings,
+        avec_image=with_image, avec_annonces=with_listings, langue=language,
         tri=sort_by, ordre=order, limite=limit, decalage=offset,
     )
 
