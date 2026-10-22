@@ -14,6 +14,7 @@ seule, et le module n'a besoin que de la bibliothèque standard.
     python3 scripts/etapes_demarrage.py noms-fr    [url]
     python3 scripts/etapes_demarrage.py prix       [url]
     python3 scripts/etapes_demarrage.py visuels    [url]
+    python3 scripts/etapes_demarrage.py annonces   [url]
     python3 scripts/etapes_demarrage.py bilan      [url]
 """
 import json
@@ -191,6 +192,50 @@ def charger_les_prix(base: str) -> None:
               f"({e['avant']}€ → {e['apres']}€)")
 
 
+def premiere_collecte(base: str) -> None:
+    """Déclenche un premier passage de collecte d'annonces.
+
+    Sans elle, le planificateur attend son intervalle — vingt minutes par
+    défaut — avant d'aller voir quoi que ce soit. On ouvrirait donc
+    l'application sur un tableau de bord vide, sans rien qui distingue
+    « ça n'a pas encore commencé » de « c'est cassé ».
+
+    Un échec n'est pas grave : le planificateur repassera tout seul. On le
+    dit, et on continue.
+    """
+    try:
+        avant = _appeler(f"{base}/api/listings?limit=1", delai=30)
+        deja = len(avant) if isinstance(avant, list) else 0
+    except Exception:
+        deja = 0
+    if deja:
+        print(f"   {deja} annonce(s) déjà en base, passage non déclenché")
+        return
+
+    try:
+        _appeler(f"{base}/api/admin/run-check-now", methode="POST", delai=900)
+    except Exception as erreur:
+        print(f"   collecte impossible pour l'instant : {erreur}")
+        print("   le planificateur réessaiera tout seul dans quelques minutes.")
+        return
+
+    try:
+        apres = _appeler(f"{base}/api/listings?limit=200", delai=60)
+        nombre = len(apres) if isinstance(apres, list) else 0
+    except Exception:
+        nombre = 0
+
+    if nombre:
+        print(f"   {nombre} annonce(s) collectée(s)")
+    else:
+        # Vinted est nettement plus hostile aux adresses de centre de
+        # données qu'à une connexion résidentielle. Dire les deux causes
+        # possibles vaut mieux qu'un « 0 » muet.
+        print("   aucune annonce pour l'instant.")
+        print("   Soit il n'y a rien en vente qui corresponde, soit la")
+        print("   collecte a été refusée. Le planificateur réessaiera.")
+
+
 def bilan(base: str) -> None:
     """Dit où en est le catalogue, en une poignée de lignes.
 
@@ -233,6 +278,9 @@ def main() -> int:
         return 0
     if etape == "prix":
         charger_les_prix(base)
+        return 0
+    if etape == "annonces":
+        premiere_collecte(base)
         return 0
     if etape == "bilan":
         bilan(base)

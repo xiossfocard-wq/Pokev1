@@ -140,6 +140,10 @@ bleu "→ prix de référence (peut prendre un long moment)"
 bleu "→ visuels (plusieurs minutes pour un catalogue complet)"
 "$VPY" "$ETAPES" visuels "$API"
 
+# --- 5ter. Première collecte d'annonces ----------------------------------
+bleu "→ première collecte d'annonces"
+"$VPY" "$ETAPES" annonces "$API"
+
 # --- 5bis. Bilan ----------------------------------------------------------
 bleu "→ état du catalogue"
 "$VPY" "$ETAPES" bilan "$API"

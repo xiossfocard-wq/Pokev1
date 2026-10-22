@@ -22,7 +22,7 @@ from app.models import Listing, SourcePlatform, ListingStatus, PriceReference, N
 from app.scoring.margin import calculate_margin, normalize_margin_ratio
 from app.scoring.quality_text import analyze_text_quality
 from app.scoring.card_appeal import detect_card_appeal
-from app.services.price_index import find_price_for_listing, sync_series_batch
+from app.services.price_index import find_price_for_listing
 from app.scoring.deal_score import calculate_deal_score, QualityBlend
 from app.scoring.seller_reliability import score_ebay_seller, score_vinted_seller
 from app.collectors.card_images import ClientImagesCartes
@@ -945,16 +945,17 @@ def run_full_check(db: Session):
     run_ebay_check(db)
     run_vinted_check(db)
 
-    try:
-        summary = sync_series_batch(db, batch_size=settings.zebradex_batch_size)
-        logger.info(
-            "Index prix : +%d serie(s), %d cartes en base, %d serie(s) restantes",
-            summary["series_synced"], summary["total_prices_in_index"],
-            summary["series_never_synced_remaining"],
-        )
-    except Exception as exc:
-        db.rollback()
-        logger.error("Index prix : synchronisation echouee (%s) - collecte poursuivie", exc)
+    # NB (22/10/2026) : la synchronisation ZebraDex a ete retiree d'ici.
+    # Cette source ne couvre pas One Piece — c'est le constat qui a fait
+    # changer de sources — donc elle interrogeait un site pour rien a
+    # chaque cycle, et noyait les journaux sous ses echecs.
+    #
+    # Les prix de reference viennent desormais d'OPECards, et ils se
+    # rafraichissent une fois par nuit (voir scheduler._job_sources_du_jour)
+    # plutot qu'ici : des centaines de pages toutes les vingt minutes
+    # marteleraient un site communautaire pour des prix qui ne bougent pas
+    # a ce rythme. Le cycle rapide reste ce qu'il doit etre — collecter les
+    # annonces, et les rescorer des que l'index change.
 
     # Apres avoir enrichi l'index, on retente les annonces restees sans
     # prix : c'est ce qui rend visible l'avancement de l'indexation sur les

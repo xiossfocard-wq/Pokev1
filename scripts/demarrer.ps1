@@ -1,4 +1,4 @@
-# Démarrage local sous Windows, tout en un.
+﻿# Démarrage local sous Windows, tout en un.
 #
 # POURQUOI CE SCRIPT EXISTE À CÔTÉ DE demarrer.sh
 # -----------------------------------------------
@@ -167,6 +167,10 @@ try {
     # --- 5. Visuels ------------------------------------------------------
     Bleu "-> visuels"
     & $VenvPython $Etapes visuels $Api
+
+    # --- 5ter. Première collecte d'annonces -----------------------------
+    Bleu "-> première collecte d'annonces"
+    & $VenvPython $Etapes annonces $Api
 
     # --- 5bis. Bilan -----------------------------------------------------
     Bleu "-> état du catalogue"
