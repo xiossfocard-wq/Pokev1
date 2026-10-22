@@ -25,8 +25,9 @@ liste officielle et la mention « (Version 3) » d'OPECards désignent la même
 deuxième illustration alternative.
 """
 import logging
+import re
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -46,6 +47,24 @@ SOURCE = "opecards"
 # dessus serait fausse sans que personne le sache.
 ECART_SUSPECT = 3.0
 
+# Les deux sources ne notent pas la rareté pareil : le jeu de données écrit
+# « SEC (Secret Rare) », la boutique écrit « SEC ». Comparer les libellés
+# bruts conclurait « rareté différente » pour la totalité du catalogue.
+_PARENTHESE = re.compile(r"\s*\(.*\)\s*$")
+_SUFFIXE_CARD = re.compile(r"\s+CARD$")
+
+
+def code_rarete(brut: Optional[str]) -> Optional[str]:
+    """« C (Common) » et « C » -> « C ». None si illisible.
+
+    Rend None plutôt que de deviner : une rareté qu'on ne sait pas lire ne
+    doit pas servir à écarter un prix. Le filet suivant s'en charge.
+    """
+    if not brut:
+        return None
+    texte = _PARENTHESE.sub("", str(brut)).strip().upper()
+    return _SUFFIXE_CARD.sub("", texte).strip() or None
+
 
 def appliquer_prix(db: Session, prix: List[PrixCarte],
                    ecart_suspect: float = ECART_SUSPECT) -> dict:
@@ -56,9 +75,13 @@ def appliquer_prix(db: Session, prix: List[PrixCarte],
     fiche sans série ni visuel, construite à partir d'un nom de boutique —
     exactement le genre de demi-fiche qui pollue un catalogue.
     """
-    chiffrees, inchangees, sans_fiche = 0, 0, 0
+    chiffrees, inchangees, sans_fiche, raretes_opposees = 0, 0, 0, 0
     suspects: List[dict] = []
     exemples: List[dict] = []
+    conflits: List[dict] = []
+    # Ce qui a déjà été écrit pendant CE passage, pour repérer deux prix qui
+    # se disputent la même fiche.
+    ecrites: Dict[tuple, float] = {}
 
     index: Dict[tuple, MarketCardPrice] = {}
     for ligne in db.query(MarketCardPrice).all():
@@ -73,10 +96,46 @@ def appliquer_prix(db: Session, prix: List[PrixCarte],
         if not code:
             continue
 
-        cible = index.get((code.upper(), carte.rang_variante))
+        cle = (code.upper(), carte.rang_variante)
+        cible = index.get(cle)
         if cible is None:
             sans_fiche += 1
             continue
+
+        # LA RARETE DEPARTAGE.
+        # Un même code désigne plusieurs cartes — la commune à 12 € et son
+        # illustration manga à 850 — et la source des prix les présente
+        # parfois sous le même nom, donc sous le même rang. Sans ce
+        # contrôle, la dernière lue écrase la première et le prix qui
+        # survit est celui que l'ordre de la page a mis en dernier : la
+        # fiche de la commune hérite de 850 €, l'application annonce une
+        # affaire en or sur une annonce à 30 €, et rien ne signale l'erreur
+        # avant l'achat. La rareté, elle, est lisible des deux côtés.
+        rarete_fiche = code_rarete(cible.rarity)
+        rarete_prix = code_rarete(carte.rarity)
+        if rarete_fiche and rarete_prix and rarete_fiche != rarete_prix:
+            raretes_opposees += 1
+            continue
+
+        # FILET DE SECURITE, quand la rareté manque d'un côté.
+        # Deux prix très différents pour une même fiche : on ne sait pas
+        # lequel est le bon, et les deux erreurs ne coûtent pas la même
+        # chose. Un prix de référence trop HAUT invente une affaire qui
+        # n'existe pas et fait payer ; trop BAS, il fait seulement rater une
+        # occasion. Face à l'ignorance, on penche donc vers le bas, et on
+        # le dit.
+        precedent = ecrites.get(cle)
+        if precedent is not None:
+            haut = max(precedent, carte.price_eur)
+            bas = min(precedent, carte.price_eur)
+            if bas > 0 and haut / bas >= ecart_suspect:
+                conflits.append({
+                    "code": code, "nom": cible.display_name,
+                    "concurrents": [round(bas, 2), round(haut, 2)],
+                    "retenu": round(bas, 2),
+                })
+                if carte.price_eur > precedent:
+                    continue
 
         ancien = cible.price_eur
         if ancien is not None and ancien > 0:
@@ -105,12 +164,14 @@ def appliquer_prix(db: Session, prix: List[PrixCarte],
         cible.updated_at = datetime.utcnow()
         if carte.rarity and not cible.rarity:
             cible.rarity = carte.rarity
+        ecrites[cle] = carte.price_eur
 
     db.commit()
 
     logger.info("Prix OPECards : %d chiffree(s), %d inchangee(s), %d sans fiche, "
-                "%d ecart(s) suspect(s)",
-                chiffrees, inchangees, sans_fiche, len(suspects))
+                "%d rarete(s) opposee(s), %d conflit(s), %d ecart(s) suspect(s)",
+                chiffrees, inchangees, sans_fiche, raretes_opposees,
+                len(conflits), len(suspects))
 
     restantes = (db.query(MarketCardPrice)
                  .filter(MarketCardPrice.price_eur.is_(None)).count())
@@ -122,6 +183,12 @@ def appliquer_prix(db: Session, prix: List[PrixCarte],
         # Une carte vue chez la boutique mais absente du catalogue : le plus
         # souvent une serie que la liste officielle n'a pas encore chargee.
         "sans_fiche": sans_fiche,
+        # Un prix ECARTE parce qu'il vise une carte de rarete differente.
+        # C'est une protection qui a joue, pas une panne.
+        "raretes_opposees": raretes_opposees,
+        # Deux prix se disputaient une meme fiche sans que la rarete puisse
+        # les departager : le plus BAS a ete retenu, et le cas est rendu.
+        "conflits": conflits,
         "exemples": exemples,
         # Les ecarts enormes sont RENDUS, pas tus. Ils sont souvent reels sur
         # ce marche, mais ils sont aussi la signature d'un mauvais

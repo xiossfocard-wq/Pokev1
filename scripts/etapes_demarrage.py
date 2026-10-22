@@ -233,8 +233,10 @@ def charger_les_prix(base: str) -> None:
 
     total = len(series)
     chiffrees = 0
+    opposees = 0
     echecs = []
     suspects = []
+    conflits = []
 
     for i, (valeur, libelle) in enumerate(series.items(), start=1):
         _progression(i, total, libelle)
@@ -245,10 +247,21 @@ def charger_les_prix(base: str) -> None:
             echecs.append((libelle, str(erreur)[:60]))
             continue
         chiffrees += r.get("chiffrees", 0)
+        opposees += r.get("raretes_opposees", 0)
         suspects.extend(r.get("ecarts_suspects") or [])
+        conflits.extend(r.get("conflits") or [])
 
     _fin_progression()
     print(f"   {chiffrees} carte(s) chiffrée(s)")
+    # Une protection qui joue en silence empêche de voir que la source a
+    # changé de forme. Celle-ci écarte le prix d'une carte de rareté
+    # différente — le gros prix d'une illustration manga qui visait la
+    # fiche de la commune — et le nombre doit rester petit.
+    if opposees:
+        print(f"   {opposees} prix écarté(s) : rareté différente de la fiche visée")
+    for c in conflits[:5]:
+        print(f"     {c['code']} réclamé à {c['concurrents'][1]}€ ET "
+              f"{c['concurrents'][0]}€ — le plus bas retenu")
     for e in suspects[:5]:
         print(f"     écart ×{e['facteur']} sur {e['code']} "
               f"({e['avant']}€ → {e['apres']}€) — à vérifier")

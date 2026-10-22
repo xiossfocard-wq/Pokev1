@@ -94,9 +94,16 @@ def _job_sources_du_jour():
                     logger.warning("Prix : serie %s illisible (%s)", serie, erreur)
             if prix:
                 rapport = appliquer_prix(db, prix)
-                logger.info("Prix : %d chiffree(s), %d sans fiche, %d encore sans prix",
+                logger.info("Prix : %d chiffree(s), %d sans fiche, %d rarete(s) "
+                            "opposee(s), %d encore sans prix",
                             rapport["chiffrees"], rapport["sans_fiche"],
+                            rapport["raretes_opposees"],
                             rapport["sans_prix_restantes"])
+                for conflit in rapport["conflits"][:10]:
+                    logger.warning("Prix : %s reclame a %s EUR ET %s EUR, "
+                                   "le plus bas retenu", conflit["code"],
+                                   conflit["concurrents"][1],
+                                   conflit["concurrents"][0])
                 for ecart in rapport["ecarts_suspects"][:10]:
                     logger.warning("Prix : ecart x%s sur %s (%s EUR -> %s EUR)",
                                    ecart["facteur"], ecart["code"],

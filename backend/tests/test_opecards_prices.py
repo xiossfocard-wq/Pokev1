@@ -266,9 +266,6 @@ class TestApplicationDesPrix(unittest.TestCase):
         self.assertTrue(any(e["apres"] == 695.00 for e in rapport["exemples"]))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class TestSeriesFrancaisesConnues(unittest.TestCase):
     class SessionEnPanne:
@@ -316,3 +313,106 @@ class TestSeriesFrancaisesConnues(unittest.TestCase):
         manquantes = officielles - prix
         self.assertEqual(manquantes, set(),
                          f"series sans source de prix : {sorted(manquantes)}")
+
+
+class TestDeuxPrixPourUneMemeFiche(unittest.TestCase):
+    """Le défaut que ces tests verrouillent.
+
+    Un même code désigne plusieurs cartes : la commune à 12 € et son
+    illustration manga à 850. Quand la source des prix les présente sous le
+    même nom — donc sous le même rang — les deux prix visent la même fiche,
+    et la dernière lue écrasait la première. Le prix qui survivait était
+    celui que l'ordre de la page avait mis en dernier.
+
+    Conséquence : la fiche de la commune héritait de 850 €. L'application
+    annonçait alors une affaire en or sur une annonce à 30 €, et rien ne
+    signalait l'erreur avant l'achat.
+    """
+
+    def setUp(self):
+        moteur = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(moteur)
+        self.db = sessionmaker(bind=moteur)()
+        self.db.add(MarketCardPrice(
+            card_code="OP17-022", display_name="Shanks", name_slug="shanks",
+            rarity="C (Common)", price_eur=None))
+        self.db.commit()
+
+    def tearDown(self):
+        self.db.close()
+
+    def prix(self, montant, rarete):
+        from app.collectors.opecards_prices import PrixCarte
+        return PrixCarte(card_code="OP17-022", display_name="Shanks",
+                         rang_variante=0, rarity=rarete, price_eur=montant,
+                         variation_eur=None, image_url=None, detail_url=None)
+
+    def retenu(self):
+        return self.db.query(MarketCardPrice).filter_by(
+            card_code="OP17-022").one().price_eur
+
+    def test_la_rarete_ecarte_le_prix_d_une_autre_carte(self):
+        """« C (Common) » et « SEC » ne sont pas la même carte, même sous le
+        même code et le même nom."""
+        rapport = appliquer_prix(self.db, [self.prix(850.0, "SEC"),
+                                           self.prix(12.0, "C")])
+        self.assertEqual(self.retenu(), 12.0)
+        self.assertEqual(rapport["raretes_opposees"], 1)
+
+    def test_l_ordre_de_la_page_ne_decide_plus(self):
+        """La propriété qui compte : lire la page à l'envers doit donner le
+        même prix. Sans elle, le résultat dépend d'un tri d'affichage."""
+        rapport = appliquer_prix(self.db, [self.prix(12.0, "C"),
+                                           self.prix(850.0, "SEC")])
+        self.assertEqual(self.retenu(), 12.0)
+        self.assertEqual(rapport["raretes_opposees"], 1)
+
+    def test_sans_rarete_lisible_le_plus_bas_est_retenu(self):
+        """Les deux erreurs ne coûtent pas la même chose : un prix de
+        référence trop HAUT invente une affaire et fait payer, trop BAS il
+        fait seulement rater une occasion."""
+        rapport = appliquer_prix(self.db, [self.prix(850.0, None),
+                                           self.prix(12.0, None)])
+        self.assertEqual(self.retenu(), 12.0)
+        self.assertEqual(len(rapport["conflits"]), 1)
+        self.assertEqual(rapport["conflits"][0]["retenu"], 12.0)
+
+    def test_le_conflit_est_rendu_pas_tu(self):
+        """Une protection qui joue en silence empêche de voir que la source
+        a changé de forme."""
+        rapport = appliquer_prix(self.db, [self.prix(12.0, None),
+                                           self.prix(850.0, None)])
+        self.assertEqual(self.retenu(), 12.0)
+        self.assertEqual(rapport["conflits"][0]["concurrents"], [12.0, 850.0])
+
+    def test_un_rafraichissement_normal_passe(self):
+        """Le garde-fou ne doit pas bloquer la mise à jour ordinaire d'un
+        prix, sinon il gèle le catalogue."""
+        rapport = appliquer_prix(self.db, [self.prix(12.5, "C")])
+        self.assertEqual(self.retenu(), 12.5)
+        self.assertEqual(rapport["chiffrees"], 1)
+        self.assertEqual(rapport["raretes_opposees"], 0)
+        self.assertEqual(rapport["conflits"], [])
+
+
+class TestNormalisationDeLaRarete(unittest.TestCase):
+    """Les deux sources ne notent pas la rareté pareil. Comparer les
+    libellés bruts conclurait « différent » pour tout le catalogue — et
+    écarterait donc la totalité des prix."""
+
+    def test_les_deux_notations_se_rejoignent(self):
+        from app.services.catalog_prices import code_rarete
+        self.assertEqual(code_rarete("C (Common)"), code_rarete("C"))
+        self.assertEqual(code_rarete("SEC (Secret Rare)"), code_rarete("sec"))
+        self.assertEqual(code_rarete("SP CARD (Special)"), "SP")
+
+    def test_une_rarete_illisible_ne_sert_pas_a_ecarter(self):
+        """Rendre None plutôt que deviner : sinon une notation inconnue
+        ferait rejeter des prix parfaitement bons."""
+        from app.services.catalog_prices import code_rarete
+        for vide in (None, "", "   ", "(Inconnue)"):
+            self.assertIsNone(code_rarete(vide))
+
+
+if __name__ == "__main__":
+    unittest.main()
