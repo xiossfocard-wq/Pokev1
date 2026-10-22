@@ -268,3 +268,51 @@ class TestApplicationDesPrix(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSeriesFrancaisesConnues(unittest.TestCase):
+    class SessionEnPanne:
+        def __init__(self):
+            self.headers = {}
+
+        def get(self, *a, **k):
+            raise OSError("reseau coupe")
+
+    def test_le_repli_rend_la_liste_gravee(self):
+        from app.collectors.opecards_prices import SERIES_FR_CONNUES
+        series = ClientOPECards(session=self.SessionEnPanne()).series()
+        self.assertEqual(series, dict(SERIES_FR_CONNUES))
+
+    def test_aucune_serie_japonaise_ou_anglaise_gravee(self):
+        """Les prendre inscrirait au catalogue des prix de cartes jamais
+        imprimees en francais."""
+        from app.collectors.opecards_prices import SERIES_FR_CONNUES
+        libelles = " | ".join(SERIES_FR_CONNUES.values())
+        self.assertNotIn("Romance Dawn", libelles)
+        self.assertNotIn("Two Legends", libelles)
+        self.assertNotIn("Starter Deck", libelles)
+
+    def test_les_deux_sources_couvrent_les_memes_series(self):
+        """Une serie chiffree sans fiche, ou une fiche jamais chiffree,
+        viendrait d'un desaccord entre les deux listes."""
+        import re
+        from app.collectors.cardlist_fr import SERIES_CONNUES
+        from app.collectors.opecards_prices import SERIES_FR_CONNUES
+
+        def code_principal(libelle):
+            """Le PREMIER code du libelle.
+
+            Le site officiel libelle certains produits groupes
+            « [OP15-EB04] » : c'est un seul produit, pas deux series. Lire
+            les deux codes ferait croire a une serie EB04 separee, absente
+            d'OPECards — un faux ecart.
+            """
+            trouve = re.search(r"\b((?:OP|ST|EB|PRB)-?\d{2})\b", libelle)
+            return trouve.group(1).replace("-", "") if trouve else None
+
+        officielles = {c for c in map(code_principal, SERIES_CONNUES.values()) if c}
+        prix = {c for c in map(code_principal, SERIES_FR_CONNUES.values()) if c}
+
+        manquantes = officielles - prix
+        self.assertEqual(manquantes, set(),
+                         f"series sans source de prix : {sorted(manquantes)}")

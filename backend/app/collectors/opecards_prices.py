@@ -75,6 +75,53 @@ DELAI_ENTRE_PAGES = 1.5
 
 MAX_PAGES = 60
 
+# Series FRANCAISES du menu deroulant, relevees le 22/10/2026. Meme role de
+# repli que SERIES_CONNUES cote liste officielle : le menu est interroge en
+# premier, mais son echec ne doit pas emporter tout le chargement des prix.
+#
+# Le menu propose aussi les series japonaises et anglaises. Les prendre
+# inscrirait au catalogue des prix de cartes jamais imprimees en francais —
+# et le jeu francais commence a OP09.
+SERIES_FR_CONNUES = {
+    "819": "OP17 - Les Guerriers Les Plus Puissants Au Monde",
+    "775": "OP16 - L'heure de la Bataille Décisive",
+    "770": "OP15 - Aventure sur l'Île de Dieu",
+    "756": "OP14 - Les Sept de la Mer d'Azur",
+    "750": "OP13 - Successeurs",
+    "712": "OP12 - L'Héritage du Maître",
+    "677": "OP11 - Des Poings Vifs comme l'Éclair",
+    "498": "OP10 - Sang Royal",
+    "477": "OP09 - Les Nouveaux Empereurs",
+    "757": "EB03 - ONE PIECE Heroines Edition",
+    "615": "EB02 - Anime 25th Collection",
+    "745": "PRB02 - One Piece Card - The Best Vol.2",
+    "478": "PRB01 - One Piece Card - The Best",
+    "825": "ST36 - Eustass \"Captain\" Kidd (Jaune)",
+    "824": "ST35 - Sabo (Rouge/Noir)",
+    "823": "ST34 - Charlotte Katakuri (Violet)",
+    "822": "ST33 - Kuzan (Bleu)",
+    "821": "ST32 - Roronoa Zoro (Vert)",
+    "820": "ST31 - Monkey D. Luffy (Rouge)",
+    "806": "ST30 - Luffy et Ace",
+    "805": "ST29 - Egg Head",
+    "684": "ST28 - Yamato",
+    "683": "ST27 - Marshall D. Teach",
+    "682": "ST26 - Monkey D. Luffy",
+    "681": "ST25 - Baggy",
+    "680": "ST24 - Jewelry Bonney",
+    "679": "ST23 - Shanks",
+    "739": "ST22 - Ace et Newgate",
+    "497": "ST21 - Gear 5th",
+    "476": "ST20 - Charlotte Katakuri",
+    "475": "ST19 - Smoker",
+    "474": "ST18 - Monkey D. Luffy",
+    "473": "ST17 - Donquixote Doflamingo",
+    "472": "ST16 - Uta",
+    "471": "ST15 - Edward Newgate",
+    "721": "STP - Tournoi Boutique Promo",
+    "479": "P - Cartes promotionnelles",
+}
+
 _BLOC = re.compile(r'<div class="item [^"]*" data-item="(?P<id>\d+)"\s*>(?P<corps>.*?)'
                    r'(?=<div class="item [^"]*" data-item="\d+"\s*>|</div>\s*<div class="row mt-3">|\Z)',
                    re.S)
@@ -296,7 +343,20 @@ class ClientOPECards:
         return reponse.text
 
     def series(self) -> Dict[str, str]:
-        return series_francaises(self.recuperer())
+        """Series francaises a charger : celles du menu, sinon la liste gravee."""
+        try:
+            vues = series_francaises(self.recuperer())
+        except Exception as erreur:   # noqa: BLE001
+            logger.warning("OPECards : menu des series illisible (%s), "
+                           "repli sur la liste connue", erreur)
+            return dict(SERIES_FR_CONNUES)
+        if not vues:
+            logger.warning("OPECards : aucune serie francaise lue, "
+                           "repli sur la liste connue")
+            return dict(SERIES_FR_CONNUES)
+        fusion = dict(SERIES_FR_CONNUES)
+        fusion.update(vues)
+        return fusion
 
     def prix_de_serie(self, serie: Optional[str] = None,
                       max_pages: int = MAX_PAGES) -> List[PrixCarte]:

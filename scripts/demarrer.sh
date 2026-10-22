@@ -101,6 +101,10 @@ python3 "$ETAPES" prix "$API"
 bleu "→ visuels (plusieurs minutes pour un catalogue complet)"
 python3 "$ETAPES" visuels "$API"
 
+# --- 5bis. Bilan ----------------------------------------------------------
+bleu "→ état du catalogue"
+python3 "$ETAPES" bilan "$API"
+
 # --- 6. Frontend ---------------------------------------------------------
 cd "$RACINE/frontend"
 if [ ! -d node_modules ]; then

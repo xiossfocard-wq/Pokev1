@@ -282,3 +282,38 @@ class TestApplicationDesNomsFrancais(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSeriesConnues(unittest.TestCase):
+    """Le menu deroulant du site est la source de verite, mais une seule
+    requete en echec ne doit pas emporter tout le chargement : l'utilisateur
+    se retrouverait avec un catalogue anglais sans comprendre pourquoi."""
+
+    class SessionEnPanne:
+        def __init__(self):
+            self.headers = {}
+
+        def get(self, *a, **k):
+            raise OSError("reseau coupe")
+
+    def test_le_repli_rend_la_liste_gravee(self):
+        from app.collectors.cardlist_fr import ClientListeFR, SERIES_CONNUES
+        series = ClientListeFR(session=self.SessionEnPanne()).series()
+        self.assertEqual(series, dict(SERIES_CONNUES))
+
+    def test_la_liste_gravee_couvre_op09_a_op17(self):
+        """Constat, pas supposition : le menu du site ne propose ni OP01 ni
+        OP08. Le jeu francais commence a OP09."""
+        from app.collectors.cardlist_fr import SERIES_CONNUES
+        libelles = " | ".join(SERIES_CONNUES.values())
+        for serie in ("OP-09", "OP-13", "OP-17"):
+            self.assertIn(serie, libelles)
+        for absente in ("OP-01", "OP-08"):
+            self.assertNotIn(absente, libelles)
+
+    def test_la_liste_gravee_contient_les_decks_et_les_promos(self):
+        from app.collectors.cardlist_fr import SERIES_CONNUES
+        libelles = " | ".join(SERIES_CONNUES.values())
+        self.assertIn("ST-15", libelles)
+        self.assertIn("ST-36", libelles)
+        self.assertIn("promo", libelles.lower())

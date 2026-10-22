@@ -100,6 +100,56 @@ def rang_de_parallele(name_slug: Optional[str]) -> int:
         return 0
     return int(trouve.group(1)) if trouve.group(1) else 1
 
+# Series proposees par le menu deroulant du site, relevees le 22/10/2026.
+#
+# Pourquoi les graver ici alors que le site les publie : la liste sert de
+# REPLI. Sans elle, une seule requete qui echoue (le menu) emporte tout le
+# chargement, et l'utilisateur se retrouve avec un catalogue anglais sans
+# comprendre pourquoi. Le menu reste interroge en premier — il restera a
+# jour quand de nouvelles series sortiront — mais son echec ne bloque plus.
+#
+# Ce que cette liste dit aussi, et qui ne se lit nulle part ailleurs : le
+# jeu francais n'a PAS de series OP01 a OP08. Il commence a OP09.
+SERIES_CONNUES = {
+    "622302": "One Piece Card The Best Vol.2 (PRB-02)",
+    "622301": "One Piece Card The Best (PRB-01)",
+    "622203": "One Piece Heroines Edition (EB-03)",
+    "622202": "Anime 25th Collection (EB-02)",
+    "622117": "Les Guerriers les plus Puissants au Monde (OP-17)",
+    "622116": "L'heure de la Bataille Décisive (OP-16)",
+    "622115": "Aventure sur l'Île de Dieu (OP15-EB04)",
+    "622114": "Les Sept de la Mer d'Azur (OP14-EB04)",
+    "622113": "Successeurs (OP-13)",
+    "622112": "L'Héritage du Maître (OP-12)",
+    "622111": "Des Poings Vifs comme l'Éclair (OP-11)",
+    "622110": "Sang Royal (OP-10)",
+    "622109": "Les Nouveaux Empereurs (OP-09)",
+    "622036": "Eustass \"Captain\" Kidd — Jaune (ST-36)",
+    "622035": "Sabo — Rouge/Noir (ST-35)",
+    "622034": "Charlotte Katakuri — Violet (ST-34)",
+    "622033": "Kuzan — Bleu (ST-33)",
+    "622032": "Roronoa Zoro — Vert (ST-32)",
+    "622031": "Monkey D. Luffy — Rouge (ST-31)",
+    "622030": "Luffy et Ace (ST-30)",
+    "622029": "Egg Head (ST-29)",
+    "622028": "Yamato — Vert/Jaune (ST-28)",
+    "622027": "Marshall D. Teach — Noir (ST-27)",
+    "622026": "Monkey D. Luffy — Violet/Noir (ST-26)",
+    "622025": "Baggy — Bleu (ST-25)",
+    "622024": "Jewelry Bonney — Vert (ST-24)",
+    "622023": "Shanks — Rouge (ST-23)",
+    "622022": "Ace et Newgate (ST-22)",
+    "622021": "Gear 5th (ST-21)",
+    "622020": "Charlotte Katakuri — Jaune (ST-20)",
+    "622019": "Smoker — Noir (ST-19)",
+    "622018": "Monkey D. Luffy — Violet (ST-18)",
+    "622017": "Don Quijote Doflamingo — Bleu (ST-17)",
+    "622016": "Uta — Vert (ST-16)",
+    "622015": "Edward Newgate — Rouge (ST-15)",
+    "622901": "Cartes promo",
+    "622801": "Cartes d'autres produits",
+}
+
 # --- Motifs, tires du code source observe -------------------------------
 
 # Un bloc carte complet. `.*?` non gourmand : les blocs se suivent, et un
@@ -357,4 +407,25 @@ class ClientListeFR:
         return cartes
 
     def series(self) -> Dict[str, str]:
-        return series_disponibles(self.recuperer())
+        """Series a charger : celles du menu, sinon la liste gravee.
+
+        Le menu d'abord, parce qu'il restera a jour quand de nouvelles
+        series sortiront. Le repli ensuite, pour qu'une seule requete en
+        echec n'emporte pas tout le chargement.
+        """
+        try:
+            vues = series_disponibles(self.recuperer())
+        except Exception as erreur:   # noqa: BLE001
+            logger.warning("Liste FR : menu des series illisible (%s), "
+                           "repli sur la liste connue", erreur)
+            return dict(SERIES_CONNUES)
+        if not vues:
+            logger.warning("Liste FR : menu des series vide, "
+                           "repli sur la liste connue")
+            return dict(SERIES_CONNUES)
+        # Une serie connue mais absente du menu est conservee : le menu a pu
+        # changer de forme, et perdre une serie en silence se verrait comme
+        # un catalogue incomplet sans cause apparente.
+        fusion = dict(SERIES_CONNUES)
+        fusion.update(vues)
+        return fusion

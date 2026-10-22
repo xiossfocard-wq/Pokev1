@@ -14,6 +14,7 @@ seule, et le module n'a besoin que de la bibliothèque standard.
     python3 scripts/etapes_demarrage.py noms-fr    [url]
     python3 scripts/etapes_demarrage.py prix       [url]
     python3 scripts/etapes_demarrage.py visuels    [url]
+    python3 scripts/etapes_demarrage.py bilan      [url]
 """
 import json
 import sys
@@ -190,6 +191,35 @@ def charger_les_prix(base: str) -> None:
               f"({e['avant']}€ → {e['apres']}€)")
 
 
+def bilan(base: str) -> None:
+    """Dit où en est le catalogue, en une poignée de lignes.
+
+    Sans ce récapitulatif, « 3 868 cartes » se lirait comme un catalogue
+    français complet et chiffré, alors que la couverture dépend de ce qui a
+    réellement pu être chargé.
+    """
+    try:
+        v = _appeler(f"{base}/api/cards/filters", delai=60)
+    except Exception as erreur:
+        print(f"   bilan indisponible : {erreur}")
+        return
+
+    total = v.get("total_cards", 0)
+    print(f"   {total} cartes au catalogue")
+
+    for langue in v.get("languages") or []:
+        part = (100 * langue["count"] / total) if total else 0
+        print(f"     {langue['label']:10} {langue['count']:6}  ({part:.0f} %)")
+
+    try:
+        chiffrees = _appeler(f"{base}/api/cards?limite=1&price_min=0", delai=60)
+        print(f"     avec un prix {chiffrees.get('total', 0):6}")
+    except Exception:
+        pass
+
+    print(f"     séries      {len(v.get('series') or []):6}")
+
+
 def main() -> int:
     etape = sys.argv[1] if len(sys.argv) > 1 else ""
     base = (sys.argv[2] if len(sys.argv) > 2 else API_PAR_DEFAUT).rstrip("/")
@@ -203,6 +233,9 @@ def main() -> int:
         return 0
     if etape == "prix":
         charger_les_prix(base)
+        return 0
+    if etape == "bilan":
+        bilan(base)
         return 0
     if etape == "visuels":
         remplir_visuels(base)
