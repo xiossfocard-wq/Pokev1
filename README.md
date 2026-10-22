@@ -491,11 +491,25 @@ Le compromis : **ça ne collecte que quand le PC est allumé**, et il n'y a
 pas d'accès depuis le téléphone. Les deux ne s'excluent pas — même code,
 deux configurations.
 
+### Ce qu'il faut avoir
+
+| | | |
+|---|---|---|
+| **Python 3.11+** | indispensable | tout le moteur est en Python |
+| **Node.js 20+** | indispensable | c'est lui qui fait l'interface web |
+| **Git** | optionnel | sert seulement à récupérer le code |
+
+Sans Git : sur la page du dépôt, bouton **Code** → **Download ZIP**, puis
+décompresser et ouvrir un terminal dans le dossier.
+
 ### En une commande
 
 ```bash
 bash scripts/demarrer.sh
 ```
+
+À lancer sur **votre** machine : c'est elle qui joint les sites de
+référence. Le script dit d'emblée ce qui manque, et le dit en une fois.
 
 Il installe ce qui manque, lance l'API, **remplit le catalogue**, récupère
 les visuels puis démarre l'interface. `Ctrl+C` arrête tout.
