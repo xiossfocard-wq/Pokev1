@@ -41,6 +41,39 @@ def _appeler(url: str, methode: str = "GET", delai: int = 120):
         return json.loads(reponse.read().decode("utf-8"))
 
 
+def _series(base: str, cle: str) -> dict:
+    """Les séries à charger pour une source. {} si elle est injoignable."""
+    try:
+        return _appeler(f"{base}/api/admin/fr-series", delai=300).get(cle) or {}
+    except Exception:
+        return {}
+
+
+# Vrai terminal ou sortie redirigée ? Le retour chariot n'écrase une ligne
+# que sur un terminal. Redirigé vers un fichier, il n'efface rien et les 37
+# étapes s'empilent sur une seule ligne illisible.
+_TERMINAL = sys.stdout.isatty()
+
+
+def _progression(faites: int, total: int, libelle: str) -> None:
+    """Dit où on en est, sans noyer le terminal sous 37 lignes.
+
+    Le compte ET le nom de la série : le compte dit où on en est, le nom
+    dit que ça avance vraiment plutôt que de tourner sur place.
+    """
+    texte = f"     [{faites:2}/{total}] {libelle[:46]}"
+    if _TERMINAL:
+        print(f"\r{texte:<62}", end="", flush=True)
+    else:
+        print(texte, flush=True)
+
+
+def _fin_progression() -> None:
+    """Efface la ligne de progression, là où elle s'efface."""
+    if _TERMINAL:
+        print("\r" + " " * 62 + "\r", end="")
+
+
 def attendre_api(base: str, secondes: int = 45) -> bool:
     """Rend True dès que l'API répond, False après `secondes`."""
     for _ in range(secondes):
@@ -141,25 +174,43 @@ def passer_aux_noms_francais(base: str) -> None:
     traduites. Sans cette étape, un vendeur français qui écrit « Baggy » ne
     rencontre jamais la fiche.
 
-    Demande Internet. Si le site est hors d'atteinte, on le dit et le reste
-    continue : les cartes gardent leur nom anglais, ce qui est dégradé mais
-    pas faux.
+    Chargé SÉRIE PAR SÉRIE pour afficher la progression : tout demander
+    d'un coup laissait le terminal muet de longues minutes, ce qui se lit
+    comme un plantage et pas comme du travail.
     """
-    try:
-        r = _appeler(f"{base}/api/admin/load-fr-names", methode="POST", delai=1800)
-    except Exception as erreur:
-        print(f"   impossible de joindre la liste officielle : {erreur}")
-        print("   les cartes gardent leur nom anglais pour l'instant.")
+    series = _series(base, "officielles")
+    if not series:
+        print("   liste officielle injoignable : les cartes gardent leur nom anglais.")
         return
 
-    renommees = r.get("renommees", 0)
-    creees = r.get("creees", 0)
-    visuels = r.get("visuels", 0)
+    total = len(series)
+    renommees = creees = visuels = 0
+    echecs = []
+    exemples = []
+
+    for i, (valeur, libelle) in enumerate(series.items(), start=1):
+        _progression(i, total, libelle)
+        try:
+            r = _appeler(f"{base}/api/admin/load-fr-names?series={valeur}",
+                         methode="POST", delai=600)
+        except Exception as erreur:
+            echecs.append((libelle, str(erreur)[:60]))
+            continue
+        renommees += r.get("renommees", 0)
+        creees += r.get("creees", 0)
+        visuels += r.get("visuels", 0)
+        for e in (r.get("exemples") or []):
+            if len(exemples) < 5:
+                exemples.append(e)
+
+    _fin_progression()
     print(f"   {renommees} renommée(s), {creees} créée(s), {visuels} visuel(s)")
-    for exemple in (r.get("exemples") or [])[:5]:
-        print(f"     {exemple['avant']} → {exemple['apres']}")
-    for echec in (r.get("series_en_echec") or [])[:3]:
-        print(f"     série {echec['serie']} en échec : {echec['raison'][:70]}")
+    for e in exemples:
+        print(f"     {e['avant']} → {e['apres']}")
+    for libelle, raison in echecs[:3]:
+        print(f"     série « {libelle[:34]} » en échec : {raison}")
+    if len(echecs) > 3:
+        print(f"     … et {len(echecs) - 3} autre(s) série(s) en échec")
 
 
 def charger_les_prix(base: str) -> None:
@@ -168,28 +219,43 @@ def charger_les_prix(base: str) -> None:
     C'est ce qui allume les marges et les scores d'affaire : sans prix, une
     annonce peut être identifiée mais pas jugée.
 
-    Demande Internet, et c'est long — plusieurs centaines de pages, avec une
-    pause entre chaque pour ne pas marteler un site communautaire.
+    L'étape la plus longue de toutes — des centaines de pages, avec une
+    pause entre chacune pour ne pas marteler un site communautaire. D'où la
+    progression affichée : sans elle, l'attente est indiscernable d'un
+    blocage.
     """
-    try:
-        r = _appeler(f"{base}/api/admin/load-fr-prices", methode="POST", delai=5400)
-    except Exception as erreur:
-        print(f"   impossible de joindre la source de prix : {erreur}")
-        print("   les cartes restent sans prix : le catalogue est consultable,")
+    series = _series(base, "prix")
+    if not series:
+        print("   source de prix injoignable.")
+        print("   Les cartes restent sans prix : le catalogue est consultable,")
         print("   mais aucune marge n'est calculée.")
         return
 
-    print(f"   {r.get('chiffrees', 0)} carte(s) chiffrée(s), "
-          f"{r.get('inchangees', 0)} inchangée(s)")
-    restantes = r.get("sans_prix_restantes")
-    if restantes:
-        print(f"   {restantes} carte(s) encore sans prix")
-    for e in (r.get("exemples") or [])[:5]:
-        avant = "—" if e.get("avant") is None else f"{e['avant']}€"
-        print(f"     {e['nom'][:34]} : {avant} → {e['apres']}€")
-    for e in (r.get("ecarts_suspects") or [])[:5]:
-        print(f"     écart suspect ×{e['facteur']} sur {e['code']} "
-              f"({e['avant']}€ → {e['apres']}€)")
+    total = len(series)
+    chiffrees = 0
+    echecs = []
+    suspects = []
+
+    for i, (valeur, libelle) in enumerate(series.items(), start=1):
+        _progression(i, total, libelle)
+        try:
+            r = _appeler(f"{base}/api/admin/load-fr-prices?series={valeur}",
+                         methode="POST", delai=1800)
+        except Exception as erreur:
+            echecs.append((libelle, str(erreur)[:60]))
+            continue
+        chiffrees += r.get("chiffrees", 0)
+        suspects.extend(r.get("ecarts_suspects") or [])
+
+    _fin_progression()
+    print(f"   {chiffrees} carte(s) chiffrée(s)")
+    for e in suspects[:5]:
+        print(f"     écart ×{e['facteur']} sur {e['code']} "
+              f"({e['avant']}€ → {e['apres']}€) — à vérifier")
+    for libelle, raison in echecs[:3]:
+        print(f"     série « {libelle[:34]} » en échec : {raison}")
+    if len(echecs) > 3:
+        print(f"     … et {len(echecs) - 3} autre(s) série(s) en échec")
 
 
 def premiere_collecte(base: str) -> None:

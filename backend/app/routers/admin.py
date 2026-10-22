@@ -310,6 +310,28 @@ def load_opcg_catalog(
         db.close()
 
 
+@router.get("/fr-series")
+def fr_series():
+    """Les series francaises a charger, des deux sources.
+
+    Existe pour que le chargement puisse se faire SERIE PAR SERIE et
+    afficher sa progression. Tout charger d'un seul appel laissait le
+    terminal muet pendant parfois une heure — et un ecran qui ne bouge pas
+    pendant une heure se lit comme un plantage, pas comme du travail.
+
+    Chaque source est tentee separement : si l'une est injoignable, l'autre
+    reste utilisable.
+    """
+    resultat = {}
+    for cle, fabrique in (("officielles", ClientListeFR), ("prix", ClientOPECards)):
+        try:
+            resultat[cle] = fabrique().series()
+        except Exception as erreur:   # noqa: BLE001
+            resultat[cle] = {}
+            resultat[f"{cle}_erreur"] = str(erreur)
+    return resultat
+
+
 @router.post("/load-fr-names")
 def load_fr_names(
     series: str = Query(
