@@ -4,6 +4,7 @@ from typing import Optional
 
 from app.config import settings
 from app.database import SessionLocal
+from app.models import MarketCardPrice
 from app.pipeline import (
     run_full_check, rescore_unpriced_listings, refilter_language,
     check_vinted_availability, enrich_card_images,
@@ -14,10 +15,15 @@ from app.collectors.zebradex_prices import ZebraDexClient
 from app.services.price_index import (
     sync_series_batch, refresh_series_catalog, index_stats, find_price_for_listing,
 )
-from app.collectors.card_images import ClientImagesCartes
+import requests
+
+from app.collectors.card_images import (
+    USER_AGENT as USER_AGENT_IMAGES, ClientImagesCartes, code_canonique,
+    urls_candidates,
+)
 from app.collectors.catalog_sources import SondeurDeSources
 from app.collectors import opcg_dataset
-from app.collectors.cardlist_fr import ClientListeFR
+from app.collectors.cardlist_fr import ClientListeFR, rang_de_parallele
 from app.services import catalog_fr
 from app.collectors.opecards_prices import ClientOPECards
 from app.services import catalog_prices
@@ -457,6 +463,148 @@ def load_fr_prices(
     rapport["series_demandees"] = len(voulues)
     rapport["series_en_echec"] = echecs
     return rapport
+
+
+@router.get("/diagnostic-variantes")
+def diagnostic_variantes(
+    series: str = Query(..., description="UNE valeur de serie OPECards."),
+    limite: int = Query(5, ge=1, le=40,
+                        description="Nombre de codes examines au plus."),
+):
+    """Mesure si les illustrations alternatives peuvent etre appariees.
+
+    CE QUE CETTE ROUTE N'ECRIT PAS
+    ------------------------------
+    Rien. Aucun prix, aucune fiche. Elle RAPPORTE ce que les images disent,
+    et c'est tout.
+
+    LE PROBLEME QU'ELLE INSTRUIT
+    ----------------------------
+    La liste officielle declare les alternatives — « OP17-005_p2 » est
+    releve sur sa page. Des fiches existent donc, et elles sont vides. La
+    source des prix donne « (Parallele) » et « (Manga) » pour le meme code,
+    a 5,80 EUR et 500 EUR. Les effectifs concordent ; seul l'appariement
+    manque.
+
+    Et dans les champs de la page officielle — code, rarete, type, nom — les
+    deux alternatives sont rigoureusement identiques. Rien n'y designe celle
+    qui porte l'illustration manga. La seule information qui les distingue
+    est l'image, donc on compare les images.
+
+    Decreter que « (Manga) » est la deuxieme alternative plutot que la
+    premiere poserait 500 EUR sur une carte qui en vaut 5,80. Cette route
+    existe pour remplacer cette hypothese par une mesure.
+
+        curl "http://localhost:8000/api/admin/diagnostic-variantes?series=819"
+    """
+    from app.collectors.opecards_prices import VARIANTE_SANS_RANG
+    from app.services import appariement_variantes as app_var
+
+    client = ClientOPECards()
+    try:
+        releve = client.prix_de_serie(series.strip())
+    except Exception as erreur:   # noqa: BLE001
+        raise HTTPException(status_code=502,
+                            detail=f"serie illisible : {erreur}")
+
+    # Les mentions sans rang, regroupees par code, plus l'impression
+    # ordinaire du meme code quand la serie la donne aussi.
+    par_code: dict = {}
+    for carte in releve:
+        code = code_canonique(carte.card_code)
+        if not code:
+            continue
+        if carte.rang_variante in (0, VARIANTE_SANS_RANG):
+            par_code.setdefault(code.upper(), []).append(carte)
+
+    db = SessionLocal()
+    session = requests.Session()
+    session.headers.setdefault("User-Agent", USER_AGENT_IMAGES)
+    rapports, examines = [], 0
+    try:
+        for code, cartes in sorted(par_code.items()):
+            if examines >= limite:
+                break
+            # Un seul prix pour ce code : rien a departager.
+            if len(cartes) < 2:
+                continue
+
+            fiches = [l for l in db.query(MarketCardPrice)
+                      .filter(MarketCardPrice.card_code == code).all()]
+            if len(fiches) < 2:
+                continue
+            examines += 1
+
+            officielles, binaires_off = {}, {}
+            for fiche in fiches:
+                rang = rang_de_parallele(fiche.name_slug)
+                donnees = _telecharger(session, fiche.image_url) \
+                    if fiche.image_url else None
+                if donnees is None:
+                    for essai in urls_candidates(code, fiche.display_name or ""):
+                        if f"_p{rang}" in essai or (rang == 0 and "_p" not in essai):
+                            donnees = _telecharger(session, essai)
+                            if donnees:
+                                break
+                officielles[rang] = app_var.empreinte_perceptive(donnees)
+                binaires_off[rang] = app_var.empreinte_binaire(donnees)
+
+            boutique, binaires_bou = {}, {}
+            for carte in cartes:
+                marque = carte.variante or ""
+                donnees = _telecharger(session, carte.image_url)
+                boutique[marque] = app_var.empreinte_perceptive(donnees)
+                binaires_bou[marque] = app_var.empreinte_binaire(donnees)
+
+            resultat = app_var.apparier(officielles, boutique)
+            resultat["code"] = code
+            resultat["nom"] = fiches[0].display_name
+            # L'egalite BINAIRE est le cas le plus simple : si la boutique
+            # reheberge le fichier officiel, aucune comparaison d'image
+            # n'est necessaire et l'appariement est certain.
+            resultat["fichiers_identiques"] = sorted(
+                set(v for v in binaires_off.values() if v)
+                & set(v for v in binaires_bou.values() if v))
+            resultat["mentions"] = sorted(boutique)
+            resultat["rangs_officiels"] = sorted(officielles)
+            rapports.append(resultat)
+    finally:
+        db.close()
+
+    etablis = [r for r in rapports if r["fiable"]]
+    return {
+        "serie": series,
+        "pillow_disponible": app_var.pillow_disponible(),
+        "codes_examines": examines,
+        "appariements_etablis": len(etablis),
+        "appariements_incertains": len(rapports) - len(etablis),
+        "rapports": rapports,
+        # Dit en une phrase si la methode tient sur cette serie, pour ne pas
+        # avoir a interpreter des dizaines de distances.
+        "conclusion": (
+            "les images apparient de maniere fiable"
+            if etablis and len(etablis) == len(rapports)
+            else "les images ne suffisent pas a apparier de maniere sure"
+            if rapports else "aucun code comparable sur cette serie"),
+    }
+
+
+def _telecharger(session, url: Optional[str], plafond: int = 2_000_000):
+    """Les octets d'une image, ou None. Ne leve jamais.
+
+    Un diagnostic qui s'interrompt sur la premiere image absente ne
+    diagnostique rien.
+    """
+    if not url:
+        return None
+    try:
+        reponse = session.get(url, timeout=20, stream=True)
+        if reponse.status_code != 200:
+            return None
+        donnees = reponse.raw.read(plafond + 1, decode_content=True)
+        return None if len(donnees) > plafond else donnees
+    except Exception:   # noqa: BLE001
+        return None
 
 
 @router.post("/sweep-fr-prices")

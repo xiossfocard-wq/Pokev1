@@ -10,3 +10,10 @@ apscheduler>=3.10,<4.0
 python-dotenv>=1.0,<2.0
 requests>=2.31,<3.0
 pydantic>=2.6,<3.0
+
+# Lecture des images, pour apparier les illustrations alternatives entre
+# les deux sources. La liste officielle declare « _p1 » et « _p2 » sans
+# dire laquelle porte l'illustration manga, et la boutique dit « (Manga) »
+# sans dire quel rang : seule l'image distingue les deux, donc il faut
+# pouvoir la lire. Le reste de l'application fonctionne sans.
+pillow>=10.0,<12.0
