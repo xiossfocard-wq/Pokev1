@@ -101,9 +101,11 @@ def _job_sources_du_jour():
             if prix:
                 rapport = appliquer_prix(db, prix)
                 logger.info("Prix : %d chiffree(s), %d sans fiche, %d rarete(s) "
-                            "opposee(s), %d encore sans prix",
+                            "opposee(s), %d variante(s) non rattachee(s), "
+                            "%d encore sans prix",
                             rapport["chiffrees"], rapport["sans_fiche"],
                             rapport["raretes_opposees"],
+                            rapport["variantes_sans_rang"],
                             rapport["sans_prix_restantes"])
                 for conflit in rapport["conflits"][:10]:
                     logger.warning(

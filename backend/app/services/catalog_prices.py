@@ -34,7 +34,7 @@ from sqlalchemy.orm import Session
 
 from app.collectors.card_images import code_canonique
 from app.collectors.cardlist_fr import rang_de_parallele
-from app.collectors.opecards_prices import PrixCarte
+from app.collectors.opecards_prices import VARIANTE_SANS_RANG, PrixCarte
 from app.models import MarketCardPrice
 
 logger = logging.getLogger(__name__)
@@ -139,9 +139,11 @@ def appliquer_prix(db: Session, prix: List[PrixCarte],
     ne peut constater qu'après avoir déjà écrit.
     """
     chiffrees, inchangees, sans_fiche, raretes_opposees = 0, 0, 0, 0
+    variantes_sans_rang = 0
     suspects: List[dict] = []
     exemples: List[dict] = []
     conflits: List[dict] = []
+    variantes_vues: List[dict] = []
 
     index: Dict[tuple, MarketCardPrice] = {}
     for ligne in db.query(MarketCardPrice).all():
@@ -156,6 +158,27 @@ def appliquer_prix(db: Session, prix: List[PrixCarte],
     for carte in prix:
         code = code_canonique(carte.card_code)
         if not code or carte.price_eur is None:
+            continue
+
+        # UNE VARIANTE QUI NE DIT PAS SON RANG N'EST RATTACHEE A RIEN.
+        # « Shanks (Manga) » à 850 € est une autre carte que « Shanks » à
+        # 0,75 €, mais la source ne dit pas laquelle des alternatives de la
+        # liste officielle elle désigne. Le rattacher au jugé poserait
+        # 850 € sur l'impression ordinaire : la pire des erreurs possibles
+        # ici, puisqu'elle invente une affaire et fait payer.
+        #
+        # Son libellé est relevé pour pouvoir établir la correspondance un
+        # jour sur constat, et non sur hypothèse.
+        if carte.rang_variante == VARIANTE_SANS_RANG:
+            variantes_sans_rang += 1
+            if len(variantes_vues) < 25:
+                variantes_vues.append({
+                    "code": code, "nom": carte.display_name,
+                    "variante": carte.variante,
+                    "rarete": carte.rarity,
+                    "prix": round(carte.price_eur, 2),
+                    "lien": carte.detail_url,
+                })
             continue
 
         cle = (code.upper(), carte.rang_variante)
@@ -275,6 +298,11 @@ def appliquer_prix(db: Session, prix: List[PrixCarte],
         # Un prix ECARTE parce qu'il vise une carte de rarete differente.
         # C'est une protection qui a joue, pas une panne.
         "raretes_opposees": raretes_opposees,
+        # Des variantes dont la source ne donne pas l'indice : leur prix
+        # n'est pose sur AUCUNE fiche, et surtout pas sur celle de
+        # l'impression ordinaire. Leur libelle brut est joint.
+        "variantes_sans_rang": variantes_sans_rang,
+        "variantes_vues": variantes_vues,
         # Des prix inconciliables revendiquaient une meme fiche : AUCUN n'a
         # ete retenu, et l'etat brut des candidatures est joint pour qu'on
         # puisse voir quelle distinction le rapprochement a manquee.

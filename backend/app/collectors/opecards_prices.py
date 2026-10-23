@@ -151,6 +151,32 @@ _LIEN = re.compile(r'<a class="d-block item-main-link[^"]*"[^>]*href="(?P<url>/c
 # l'impression ordinaire.
 _VERSION = re.compile(r'\s*\(Version\s+(?P<rang>\d+)\)\s*$', re.I)
 
+# LE SITE NOMME SES VARIANTES DE DEUX FAÇONS SELON LES SERIES.
+# Releve le 23/10/2026, sur deux series differentes :
+#
+#   OP15   « Ener (Version 2) », « Ener (Version 3) »
+#   OP17   « Shanks (Parallele) », « Shanks (Manga) »,
+#          « Monkey D. Luffy (Super Leader Parallele) »
+#
+# La premiere forme DIT son indice : « Version 2 » est la premiere
+# alternative, ce qui se rapproche sans risque des suffixes « _p1 »/« _p2 »
+# de la liste officielle.
+#
+# La seconde NE LE DIT PAS. Rien ne permet d'affirmer que « (Manga) » est la
+# deuxieme alternative plutot que la premiere. Lui attribuer un rang au juge
+# poserait 850 EUR sur une carte qui en vaut 0,75 — exactement l'erreur que
+# tout ce rapprochement cherche a empecher. On la marque donc comme variante
+# SANS RANG CONNU : son prix n'est applique a aucune fiche, et surtout pas a
+# celle de l'impression ordinaire.
+_MARQUEUR = re.compile(
+    r'\s*\((?P<marque>[^()]*\b(?:parall[eè]les?|manga|alternatives?|alt|'
+    r'sp[eé]ciale?s?)\b[^()]*)\)\s*$', re.I)
+
+# Rang conventionnel des variantes dont l'indice est inconnu. Aucune fiche
+# ne porte ce rang : le rapprochement echoue donc volontairement, au lieu
+# de reussir sur la mauvaise carte.
+VARIANTE_SANS_RANG = -1
+
 # Le menu des series, groupe par langue. Seul le groupe francais nous
 # interesse : il dit quelles series existent VRAIMENT en francais.
 _GROUPE = re.compile(
@@ -213,24 +239,52 @@ def rang_de_version(nom: str) -> tuple:
     site : « Version 2 » est la PREMIERE alternative, donc rang 1. C'est la
     meme numerotation que les suffixes « _p1 », « _p2 » de la liste
     officielle, ce qui permet de rapprocher les deux sources.
+
+    Rend VARIANTE_SANS_RANG quand le nom porte bien une mention de variante
+    mais sans indice — « (Manga) », « (Parallele) ». Mieux vaut ne rattacher
+    ce prix a rien que de le poser sur l'impression ordinaire.
     """
-    trouve = _VERSION.search(nom or "")
-    if not trouve:
-        return (nom or "").strip(), 0
-    rang = int(trouve.group("rang")) - 1
-    return _VERSION.sub("", nom).strip(), max(rang, 0)
+    texte = (nom or "").strip()
+    trouve = _VERSION.search(texte)
+    if trouve:
+        return _VERSION.sub("", texte).strip(), max(int(trouve.group("rang")) - 1, 0)
+    marque = _MARQUEUR.search(texte)
+    if marque:
+        return _MARQUEUR.sub("", texte).strip(), VARIANTE_SANS_RANG
+    return texte, 0
+
+
+def marqueur_de_variante(nom: str) -> Optional[str]:
+    """« Shanks (Manga) » -> « Manga ». None si le nom n'en porte pas.
+
+    Sert au compte rendu : c'est ce libelle, releve tel quel, qui permettra
+    d'etablir un jour la correspondance avec les rangs de la liste
+    officielle — sur constat, pas sur hypothese.
+    """
+    texte = (nom or "").strip()
+    trouve = _MARQUEUR.search(texte)
+    if trouve:
+        return trouve.group("marque").strip()
+    trouve = _VERSION.search(texte)
+    return trouve.group(0).strip(" ()") if trouve else None
 
 
 @dataclass
 class PrixCarte:
     card_code: str
     display_name: str          # le nom SANS la mention de version
-    rang_variante: int         # 0 = impression ordinaire, 1+ = alternative
+    rang_variante: int         # 0 = ordinaire, 1+ = alternative, -1 = inconnu
     rarity: Optional[str]
     price_eur: float
     variation_eur: Optional[float]   # negatif = baisse
     image_url: Optional[str]
     detail_url: Optional[str]
+    # La mention de variante telle que le site l'ecrit — « Version 2 »,
+    # « Manga », « Super Leader Parallele ». Relevee pour le compte rendu :
+    # c'est elle qui permettra d'etablir la correspondance avec les rangs de
+    # la liste officielle sur constat, et non sur hypothese. Valeur par
+    # defaut : les appels existants (et les tests) n'ont pas a la fournir.
+    variante: Optional[str] = None
 
 
 def analyser_page(contenu: str, racine: str = RACINE) -> List[PrixCarte]:
@@ -256,7 +310,9 @@ def analyser_page(contenu: str, racine: str = RACINE) -> List[PrixCarte]:
         if not code:
             continue
 
-        nom, rang = rang_de_version(_texte(nom_brut.group("nom")))
+        nom_affiche = _texte(nom_brut.group("nom"))
+        nom, rang = rang_de_version(nom_affiche)
+        variante = marqueur_de_variante(nom_affiche)
         valeur = _nombre(prix.group("prix"))
         if valeur is None:
             logger.warning("OPECards : prix illisible pour %s (%r)",
@@ -286,6 +342,7 @@ def analyser_page(contenu: str, racine: str = RACINE) -> List[PrixCarte]:
             variation_eur=variation,
             image_url=image.group("url") if image else None,
             detail_url=f"{racine.rstrip('/')}{lien.group('url')}" if lien else None,
+            variante=variante,
         ))
 
     return cartes

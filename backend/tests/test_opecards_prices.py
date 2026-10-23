@@ -544,5 +544,109 @@ class TestBalayageDesPrixPerimes(unittest.TestCase):
         self.assertEqual(rapport["exemples"][0]["prix_oublie"], 850.0)
 
 
+class TestVariantesQuiNeDisentPasLeurRang(unittest.TestCase):
+    """LA CAUSE REELLE, constatée le 23/10/2026 sur la série OP17.
+
+    Le site nomme ses variantes de deux façons selon les séries :
+
+        OP15   « Ener (Version 2) », « Ener (Version 3) »
+        OP17   « Shanks (Parallèle) », « Shanks (Manga) »,
+               « Monkey D. Luffy (Super Leader Parallèle) »
+
+    Seule la première dit son indice. La seconde était donc lue comme
+    l'impression ordinaire, et les trois prix d'un même code — 850 €, 13 €
+    et 0,75 € — revendiquaient la même fiche.
+
+    Rien ne permet d'affirmer que « (Manga) » est la deuxième alternative
+    plutôt que la première. Lui attribuer un rang au jugé poserait 850 €
+    sur une carte qui en vaut 0,75 : l'erreur qui invente une affaire et
+    fait payer.
+    """
+
+    def test_la_forme_avec_indice_garde_son_rang(self):
+        self.assertEqual(rang_de_version("Ener (Version 3)"), ("Ener", 2))
+        self.assertEqual(rang_de_version("Ener (Version 2)"), ("Ener", 1))
+
+    def test_la_forme_sans_indice_n_est_pas_prise_pour_l_ordinaire(self):
+        """Le défaut exact : « (Manga) » tombait au rang 0."""
+        from app.collectors.opecards_prices import VARIANTE_SANS_RANG
+        for nom in ("Shanks (Manga)", "Shanks (Parallèle)",
+                    "Monkey D. Luffy (Super Leader Parallèle)",
+                    "Portgas D. Ace (Alternative)"):
+            with self.subTest(nom=nom):
+                self.assertEqual(rang_de_version(nom)[1], VARIANTE_SANS_RANG)
+
+    def test_une_parenthese_qui_fait_partie_du_nom_reste_le_nom(self):
+        """« Mr 3 (Galdino) » est une carte, pas une variante. La confondre
+        retirerait du catalogue une carte parfaitement ordinaire."""
+        self.assertEqual(rang_de_version("Mr 3 (Galdino)"), ("Mr 3 (Galdino)", 0))
+
+    def test_le_libelle_brut_est_releve(self):
+        """C'est lui qui permettra d'établir la correspondance avec les
+        rangs de la liste officielle sur constat, et non sur hypothèse."""
+        from app.collectors.opecards_prices import marqueur_de_variante
+        self.assertEqual(marqueur_de_variante("Shanks (Manga)"), "Manga")
+        self.assertEqual(
+            marqueur_de_variante("Monkey D. Luffy (Super Leader Parallèle)"),
+            "Super Leader Parallèle")
+        self.assertIsNone(marqueur_de_variante("Mr 3 (Galdino)"))
+
+
+class TestLeDefautObserveSurOP17(unittest.TestCase):
+    """Le passage complet, reconstitué d'après le relevé du 23/10/2026."""
+
+    def setUp(self):
+        moteur = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(moteur)
+        self.db = sessionmaker(bind=moteur)()
+        self.db.add(MarketCardPrice(
+            card_code="OP17-022", display_name="Shanks", name_slug="shanks",
+            rarity="SR", price_eur=0.75, source="opecards"))
+        self.db.commit()
+
+    def tearDown(self):
+        self.db.close()
+
+    def appliquer(self):
+        from app.collectors.opecards_prices import (
+            PrixCarte, marqueur_de_variante,
+        )
+
+        def candidature(nom_affiche, prix):
+            nom, rang = rang_de_version(nom_affiche)
+            return PrixCarte(card_code="OP17-022-SR", display_name=nom,
+                             rang_variante=rang, rarity="SR", price_eur=prix,
+                             variation_eur=None, image_url=None,
+                             detail_url="https://www.opecards.fr/x",
+                             variante=marqueur_de_variante(nom_affiche))
+
+        return appliquer_prix(self.db, [
+            candidature("Shanks (Manga)", 850.0),
+            candidature("Shanks (Parallèle)", 13.0),
+            candidature("Shanks", 0.75),
+        ])
+
+    def test_l_impression_ordinaire_recoit_SON_prix(self):
+        """Ce que le défaut empêchait : la fiche de base finissait à 850 €,
+        ou au plancher, selon la règle en vigueur. Jamais à son prix."""
+        rapport = self.appliquer()
+        fiche = self.db.query(MarketCardPrice).filter_by(
+            card_code="OP17-022").one()
+        self.assertEqual(fiche.price_eur, 0.75)
+        self.assertEqual(rapport["conflits"], [])
+
+    def test_les_variantes_sont_mises_de_cote_pas_appliquees(self):
+        rapport = self.appliquer()
+        self.assertEqual(rapport["variantes_sans_rang"], 2)
+        marques = {v["variante"] for v in rapport["variantes_vues"]}
+        self.assertEqual(marques, {"Manga", "Parallèle"})
+
+    def test_le_prix_de_850_n_atterrit_sur_aucune_fiche(self):
+        """Le test qui compte vraiment."""
+        self.appliquer()
+        montants = [l.price_eur for l in self.db.query(MarketCardPrice).all()]
+        self.assertNotIn(850.0, montants)
+
+
 if __name__ == "__main__":
     unittest.main()

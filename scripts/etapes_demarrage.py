@@ -238,6 +238,8 @@ def charger_les_prix(base: str) -> None:
     echecs = []
     suspects = []
     conflits = []
+    sans_rang = 0
+    marqueurs = {}
     depart = time.monotonic()
 
     for i, (valeur, libelle) in enumerate(series.items(), start=1):
@@ -250,8 +252,12 @@ def charger_les_prix(base: str) -> None:
             continue
         chiffrees += r.get("chiffrees", 0)
         opposees += r.get("raretes_opposees", 0)
+        sans_rang += r.get("variantes_sans_rang", 0)
         suspects.extend(r.get("ecarts_suspects") or [])
         conflits.extend(r.get("conflits") or [])
+        for v in r.get("variantes_vues") or []:
+            marqueurs[v.get("variante") or "?"] = \
+                marqueurs.get(v.get("variante") or "?", 0) + 1
 
     _fin_progression()
     print(f"   {chiffrees} carte(s) chiffrée(s)")
@@ -261,6 +267,17 @@ def charger_les_prix(base: str) -> None:
     # fiche de la commune — et le nombre doit rester petit.
     if opposees:
         print(f"   {opposees} prix écarté(s) : rareté différente de la fiche visée")
+    # Les variantes que la source ne sait pas situer. On montre le
+    # VOCABULAIRE — les libellés distincts et leur nombre — plutôt que des
+    # centaines de lignes identiques : c'est la liste des mentions qui dit
+    # quelle correspondance reste à établir.
+    if sans_rang:
+        print(f"   {sans_rang} variante(s) non rattachée(s) : la source ne dit pas")
+        print("   quelle alternative elles désignent, leur prix n'est appliqué")
+        print("   à aucune fiche. Mentions rencontrées :")
+        for marque, nombre in sorted(marqueurs.items(), key=lambda c: -c[1])[:8]:
+            print(f"     « {marque} » ×{nombre}")
+
     # Le détail BRUT des candidatures, pas seulement leur nombre. Ce qui
     # manque pour corriger la cause, c'est de voir le nom et la rareté tels
     # que la source les écrit : c'est ça qui dit quelle distinction le
