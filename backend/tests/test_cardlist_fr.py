@@ -317,3 +317,52 @@ class TestSeriesConnues(unittest.TestCase):
         self.assertIn("ST-15", libelles)
         self.assertIn("ST-36", libelles)
         self.assertIn("promo", libelles.lower())
+
+
+class TestNomEquivalentAEspacementPres(unittest.TestCase):
+    """Deux fiches d'un même code permutaient leur nom à chaque passage.
+
+    « Mr 3 (Galdino) » et « Mr 3(Galdino) » se réduisent au même repère, et
+    rien ne départageait l'appariement : chaque nuit, la première fiche
+    prenait le nom de la seconde et réciproquement. Le catalogue ne se
+    stabilisait jamais, et deux renommages parasites masquaient les vrais
+    dans le compte rendu.
+    """
+
+    def test_l_espacement_seul_ne_fait_pas_un_nouveau_nom(self):
+        from app.services.catalog_fr import _meme_nom
+        self.assertTrue(_meme_nom("Mr 3 (Galdino)", "Mr 3(Galdino)"))
+        self.assertTrue(_meme_nom("Luffy  ", " Luffy"))
+
+    def test_la_casse_reste_un_vrai_changement(self):
+        """« ENER » corrigé en « Ener » doit s'appliquer : ignorer la casse
+        ici gèlerait de vraies corrections."""
+        from app.services.catalog_fr import _meme_nom
+        self.assertFalse(_meme_nom("ENER", "Ener"))
+
+    def test_un_nom_different_reste_different(self):
+        from app.services.catalog_fr import _meme_nom
+        self.assertFalse(_meme_nom("Shanks", "Barbe Blanche"))
+        self.assertFalse(_meme_nom("Hive", None))
+
+    def test_le_catalogue_se_stabilise(self):
+        """Le test qui compte : deux passages de suite, et le second ne doit
+        plus rien renommer."""
+        moteur = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(bind=moteur)
+        db = sessionmaker(bind=moteur)()
+        try:
+            importer_catalogue(db, [
+                {"card_code": "OP03-001", "display_name": "Mr 3 (Galdino)"},
+            ])
+            from app.collectors.cardlist_fr import CarteFR
+            source = [CarteFR(card_code="OP03-001", display_name="Mr 3(Galdino)",
+                              rarity="C", card_type="Personnage",
+                              series_name="OP03", image_url=None,
+                              rang_variante=0)]
+            premier = appliquer_noms_francais(db, source)
+            second = appliquer_noms_francais(db, source)
+            self.assertEqual(premier["renommees"], 0, premier.get("exemples"))
+            self.assertEqual(second["renommees"], 0, second.get("exemples"))
+        finally:
+            db.close()

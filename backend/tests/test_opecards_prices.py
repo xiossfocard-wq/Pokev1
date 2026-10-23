@@ -367,23 +367,69 @@ class TestDeuxPrixPourUneMemeFiche(unittest.TestCase):
         self.assertEqual(self.retenu(), 12.0)
         self.assertEqual(rapport["raretes_opposees"], 1)
 
-    def test_sans_rarete_lisible_le_plus_bas_est_retenu(self):
-        """Les deux erreurs ne coûtent pas la même chose : un prix de
-        référence trop HAUT invente une affaire et fait payer, trop BAS il
-        fait seulement rater une occasion."""
+    def test_sans_rarete_lisible_aucun_prix_n_est_retenu(self):
+        """Retenir le plus bas semblait prudent. Appliqué plusieurs fois de
+        suite, ça pousse le prix au plancher — 0,02 € pour une carte qui en
+        vaut 600 — et ce chiffre retire la carte du radar aussi sûrement
+        qu'une absence de prix, sans le dire.
+
+        Une fiche sans prix, elle, se compte dans le bilan et se voit."""
         rapport = appliquer_prix(self.db, [self.prix(850.0, None),
                                            self.prix(12.0, None)])
-        self.assertEqual(self.retenu(), 12.0)
+        self.assertIsNone(self.retenu())
         self.assertEqual(len(rapport["conflits"]), 1)
-        self.assertEqual(rapport["conflits"][0]["retenu"], 12.0)
+
+    def test_un_prix_devenu_inconciliable_est_efface(self):
+        """Le cas qui compte pour réparer l'existant : la fiche portait un
+        prix écrit par un rapprochement fautif, et les candidatures ne
+        permettent plus de le confirmer."""
+        fiche = self.db.query(MarketCardPrice).filter_by(
+            card_code="OP17-022").one()
+        fiche.price_eur, fiche.variation_7d_eur = 0.75, -2.0
+        self.db.commit()
+        appliquer_prix(self.db, [self.prix(850.0, None), self.prix(12.0, None)])
+        self.assertIsNone(self.retenu())
+        self.assertIsNone(self.db.query(MarketCardPrice).filter_by(
+            card_code="OP17-022").one().variation_7d_eur)
 
     def test_le_conflit_est_rendu_pas_tu(self):
         """Une protection qui joue en silence empêche de voir que la source
         a changé de forme."""
         rapport = appliquer_prix(self.db, [self.prix(12.0, None),
                                            self.prix(850.0, None)])
-        self.assertEqual(self.retenu(), 12.0)
-        self.assertEqual(rapport["conflits"][0]["concurrents"], [12.0, 850.0])
+        self.assertEqual(rapport["conflits"][0]["montants"], [12.0, 850.0])
+
+    def test_le_conflit_joint_l_etat_brut_des_candidatures(self):
+        """Sans le nom et la rareté tels que la SOURCE les écrit, on ne peut
+        que supposer pourquoi deux cartes se confondent. Avec, on le
+        constate."""
+        # La fiche n'a pas de rarete : le controle ne peut pas trancher, et
+        # c'est exactement la situation ou l'etat brut est necessaire. Les
+        # deux candidatures, elles, en portent une — ce qui dit que la
+        # distinction existe a la source et manque au catalogue.
+        fiche = self.db.query(MarketCardPrice).filter_by(
+            card_code="OP17-022").one()
+        fiche.rarity = None
+        self.db.commit()
+        rapport = appliquer_prix(self.db, [self.prix(850.0, "SEC"),
+                                           self.prix(12.0, "C")])
+        candidats = rapport["conflits"][0]["candidats"]
+        self.assertEqual(candidats[0]["prix"], 850.0)
+        self.assertEqual(candidats[0]["rarete"], "SEC")
+        self.assertEqual(candidats[1]["rarete"], "C")
+        self.assertIsNone(rapport["conflits"][0]["rarete_fiche"])
+
+    def test_l_ecart_signale_compare_a_ce_qui_est_retenu(self):
+        """Signaler un écart vers une valeur qu'on vient soi-même d'écarter
+        enverrait vérifier un chiffre jamais appliqué."""
+        fiche = self.db.query(MarketCardPrice).filter_by(
+            card_code="OP17-022").one()
+        fiche.price_eur = 12.0
+        self.db.commit()
+        rapport = appliquer_prix(self.db, [self.prix(850.0, "SEC"),
+                                           self.prix(12.5, "C")])
+        self.assertEqual(self.retenu(), 12.5)
+        self.assertEqual(rapport["ecarts_suspects"], [])
 
     def test_un_rafraichissement_normal_passe(self):
         """Le garde-fou ne doit pas bloquer la mise à jour ordinaire d'un

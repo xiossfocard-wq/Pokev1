@@ -106,10 +106,13 @@ def _job_sources_du_jour():
                             rapport["raretes_opposees"],
                             rapport["sans_prix_restantes"])
                 for conflit in rapport["conflits"][:10]:
-                    logger.warning("Prix : %s reclame a %s EUR ET %s EUR, "
-                                   "le plus bas retenu", conflit["code"],
-                                   conflit["concurrents"][1],
-                                   conflit["concurrents"][0])
+                    logger.warning(
+                        "Prix : %s rang %s laisse sans prix, revendique par %s "
+                        "(fiche %s / candidats %s)",
+                        conflit["code"], conflit.get("rang", 0),
+                        conflit["montants"],
+                        conflit.get("rarete_fiche") or "rarete inconnue",
+                        [(c["rarete"], c["nom"]) for c in conflit.get("candidats") or []])
 
                 # Un prix mal rapproche par une version precedente peut
                 # n'avoir plus aucune candidature legitime : plus rien ne

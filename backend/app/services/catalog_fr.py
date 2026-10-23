@@ -25,6 +25,7 @@ que celle que l'enrichissement reconstruit a partir du code, et elle evite
 un aller-retour reseau par carte.
 """
 import logging
+import re
 from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
@@ -37,6 +38,20 @@ from app.services.card_themes import (
     cle_de_recherche, encoder_themes, themes_de_la_carte,
 )
 from app.services.catalog_import import slug_de_nom
+
+
+def _meme_nom(a: Optional[str], b: Optional[str]) -> bool:
+    """« Mr 3 (Galdino) » et « Mr 3(Galdino) » sont le même nom.
+
+    Sert à décider s'il faut RÉÉCRIRE un nom, pas à rapprocher des cartes.
+    Deux libellés qui ne diffèrent que par l'espacement désignent la même
+    carte : les réécrire l'un en l'autre ne corrige rien et, quand deux
+    fiches d'un même code sont en jeu, les fait permuter à chaque passage.
+
+    La casse n'est PAS ignorée : « ENER » corrigé en « Ener » est un vrai
+    changement, et doit s'appliquer.
+    """
+    return re.sub(r"\s+", "", a or "") == re.sub(r"\s+", "", b or "")
 
 logger = logging.getLogger(__name__)
 
@@ -108,16 +123,22 @@ def appliquer_noms_francais(db: Session, cartes: List[CarteFR]) -> dict:
             continue
 
         ancien = cible.display_name
-        change = ancien != nom
+        change = not _meme_nom(ancien, nom)
 
         if change:
             if len(exemples) < 25:
                 exemples.append({"code": code, "avant": ancien, "apres": nom})
             renommees += 1
+            # Seulement si ça change VRAIMENT. Réécrire un nom identique à
+            # l'espacement près faisait permuter deux fiches d'un même code
+            # à chaque passage — « Mr 3 (Galdino) » et « Mr 3(Galdino) »
+            # échangeaient leur nom indéfiniment, parce que leurs deux
+            # noms se réduisent au même repère et que rien ne départageait
+            # l'appariement.
+            cible.display_name = nom
         else:
             inchangees += 1
 
-        cible.display_name = nom
         cible.name_slug = slug
         cible.series_name = carte.series_name or cible.series_name
         cible.rarity = carte.rarity or cible.rarity

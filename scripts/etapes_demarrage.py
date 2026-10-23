@@ -261,9 +261,21 @@ def charger_les_prix(base: str) -> None:
     # fiche de la commune — et le nombre doit rester petit.
     if opposees:
         print(f"   {opposees} prix écarté(s) : rareté différente de la fiche visée")
-    for c in conflits[:5]:
-        print(f"     {c['code']} réclamé à {c['concurrents'][1]}€ ET "
-              f"{c['concurrents'][0]}€ — le plus bas retenu")
+    # Le détail BRUT des candidatures, pas seulement leur nombre. Ce qui
+    # manque pour corriger la cause, c'est de voir le nom et la rareté tels
+    # que la source les écrit : c'est ça qui dit quelle distinction le
+    # rapprochement a manquée, au lieu de la supposer.
+    if conflits:
+        print(f"   {len(conflits)} fiche(s) laissée(s) sans prix : plusieurs prix")
+        print("   inconciliables les revendiquaient. Détail, pour diagnostic :")
+        for c in conflits[:4]:
+            print(f"     {c['code']} rang {c.get('rang', 0)} — fiche "
+                  f"« {c['nom']} » [{c.get('rarete_fiche') or 'rareté inconnue'}]")
+            for cand in c.get("candidats") or []:
+                print(f"        {cand['prix']}€  {cand['rarete'] or '—'}  "
+                      f"« {cand['nom']} »")
+        if len(conflits) > 4:
+            print(f"     … et {len(conflits) - 4} autre(s)")
     for e in suspects[:5]:
         print(f"     écart ×{e['facteur']} sur {e['code']} "
               f"({e['avant']}€ → {e['apres']}€) — à vérifier")

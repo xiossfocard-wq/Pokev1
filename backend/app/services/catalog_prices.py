@@ -26,6 +26,7 @@ deuxième illustration alternative.
 """
 import logging
 import re
+from collections import defaultdict
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -124,14 +125,23 @@ def appliquer_prix(db: Session, prix: List[PrixCarte],
     valent les cartes, pas lesquelles existent. La créer ici donnerait une
     fiche sans série ni visuel, construite à partir d'un nom de boutique —
     exactement le genre de demi-fiche qui pollue un catalogue.
+
+    EN DEUX TEMPS, ET POURQUOI
+    --------------------------
+    On rassemble d'abord TOUTES les candidatures de chaque fiche, et on
+    tranche ensuite. Écrire au fil de la lecture paraissait plus direct,
+    mais ça rendait le résultat dépendant de l'ordre de la page : chaque
+    candidature écrasait la précédente, et la survivante était la dernière
+    lue. Un tri d'affichage décidait donc d'un prix de référence.
+
+    Rassembler d'abord permet aussi de VOIR qu'une fiche est revendiquée
+    par plusieurs prix inconciliables — ce qu'une écriture au fil de l'eau
+    ne peut constater qu'après avoir déjà écrit.
     """
     chiffrees, inchangees, sans_fiche, raretes_opposees = 0, 0, 0, 0
     suspects: List[dict] = []
     exemples: List[dict] = []
     conflits: List[dict] = []
-    # Ce qui a déjà été écrit pendant CE passage, pour repérer deux prix qui
-    # se disputent la même fiche.
-    ecrites: Dict[tuple, float] = {}
 
     index: Dict[tuple, MarketCardPrice] = {}
     for ligne in db.query(MarketCardPrice).all():
@@ -141,9 +151,11 @@ def appliquer_prix(db: Session, prix: List[PrixCarte],
         # la chiffrer au hasard.
         index.setdefault(cle, ligne)
 
+    # --- TEMPS 1 : qui revendique quelle fiche ? ---------------------------
+    candidatures: Dict[tuple, List[PrixCarte]] = defaultdict(list)
     for carte in prix:
         code = code_canonique(carte.card_code)
-        if not code:
+        if not code or carte.price_eur is None:
             continue
 
         cle = (code.upper(), carte.rang_variante)
@@ -154,47 +166,75 @@ def appliquer_prix(db: Session, prix: List[PrixCarte],
 
         # LA RARETE DEPARTAGE.
         # Un même code désigne plusieurs cartes — la commune à 12 € et son
-        # illustration manga à 850 — et la source des prix les présente
-        # parfois sous le même nom, donc sous le même rang. Sans ce
-        # contrôle, la dernière lue écrase la première et le prix qui
-        # survit est celui que l'ordre de la page a mis en dernier : la
-        # fiche de la commune hérite de 850 €, l'application annonce une
-        # affaire en or sur une annonce à 30 €, et rien ne signale l'erreur
-        # avant l'achat. La rareté, elle, est lisible des deux côtés.
+        # illustration manga à 850 — et la source les présente parfois sous
+        # le même nom, donc sous le même rang. La rareté, elle, est lisible
+        # des deux côtés : « C » et « SEC » ne sont pas la même carte.
         rarete_fiche = code_rarete(cible.rarity)
         rarete_prix = code_rarete(carte.rarity)
         if rarete_fiche and rarete_prix and rarete_fiche != rarete_prix:
             raretes_opposees += 1
             continue
 
-        # FILET DE SECURITE, quand la rareté manque d'un côté.
-        # Deux prix très différents pour une même fiche : on ne sait pas
-        # lequel est le bon, et les deux erreurs ne coûtent pas la même
-        # chose. Un prix de référence trop HAUT invente une affaire qui
-        # n'existe pas et fait payer ; trop BAS, il fait seulement rater une
-        # occasion. Face à l'ignorance, on penche donc vers le bas, et on
-        # le dit.
-        precedent = ecrites.get(cle)
-        if precedent is not None:
-            haut = max(precedent, carte.price_eur)
-            bas = min(precedent, carte.price_eur)
-            if bas > 0 and haut / bas >= ecart_suspect:
-                conflits.append({
-                    "code": code, "nom": cible.display_name,
-                    "concurrents": [round(bas, 2), round(haut, 2)],
-                    "retenu": round(bas, 2),
-                })
-                if carte.price_eur > precedent:
-                    continue
+        candidatures[cle].append(carte)
 
+    # --- TEMPS 2 : trancher, fiche par fiche -------------------------------
+    for cle, retenues in candidatures.items():
+        cible = index[cle]
         ancien = cible.price_eur
+        montants = sorted(round(c.price_eur, 2) for c in retenues)
+        bas, haut = montants[0], montants[-1]
+
+        # PLUSIEURS PRIX INCONCILIABLES POUR UNE SEULE FICHE.
+        # On ne tranche pas, et on n'en garde AUCUN. Retenir le plus bas
+        # semblait prudent — une erreur par le bas ne fait rater qu'une
+        # occasion — mais appliquée plusieurs fois de suite elle pousse le
+        # prix au plancher : 0,02 € pour une carte qui en vaut 600. Ce
+        # chiffre n'est pas prudent, il est faux, et il retire la carte du
+        # radar aussi sûrement qu'une absence de prix — sans le dire.
+        #
+        # Une fiche sans prix, elle, se compte dans le bilan et se voit.
+        if bas > 0 and haut / bas >= ecart_suspect:
+            conflits.append({
+                "code": cle[0],
+                "rang": cle[1],
+                "nom": cible.display_name,
+                "rarete_fiche": cible.rarity,
+                "montants": montants,
+                # L'ETAT BRUT DES CANDIDATURES, pour pouvoir constater
+                # POURQUOI elles se confondent au lieu de le supposer :
+                # c'est le nom et la rareté tels que la source les écrit
+                # qui diront quelle distinction le rapprochement a manquée.
+                "candidats": [
+                    {"nom": c.display_name, "rarete": c.rarity,
+                     "prix": round(c.price_eur, 2), "lien": c.detail_url}
+                    for c in sorted(retenues, key=lambda c: -c.price_eur)
+                ][:4],
+            })
+            if ancien is not None:
+                cible.price_eur = None
+                cible.variation_7d_eur = None
+                cible.source = SOURCE
+                cible.updated_at = datetime.utcnow()
+            continue
+
+        # Candidatures concordantes : la plus basse, par simple
+        # déterminisme — elles sont à moins d'un facteur « ecart_suspect »
+        # l'une de l'autre, donc le choix ne change rien au fond, mais il
+        # ne doit pas dépendre de l'ordre de lecture.
+        carte = min(retenues, key=lambda c: c.price_eur)
+
+        # L'ECART est mesuré entre l'ancien prix et celui RETENU — pas
+        # entre deux candidatures du même passage. Signaler un écart qu'on
+        # vient soi-même d'écarter enverrait vérifier un chiffre qui n'a
+        # jamais été appliqué.
         if ancien is not None and ancien > 0:
-            rapport = max(carte.price_eur / ancien, ancien / max(carte.price_eur, 0.01))
-            if rapport >= ecart_suspect:
+            facteur = max(carte.price_eur / ancien,
+                          ancien / max(carte.price_eur, 0.01))
+            if facteur >= ecart_suspect:
                 suspects.append({
-                    "code": code, "nom": cible.display_name,
+                    "code": cle[0], "nom": cible.display_name,
                     "avant": round(ancien, 2), "apres": round(carte.price_eur, 2),
-                    "facteur": round(rapport, 1),
+                    "facteur": round(facteur, 1),
                 })
 
         if ancien == carte.price_eur:
@@ -203,7 +243,7 @@ def appliquer_prix(db: Session, prix: List[PrixCarte],
             chiffrees += 1
             if len(exemples) < 25:
                 exemples.append({
-                    "code": code, "nom": cible.display_name,
+                    "code": cle[0], "nom": cible.display_name,
                     "avant": round(ancien, 2) if ancien is not None else None,
                     "apres": round(carte.price_eur, 2),
                 })
@@ -214,7 +254,6 @@ def appliquer_prix(db: Session, prix: List[PrixCarte],
         cible.updated_at = datetime.utcnow()
         if carte.rarity and not cible.rarity:
             cible.rarity = carte.rarity
-        ecrites[cle] = carte.price_eur
 
     db.commit()
 
@@ -236,8 +275,9 @@ def appliquer_prix(db: Session, prix: List[PrixCarte],
         # Un prix ECARTE parce qu'il vise une carte de rarete differente.
         # C'est une protection qui a joue, pas une panne.
         "raretes_opposees": raretes_opposees,
-        # Deux prix se disputaient une meme fiche sans que la rarete puisse
-        # les departager : le plus BAS a ete retenu, et le cas est rendu.
+        # Des prix inconciliables revendiquaient une meme fiche : AUCUN n'a
+        # ete retenu, et l'etat brut des candidatures est joint pour qu'on
+        # puisse voir quelle distinction le rapprochement a manquee.
         "conflits": conflits,
         "exemples": exemples,
         # Les ecarts enormes sont RENDUS, pas tus. Ils sont souvent reels sur
