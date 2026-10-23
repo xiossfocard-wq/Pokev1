@@ -330,7 +330,7 @@ export default function DashboardPage() {
 
         <footer className="mt-12 space-y-1 border-t border-ink-800 pt-4 text-center text-[11px] text-ink-600">
           <p>Scores de qualité = estimations automatiques, pas un grading professionnel.</p>
-          <p>Prix de référence : ZebraDex (marché FR). Vérifie toujours l&apos;annonce et les photos avant d&apos;acheter.</p>
+          <p>Prix de référence : OPECards (marché FR, relevé Cardmarket). Vérifie toujours l&apos;annonce et les photos avant d&apos;acheter.</p>
         </footer>
       </main>
     </>

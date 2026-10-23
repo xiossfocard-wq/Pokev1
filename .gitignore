@@ -23,3 +23,6 @@ next-env.d.ts
 .DS_Store
 .vscode/
 *.log
+
+# Captures d'ecran produites a la demande, pas une source du projet.
+apercu/

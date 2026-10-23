@@ -142,9 +142,10 @@ export default function ExplorerPage() {
       {catalogueVide && (
         <p className="mb-5 rounded-md border border-ember-500/40 bg-ember-500/10 p-3 text-xs leading-relaxed text-ember-400">
           Le catalogue est encore vide. Ce n&apos;est pas une panne : il se
-          remplit série par série depuis ZebraDex, au rythme volontairement
-          lent imposé à la source. Lance une synchronisation depuis les
-          réglages, puis reviens.
+          charge en une fois depuis l&apos;instantané livré avec le projet,
+          puis les noms français et les prix se posent dessus, série par
+          série. Lance <code>scripts/demarrer.sh</code> (ou{" "}
+          <code>demarrer.ps1</code> sous Windows), puis reviens.
         </p>
       )}
 

@@ -63,7 +63,7 @@ export default function StatStrip({ listings, indexStatus, dealThreshold, loadin
       label: "Index des prix",
       value: indexStatus ? `${Math.round(indexStatus.progress_percent)} %` : null,
       hint: indexStatus
-        ? `${indexStatus.cards_in_index.toLocaleString("fr-FR")} cartes · ${indexStatus.series_synced}/${indexStatus.series_known} séries`
+        ? `${indexStatus.cards_priced.toLocaleString("fr-FR")} / ${indexStatus.cards_in_index.toLocaleString("fr-FR")} cartes`
         : "",
       tone: indexStatus && indexStatus.progress_percent >= 99 ? "text-moss-400" : "text-ember-400",
       live: false,

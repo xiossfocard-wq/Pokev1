@@ -38,11 +38,16 @@ export interface PriceDetail {
 }
 
 export interface PriceIndexStatus {
+  cards_in_index: number;
+  cards_priced: number;
+  cards_unpriced: number;
+  progress_percent: number;
+  // Anciens noms, conservés le temps que les appelants migrent. Ils ne
+  // décrivent plus une synchronisation de séries — elle n'existe plus —
+  // mais le même décompte exprimé en cartes.
   series_known: number;
   series_synced: number;
   series_pending: number;
-  cards_in_index: number;
-  progress_percent: number;
 }
 
 export interface Listing {

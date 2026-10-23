@@ -723,14 +723,37 @@ def _median_row(rows: List[MarketCardPrice]) -> MarketCardPrice:
 
 
 def index_stats(db: Session) -> dict:
-    total_series = db.query(ZebraDexSeriesState).count()
-    synced = db.query(ZebraDexSeriesState).filter(
-        ZebraDexSeriesState.last_synced_at.isnot(None)
-    ).count()
+    """Avancement de l'index des prix : combien de fiches sont chiffrees.
+
+    CE QUE CETTE FONCTION MESURAIT AVANT, ET POURQUOI C'ETAIT FAUX
+    --------------------------------------------------------------
+    Elle comptait les series synchronisees dans ZebraDexSeriesState. Or
+    ZebraDex ne couvre pas One Piece et a ete retire du cycle : plus rien
+    ne remplit cette table. L'avancement valait donc 0 % en permanence, sur
+    « 0/0 series », et le tableau de bord l'affichait en orange — c'est-a-dire
+    qu'il signalait une panne alors que le catalogue etait chiffre a moitie.
+
+    Un indicateur qui mesure une source disparue est pire qu'absent : il
+    detourne l'attention de ce qui va vraiment mal.
+
+    CE QU'ELLE MESURE MAINTENANT
+    ----------------------------
+    La seule chose qui compte pour l'utilisateur : la part des cartes du
+    catalogue qui ont un prix de reference, donc pour lesquelles une marge
+    peut etre calculee. Sans prix, une annonce est identifiee mais pas jugee.
+    """
+    total = db.query(MarketCardPrice).count()
+    chiffrees = (db.query(MarketCardPrice)
+                 .filter(MarketCardPrice.price_eur.isnot(None)).count())
     return {
-        "series_known": total_series,
-        "series_synced": synced,
-        "series_pending": total_series - synced,
-        "cards_in_index": db.query(MarketCardPrice).count(),
-        "progress_percent": round(100 * synced / total_series, 1) if total_series else 0.0,
+        "cards_in_index": total,
+        "cards_priced": chiffrees,
+        "cards_unpriced": total - chiffrees,
+        "progress_percent": round(100 * chiffrees / total, 1) if total else 0.0,
+        # Conserves pour ne pas casser les appelants qui les lisent encore.
+        # Ils ne decrivent plus une synchronisation de series, qui n'existe
+        # plus, mais le meme decompte exprime en cartes.
+        "series_known": total,
+        "series_synced": chiffrees,
+        "series_pending": total - chiffrees,
     }
