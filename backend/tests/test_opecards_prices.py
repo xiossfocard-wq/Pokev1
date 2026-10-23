@@ -567,14 +567,36 @@ class TestVariantesQuiNeDisentPasLeurRang(unittest.TestCase):
         self.assertEqual(rang_de_version("Ener (Version 3)"), ("Ener", 2))
         self.assertEqual(rang_de_version("Ener (Version 2)"), ("Ener", 1))
 
-    def test_la_forme_sans_indice_n_est_pas_prise_pour_l_ordinaire(self):
-        """Le défaut exact : « (Manga) » tombait au rang 0."""
+    def test_les_mentions_mesurees_recoivent_leur_rang(self):
+        """Appariement établi en comparant les images des deux sources :
+        relevé du 23/10/2026 sur OP17, cinq codes, distance 0 partout."""
+        self.assertEqual(rang_de_version("Shanks (Parallèle)"), ("Shanks", 1))
+        self.assertEqual(rang_de_version("Shanks (Manga)"), ("Shanks", 2))
+
+    def test_une_mention_NON_mesuree_reste_sans_rang(self):
+        """Le défaut exact qu'on corrigeait : une mention inconnue tombait
+        au rang 0, donc sur l'impression ordinaire. Elle doit maintenant ne
+        se rattacher à rien, en attendant d'être mesurée."""
         from app.collectors.opecards_prices import VARIANTE_SANS_RANG
-        for nom in ("Shanks (Manga)", "Shanks (Parallèle)",
-                    "Monkey D. Luffy (Super Leader Parallèle)",
+        for nom in ("Monkey D. Luffy (Super Leader Parallèle)",
                     "Portgas D. Ace (Alternative)"):
             with self.subTest(nom=nom):
                 self.assertEqual(rang_de_version(nom)[1], VARIANTE_SANS_RANG)
+
+    def test_le_rapprochement_est_EXACT_et_non_par_fragment(self):
+        """« Super Leader Parallèle » CONTIENT « Parallèle » mais n'est pas
+        la première alternative. Un rapprochement par fragment lui donnerait
+        le rang 1 et poserait 600 € sur une carte qui en vaut 35."""
+        from app.collectors.opecards_prices import VARIANTE_SANS_RANG
+        self.assertEqual(
+            rang_de_version("Monkey D. Luffy (Super Leader Parallèle)")[1],
+            VARIANTE_SANS_RANG)
+
+    def test_l_accentuation_et_la_casse_ne_font_pas_perdre_le_rang(self):
+        for nom in ("Shanks (Parallèle)", "Shanks (Parallele)",
+                    "Shanks (PARALLELE)"):
+            with self.subTest(nom=nom):
+                self.assertEqual(rang_de_version(nom)[1], 1)
 
     def test_une_parenthese_qui_fait_partie_du_nom_reste_le_nom(self):
         """« Mr 3 (Galdino) » est une carte, pas une variante. La confondre
@@ -635,11 +657,23 @@ class TestLeDefautObserveSurOP17(unittest.TestCase):
         self.assertEqual(fiche.price_eur, 0.75)
         self.assertEqual(rapport["conflits"], [])
 
-    def test_les_variantes_sont_mises_de_cote_pas_appliquees(self):
+    def test_chaque_variante_va_sur_SA_fiche(self):
+        """Ce que la mesure a débloqué : les deux alternatives ont un rang,
+        donc un prix, au lieu de rester vides."""
+        self.db.add_all([
+            MarketCardPrice(card_code="OP17-022", display_name="Shanks (Parallèle 1)",
+                            name_slug="shanks-parallele-1", rarity="SR"),
+            MarketCardPrice(card_code="OP17-022", display_name="Shanks (Parallèle 2)",
+                            name_slug="shanks-parallele-2", rarity="SR"),
+        ])
+        self.db.commit()
+        from app.collectors.cardlist_fr import rang_de_parallele
         rapport = self.appliquer()
-        self.assertEqual(rapport["variantes_sans_rang"], 2)
-        marques = {v["variante"] for v in rapport["variantes_vues"]}
-        self.assertEqual(marques, {"Manga", "Parallèle"})
+        self.assertEqual(rapport["variantes_sans_rang"], 0)
+        par_rang = {rang_de_parallele(l.name_slug): l.price_eur
+                    for l in self.db.query(MarketCardPrice)
+                    .filter_by(card_code="OP17-022").all()}
+        self.assertEqual(par_rang, {0: 0.75, 1: 13.0, 2: 850.0})
 
     def test_le_prix_de_850_n_atterrit_sur_aucune_fiche(self):
         """Le test qui compte vraiment."""

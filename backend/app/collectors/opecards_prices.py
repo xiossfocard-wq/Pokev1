@@ -48,6 +48,7 @@ Une carte = un bloc `<div class="item ..." data-item="83838">` :
 import html
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
@@ -177,6 +178,34 @@ _MARQUEUR = re.compile(
 # de reussir sur la mauvaise carte.
 VARIANTE_SANS_RANG = -1
 
+# RANG DE CHAQUE MENTION, ETABLI PAR MESURE ET NON PAR HYPOTHESE.
+#
+# Les mentions sans indice ont longtemps ete laissees sans rang, faute de
+# savoir laquelle designait quelle alternative. La liste officielle ne le dit
+# pas : ses blocs « _p1 » et « _p2 » sont identiques en code, rarete, type et
+# nom. Seule l'image differe.
+#
+# Les images ont donc ete comparees — voir services/appariement_variantes.py
+# et la route /api/admin/diagnostic-variantes. Releve du 23/10/2026 sur la
+# serie OP17, cinq codes (OP17-001, -005, -006, -020, -022) :
+#
+#     rang 0 <-> sans mention       distance 0
+#     rang 1 <-> « Parallele »      distance 0     sur 5 codes sur 5
+#     rang 2 <-> « Manga »          distance 0     sur 2 codes sur 2
+#
+# Distance nulle partout, marges de 12 a 62, aucun appariement incertain.
+# Ce ne sont pas des illustrations qui se ressemblent : ce sont les memes.
+#
+# L'EGALITE EST EXACTE, PAS PAR PREFIXE. « Super Leader Parallele » contient
+# « Parallele » mais n'est PAS la premiere alternative — un rapprochement par
+# fragment lui donnerait le rang 1 et poserait 600 EUR sur une carte qui en
+# vaut 35. Une mention absente de cette table reste sans rang, donc sans
+# prix : c'est la bonne reponse jusqu'a ce qu'elle soit mesuree a son tour.
+RANGS_PAR_MENTION = {
+    "parallele": 1,
+    "manga": 2,
+}
+
 # Le menu des series, groupe par langue. Seul le groupe francais nous
 # interesse : il dit quelles series existent VRAIMENT en francais.
 _GROUPE = re.compile(
@@ -240,9 +269,10 @@ def rang_de_version(nom: str) -> tuple:
     meme numerotation que les suffixes « _p1 », « _p2 » de la liste
     officielle, ce qui permet de rapprocher les deux sources.
 
-    Rend VARIANTE_SANS_RANG quand le nom porte bien une mention de variante
-    mais sans indice — « (Manga) », « (Parallele) ». Mieux vaut ne rattacher
-    ce prix a rien que de le poser sur l'impression ordinaire.
+    Les mentions sans indice — « (Manga) », « (Parallele) » — sont traduites
+    par RANGS_PAR_MENTION, etabli en comparant les images des deux sources.
+    Une mention qui n'y figure pas rend VARIANTE_SANS_RANG : mieux vaut ne
+    rattacher ce prix a rien que de le poser sur la mauvaise impression.
     """
     texte = (nom or "").strip()
     trouve = _VERSION.search(texte)
@@ -250,8 +280,23 @@ def rang_de_version(nom: str) -> tuple:
         return _VERSION.sub("", texte).strip(), max(int(trouve.group("rang")) - 1, 0)
     marque = _MARQUEUR.search(texte)
     if marque:
-        return _MARQUEUR.sub("", texte).strip(), VARIANTE_SANS_RANG
+        rang = RANGS_PAR_MENTION.get(cle_de_mention(marque.group("marque")),
+                                     VARIANTE_SANS_RANG)
+        return _MARQUEUR.sub("", texte).strip(), rang
     return texte, 0
+
+
+def cle_de_mention(marque: Optional[str]) -> str:
+    """« Parallèle », « PARALLELE », « Parallele » -> « parallele ».
+
+    Les accents sont retires et la casse ignoree : la mention est un libelle
+    d'affichage, et une difference d'accentuation entre deux pages ne doit
+    pas faire perdre un rapprochement. L'egalite reste EXACTE sur le
+    resultat, jamais par fragment.
+    """
+    texte = unicodedata.normalize("NFKD", (marque or "").strip().lower())
+    sans_accents = "".join(c for c in texte if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", sans_accents).strip()
 
 
 def marqueur_de_variante(nom: str) -> Optional[str]:
