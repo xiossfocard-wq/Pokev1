@@ -1,0 +1,72 @@
+name: Sonde du déploiement
+
+# Dit QUELLE VERSION du backend tourne sur l'hébergement, sans rien modifier.
+#
+# POURQUOI PAR GITHUB
+# -------------------
+# L'environnement de développement n'atteint pas l'hébergeur (politique
+# réseau), et l'adresse du backend n'est connue que du secret BACKEND_URL.
+# Un workflow, lui, a les deux. On lui fait donc poser les questions, et on
+# lit les réponses dans son journal.
+#
+# LECTURE SEULE
+# -------------
+# Uniquement des GET : santé, liste des routes, avancement de l'index des
+# prix. Aucune route qui écrit, aucun chargement, aucun balayage. Rien de
+# sensible n'est affiché — la santé rend {"status": "ok"}, la liste des routes
+# est publique par nature, et GitHub masque l'adresse secrète dans le
+# journal.
+#
+# Les routes ajoutées au fil du travail servent de repères de version : leur
+# présence ou leur absence dit si le serveur tourne sur le code récent ou sur
+# une version antérieure au catalogue français.
+
+on:
+  push:
+    branches: [claude/one-piece-tcg-app-1lvm2y]
+    paths: [".github/workflows/sonde-deploiement.yml"]
+  workflow_dispatch: {}
+
+jobs:
+  sonde:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Interroger le backend déployé
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+        run: |
+          if [ -z "$BACKEND_URL" ]; then
+            echo "::notice::Secret BACKEND_URL absent : aucun backend à sonder."
+            exit 0
+          fi
+
+          echo "=== santé (réveille le serveur s'il dort) ==="
+          curl -sS --max-time 120 --retry 2 --retry-delay 15 "$BACKEND_URL/api/health"
+          echo
+
+          echo "=== version : repères présents ou absents ==="
+          curl -sS --max-time 60 "$BACKEND_URL/openapi.json" -o routes.json || true
+          python3 - <<'PY'
+          import json
+          try:
+              chemins = set(json.load(open("routes.json")).get("paths", {}))
+          except Exception as erreur:
+              print("liste des routes illisible :", erreur)
+              raise SystemExit(0)
+          reperes = [
+              ("/api/admin/load-opcg-catalog",      "catalogue de base"),
+              ("/api/admin/load-fr-names",          "noms français"),
+              ("/api/admin/load-fr-prices",         "prix OPECards"),
+              ("/api/admin/fr-series",              "progression série par série"),
+              ("/api/admin/sweep-fr-prices",        "balayage des prix périmés"),
+              ("/api/admin/diagnostic-variantes",   "mesure des variantes"),
+          ]
+          print(f"{len(chemins)} routes publiées")
+          for chemin, libelle in reperes:
+              print(f"  {'OUI' if chemin in chemins else 'non'}  {libelle:32} {chemin}")
+          PY
+
+          echo "=== catalogue ==="
+          curl -sS --max-time 60 "$BACKEND_URL/api/admin/price-index-status"
+          echo
