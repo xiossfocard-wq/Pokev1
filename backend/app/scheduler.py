@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -142,6 +142,61 @@ def _job_sources_du_jour():
         db.close()
 
 
+def _job_amorcage():
+    """Remplit un serveur neuf sans que personne n'intervienne.
+
+    Sur un hebergement, aucun script de demarrage ne tourne : une version
+    fraichement deployee servirait un catalogue vide jusqu'a la nuit, et
+    meme la nuit venue, la tache de 02:00 ne charge que les noms et les
+    prix — elle suppose le catalogue de base deja la. Personne ne taperait
+    les commandes qui manquent.
+
+    QUAND CETTE TACHE AGIT
+    ----------------------
+    Le catalogue de base est charge s'il ne contient AUCUNE carte One Piece
+    — reconnaissable a sa langue, que seuls les chargements One Piece
+    renseignent. Les noms et les prix le sont si AUCUN prix de reference
+    n'est encore en base. Sinon elle ne fait rien : la relancer a chaque
+    reveil d'un serveur gratuit ne coute qu'un comptage.
+
+    Elle se repare d'elle-meme : un chargement interrompu par une mise en
+    veille laisse la base sans prix, et le reveil suivant le reprend.
+    """
+    from app.collectors import opcg_dataset
+    from app.models import MarketCardPrice
+    from app.services.catalog_prices import SOURCE as SOURCE_PRIX
+
+    # Ouvrir la session DANS la garde : une base injoignable au reveil est
+    # justement le cas ou cette tache doit se taire et laisser le serveur
+    # repondre, plutot que de faire remonter l'erreur.
+    try:
+        db = SessionLocal()
+    except Exception:  # noqa: BLE001
+        logger.exception("Amorcage : base injoignable, nouvel essai au prochain demarrage")
+        return
+    try:
+        one_piece = (db.query(MarketCardPrice)
+                     .filter(MarketCardPrice.language.isnot(None)).count())
+        if not one_piece:
+            rapport = opcg_dataset.charger_catalogue(db)
+            logger.info("Amorcage : catalogue de base charge (%s carte(s), %s)",
+                        rapport.get("importees"), rapport.get("origine"))
+        chiffrees = (db.query(MarketCardPrice)
+                     .filter(MarketCardPrice.source == SOURCE_PRIX).count())
+    except Exception:  # noqa: BLE001 - un amorcage rate ne doit pas tuer le serveur
+        logger.exception("Amorcage : chargement du catalogue de base echoue")
+        return
+    finally:
+        db.close()
+
+    if chiffrees:
+        logger.info("Amorcage : %d prix de reference deja en base, rien a faire",
+                    chiffrees)
+        return
+    logger.info("Amorcage : aucun prix de reference, chargement des noms et des prix")
+    _job_sources_du_jour()
+
+
 def _job_images():
     """Complete le visuel des cartes, par petits lots.
 
@@ -206,6 +261,20 @@ def start_scheduler():
         replace_existing=True,
         next_run_time=None,
     )
+
+    # Trente secondes de delai : le serveur doit d'abord ouvrir son port et
+    # repondre au controle de sante de l'hebergeur. Un chargement lance
+    # pendant le demarrage le retarderait, et l'hebergeur pourrait conclure
+    # a un echec de deploiement.
+    if settings.amorcage_automatique:
+        scheduler.add_job(
+            _job_amorcage,
+            "date",
+            run_date=datetime.now() + timedelta(seconds=30),
+            id="amorcage",
+            replace_existing=True,
+        )
+        logger.info("Amorcage automatique programme dans 30 s")
 
     scheduler.start()
     logger.info(

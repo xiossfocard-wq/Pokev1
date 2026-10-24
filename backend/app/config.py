@@ -54,6 +54,21 @@ class Settings:
         default_factory=lambda: _get_bool("SCHEDULER_ENABLED", True)
     )
 
+    # Un serveur SANS OPERATEUR doit se remplir seul : catalogue, noms
+    # francais, prix. Sur un poste de travail, c'est le script de demarrage
+    # qui s'en charge, etape par etape et en le disant ; le faire AUSSI ici
+    # lancerait deux chargements concurrents sur la meme base, et SQLite
+    # n'admet qu'un ecrivain a la fois.
+    #
+    # D'ou le defaut : actif sur Render, qui pose lui-meme RENDER=true sur
+    # ses services, eteint ailleurs. Sans ca, une version deployee resterait
+    # vide jusqu'a ce que quelqu'un tape des commandes contre elle — ce que
+    # personne ne fait sur un hebergement.
+    amorcage_automatique: bool = field(
+        default_factory=lambda: _get_bool(
+            "AMORCAGE_AUTOMATIQUE", os.environ.get("RENDER", "").lower() == "true")
+    )
+
     # --- Jeu cible --------------------------------------------------------
     # Le projet suit UN jeu de cartes a la fois : One Piece. Les reglages de
     # ce bloc sont les seuls endroits qui le nomment, donc les changer suffit
