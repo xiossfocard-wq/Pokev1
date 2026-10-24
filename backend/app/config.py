@@ -102,6 +102,21 @@ class Settings:
             "https://fr.onepiece-cardgame.com/images/cardlist/card",
         )
     )
+    # Le site officiel ANGLAIS, en repli, pour les cartes absentes du jeu
+    # francais. Le jeu en francais commence a OP09 : OP01 a OP08, et bien des
+    # produits, n'existent qu'en anglais. Leur illustration n'est donc pas sur
+    # le site francais, et l'y chercher echouait a coup sur — c'est ce qui
+    # laissait des centaines de fiches sans visuel.
+    #
+    # Aucun risque d'enregistrer une adresse fausse en l'essayant : chaque
+    # adresse est verifiee avant d'etre retenue (voir card_image_verify). Une
+    # chaine vide desactive le repli.
+    card_image_fallback_base_url: str = field(
+        default_factory=lambda: os.environ.get(
+            "CARD_IMAGE_FALLBACK_BASE_URL",
+            "https://en.onepiece-cardgame.com/images/cardlist/card",
+        )
+    )
     # Source de PRIX. Une boutique francaise : ses prix portent sur des
     # cartes francaises, ce qui est exactement ce qu'on veut comparer aux
     # annonces. La liste officielle, elle, ne publie aucun prix — d'ou deux

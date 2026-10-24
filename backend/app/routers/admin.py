@@ -541,11 +541,10 @@ def diagnostic_variantes(
                 donnees = _telecharger(session, fiche.image_url) \
                     if fiche.image_url else None
                 if donnees is None:
-                    for essai in urls_candidates(code, fiche.display_name or ""):
-                        if f"_p{rang}" in essai or (rang == 0 and "_p" not in essai):
-                            donnees = _telecharger(session, essai)
-                            if donnees:
-                                break
+                    for essai in urls_candidates(code, rang=rang):
+                        donnees = _telecharger(session, essai)
+                        if donnees:
+                            break
                 officielles[rang] = app_var.empreinte_perceptive(donnees)
                 binaires_off[rang] = app_var.empreinte_binaire(donnees)
 
@@ -670,9 +669,23 @@ def debug_catalog_sources():
 
 
 @router.get("/debug-card-images")
-def debug_card_images(code: str = Query("OP01-001"), nom: str = Query("")):
+def debug_card_images(
+    code: str = Query("OP01-001"),
+    nom: str = Query(""),
+    anglais: bool = Query(
+        False,
+        description="Essayer aussi le site anglais, comme pour une carte "
+                    "absente de la liste francaise.",
+    ),
+):
     """Detail de CHAQUE adresse essayee pour un code de carte : code HTTP et
     type de contenu.
+
+    Avec « anglais=true », le site anglais est essaye en premier — c'est le
+    chemin des cartes qui n'existent pas dans le jeu francais, et le seul
+    moyen de verifier son format d'adresse sans deviner :
+
+        /api/admin/debug-card-images?code=OP01-001&anglais=true
 
     Le format d'adresse n'a pas pu etre verifie contre l'hote reel :
     l'environnement de developpement n'a pas d'acces sortant vers
@@ -682,4 +695,4 @@ def debug_card_images(code: str = Query("OP01-001"), nom: str = Query("")):
     refuse) ou d'une erreur reseau. Meme demarche que debug-vinted et
     debug-zebradex.
     """
-    return ClientImagesCartes().diagnostic(code, nom)
+    return ClientImagesCartes().diagnostic(code, nom, anglais=anglais)

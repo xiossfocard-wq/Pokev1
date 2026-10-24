@@ -137,30 +137,72 @@ def _est_alternative(display_name: str) -> bool:
     return any(indice in nom for indice in INDICES_ALTERNATIVE)
 
 
-def urls_candidates(card_code: Optional[str],
-                    display_name: str = "") -> List[str]:
-    """Adresses a essayer, dans l'ordre, pour une carte donnee.
+SOURCE_FR = "onepiece-cardgame"
+SOURCE_EN = "onepiece-cardgame-en"
 
-    L'illustration de base d'abord, sauf si le nom annonce une alternative :
-    dans ce cas on essaie les variantes avant, parce que c'est bien cette
-    illustration-la qui est en vente a ce prix.
+
+def suffixe_de_rang(rang: Optional[int]) -> Optional[str]:
+    """0 -> « », 1 -> « _p1 », 2 -> « _p2 ». None si le rang est inconnu.
+
+    Quand la fiche SAIT quelle illustration elle porte, on demande celle-la
+    et aucune autre. Essayer les suffixes a la suite pouvait poser l'image
+    du premier parallele sur la fiche du second — deux illustrations d'un
+    meme code, a 13 EUR et a 850 EUR, et l'acheteur regarde l'image pour
+    savoir laquelle il achete.
+    """
+    if rang is None or rang < 0:
+        return None
+    return "" if rang == 0 else f"_p{rang}"
+
+
+def candidates_avec_source(card_code: Optional[str], display_name: str = "",
+                           rang: Optional[int] = None,
+                           anglais: bool = False) -> List[tuple]:
+    """(adresse, source) a essayer, dans l'ordre, pour une carte donnee.
+
+    QUEL SITE. Une carte du jeu francais est cherchee sur le site francais,
+    et seulement la : son illustration anglaise porterait un texte anglais,
+    alors que c'est la carte francaise qui est en vente. Une carte ABSENTE
+    de la liste francaise est cherchee d'abord sur le site anglais — elle
+    n'existe, presque toujours, que la — puis sur le francais au cas ou la
+    liste francaise aurait manque sa serie.
+
+    QUELLE ILLUSTRATION. Rang connu : ce suffixe exactement. Rang inconnu :
+    l'illustration de base d'abord, sauf si le nom annonce une alternative,
+    parce que c'est bien cette illustration-la qui est en vente a ce prix.
     """
     code = code_canonique(card_code)
     if not code:
         return []
 
-    base = settings.card_image_base_url.rstrip("/")
-    suffixes = ["", *SUFFIXES_ALTERNATIVE]
-    if _est_alternative(display_name):
+    exact = suffixe_de_rang(rang)
+    if exact is not None:
+        suffixes = [exact]
+    elif _est_alternative(display_name):
         suffixes = [*SUFFIXES_ALTERNATIVE, ""]
+    else:
+        suffixes = ["", *SUFFIXES_ALTERNATIVE]
+
+    francais = (settings.card_image_base_url.rstrip("/"), SOURCE_FR)
+    repli = (settings.card_image_fallback_base_url or "").rstrip("/")
+    bases = [(repli, SOURCE_EN), francais] if anglais and repli else [francais]
 
     # Extension la plus probable d'abord, pour chaque suffixe : on veut
     # trouver l'illustration en un aller-retour dans le cas courant.
     return [
-        f"{base}/{code}{suffixe}.{extension}"
+        (f"{base}/{code}{suffixe}.{extension}", source)
+        for base, source in bases
         for suffixe in suffixes
         for extension in EXTENSIONS_IMAGE
     ]
+
+
+def urls_candidates(card_code: Optional[str], display_name: str = "",
+                    rang: Optional[int] = None,
+                    anglais: bool = False) -> List[str]:
+    """Adresses a essayer, dans l'ordre. Voir candidates_avec_source."""
+    return [url for url, _ in candidates_avec_source(card_code, display_name,
+                                                      rang, anglais)]
 
 
 class ClientImagesCartes:
@@ -170,6 +212,12 @@ class ClientImagesCartes:
         self._session.headers.setdefault("User-Agent", USER_AGENT)
         self._min_delay = min_delay
         self._dernier_appel = 0.0
+        # Distinguer « le site ne repond pas » de « le site repond qu'il n'a
+        # pas cette image ». Sans cette distinction, un lot sans resultat se
+        # lisait toujours comme une panne reseau — et on cherchait a reparer
+        # une connexion qui marchait tres bien, au lieu de chercher ailleurs.
+        self.erreurs_reseau = 0
+        self.reponses_http = 0
 
     def _throttle(self):
         ecoule = time.time() - self._dernier_appel
@@ -193,7 +241,10 @@ class ClientImagesCartes:
                                             stream=True, allow_redirects=True)
                 reponse.close()
         except requests.RequestException as exc:
+            self.erreurs_reseau += 1
             return {"url": url, "erreur_reseau": str(exc), "image": False}
+
+        self.reponses_http += 1
 
         type_contenu = (reponse.headers.get("Content-Type") or "").lower()
         return {
@@ -205,13 +256,19 @@ class ClientImagesCartes:
         }
 
     def chercher_image(self, display_name: str,
-                       card_code: Optional[str] = None) -> Optional[ImageCarte]:
+                       card_code: Optional[str] = None,
+                       rang: Optional[int] = None,
+                       anglais: bool = False) -> Optional[ImageCarte]:
         """Visuel officiel d'une carte, deduit de son code.
 
         Sans code exploitable, rend None SANS appel reseau : on ne devine pas
         l'adresse a partir du nom, c'est precisement l'erreur qu'on repare.
+
+        `rang` : l'illustration que porte la fiche, quand elle la connait.
+        `anglais` : la carte est absente de la liste francaise, donc a
+        chercher d'abord sur le site anglais. Voir candidates_avec_source.
         """
-        candidates = urls_candidates(card_code, display_name)
+        candidates = candidates_avec_source(card_code, display_name, rang, anglais)
         if not candidates:
             logger.debug("Images: '%s' n'a pas de code exploitable (%r)",
                          display_name, card_code)
@@ -221,13 +278,14 @@ class ClientImagesCartes:
             # Mode degrade, explicite : on fait confiance au format. A
             # n'activer que lorsque le format a ete constate correct, sinon
             # l'interface se remplit de cadres casses.
-            return ImageCarte(image_url=candidates[0],
+            url, source = candidates[0]
+            return ImageCarte(image_url=url, source=source,
                               card_id=code_canonique(card_code))
 
-        for url in candidates:
+        for url, source in candidates:
             resultat = self._sonder(url)
             if resultat.get("image"):
-                return ImageCarte(image_url=url,
+                return ImageCarte(image_url=url, source=source,
                                   card_id=code_canonique(card_code))
 
         logger.info("Images: aucune illustration servie pour %s (%d essai(s))",
@@ -235,7 +293,7 @@ class ClientImagesCartes:
         return None
 
     def diagnostic(self, code: str = "OP01-001",
-                   nom: str = "") -> dict:
+                   nom: str = "", anglais: bool = False) -> dict:
         """Detail de chaque tentative pour un code donne.
 
         A appeler via /api/admin/debug-card-images quand aucune image ne
@@ -243,11 +301,13 @@ class ClientImagesCartes:
         essayee suffisent a corriger `CARD_IMAGE_BASE_URL` sans deviner.
         Meme demarche que debug-vinted et debug-zebradex.
         """
-        candidates = urls_candidates(code, nom)
+        candidates = urls_candidates(code, nom, anglais=anglais)
         resultat = {
             "code_fourni": code,
             "code_canonique": code_canonique(code),
             "base_url": settings.card_image_base_url,
+            "base_url_repli": settings.card_image_fallback_base_url,
+            "repli_anglais_essaye": anglais,
             "verification_active": settings.card_image_verify,
             "urls_candidates": candidates,
         }

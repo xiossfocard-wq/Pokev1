@@ -139,11 +139,15 @@ def remplir_visuels(base: str) -> None:
     source est hors d'atteinte. Dans les deux cas, insister ne sert à rien.
     """
     total = 0
+    anglaises = 0
+    reponses = 0
+    erreurs = 0
+    restantes = 0
     for tour in range(1, MAX_TOURS + 1):
         try:
             r = _appeler(
                 f"{base}/api/admin/enrich-card-images?limit={LOT_VISUELS}",
-                methode="POST", delai=600)
+                methode="POST", delai=900)
         except Exception as erreur:
             print(f"   interrompu au tour {tour} : {erreur}")
             break
@@ -151,19 +155,38 @@ def remplir_visuels(base: str) -> None:
         trouvees = r.get("found", 0)
         examinees = r.get("examined", 0)
         total += trouvees
+        anglaises += r.get("found_en", 0)
+        reponses += r.get("http_responses", 0)
+        erreurs += r.get("network_errors", 0)
 
         if examinees == 0:
             break
         if trouvees == 0:
-            if total == 0:
-                print("   aucune image récupérée — la source est probablement")
-                print("   injoignable depuis cette machine. Le reste fonctionne :")
-                print("   les cartes s'afficheront sans visuel.")
+            restantes = examinees
             break
         print(f"   tour {tour} : +{trouvees} (total {total})")
 
     if total:
-        print(f"   {total} visuels récupérés")
+        detail = f", dont {anglaises} depuis le site anglais" if anglaises else ""
+        print(f"   {total} visuels récupérés{detail}")
+
+    # DIRE VRAI SUR CE QUI RESTE. Ce message affirmait « source injoignable »
+    # dès qu'un lot ne trouvait rien — y compris quand le site répondait
+    # parfaitement, mais n'avait pas ces images. Les deux situations n'ont
+    # ni la même cause ni le même remède.
+    if restantes and not total:
+        if reponses == 0 and erreurs:
+            print("   aucune image récupérée : les sites officiels ne répondent")
+            print("   pas depuis cette machine. Le reste fonctionne, les cartes")
+            print("   s'afficheront sans visuel.")
+        else:
+            print("   aucune nouvelle image : les sites officiels répondent, mais")
+            print("   ne publient pas d'illustration pour les cartes restantes.")
+            print("   Pour voir ce qu'ils répondent, adresse par adresse :")
+            print(f"     {base}/api/admin/debug-card-images?code=OP01-001&anglais=true")
+    elif restantes:
+        print("   les cartes restantes n'ont d'illustration publiée ni sur le")
+        print("   site français, ni sur le site anglais.")
 
 
 def passer_aux_noms_francais(base: str) -> None:

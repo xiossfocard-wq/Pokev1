@@ -25,7 +25,7 @@ from app.scoring.card_appeal import detect_card_appeal
 from app.services.price_index import find_price_for_listing
 from app.scoring.deal_score import calculate_deal_score, QualityBlend
 from app.scoring.seller_reliability import score_ebay_seller, score_vinted_seller
-from app.collectors.card_images import ClientImagesCartes
+from app.collectors.card_images import SOURCE_EN, ClientImagesCartes
 from app.vision.quality_vision import analyze_card_photos
 from app.notifications.telegram import send_telegram_message, format_deal_alert
 from app.notifications.email_notif import send_email_notification, format_deal_alert_html
@@ -905,14 +905,28 @@ def enrich_card_images(db: Session, limit: int = 40) -> dict:
     )
 
     if not cartes:
-        return {"examined": 0, "found": 0, "not_found": 0}
+        return {"examined": 0, "found": 0, "not_found": 0, "found_en": 0,
+                "network_errors": 0, "http_responses": 0}
+
+    from app.collectors.cardlist_fr import rang_de_parallele
+    from app.core.langues import FRANCAIS
 
     client = ClientImagesCartes()
-    trouvees, introuvables = 0, 0
+    trouvees, introuvables, anglaises = 0, 0, 0
 
     for carte in cartes:
         try:
-            image = client.chercher_image(carte.display_name, carte.card_code)
+            # Ce que la fiche SAIT d'elle-meme : quelle illustration elle
+            # porte, et si elle existe dans le jeu francais. Sans le premier,
+            # la fiche du second parallele pouvait recevoir l'image du
+            # premier ; sans le second, une carte qui n'existe qu'en anglais
+            # etait cherchee sur le site francais, ou elle ne pouvait pas
+            # etre — c'est ce qui laissait des centaines de fiches sans
+            # visuel.
+            image = client.chercher_image(
+                carte.display_name, carte.card_code,
+                rang=rang_de_parallele(carte.name_slug),
+                anglais=carte.language != FRANCAIS)
         except Exception as exc:  # noqa: BLE001 - une source distante ne doit pas casser le cycle
             logger.warning("Images: recherche echouee pour '%s' (%s)",
                            carte.display_name, exc)
@@ -923,15 +937,27 @@ def enrich_card_images(db: Session, limit: int = 40) -> dict:
             carte.image_url = image.image_url
             carte.image_source = image.source
             trouvees += 1
+            if image.source == SOURCE_EN:
+                anglaises += 1
         else:
             introuvables += 1
 
     db.commit()
     logger.info(
-        "Images: %d carte(s) examinee(s), %d visuel(s) trouve(s), %d sans image",
-        len(cartes), trouvees, introuvables,
+        "Images: %d carte(s) examinee(s), %d visuel(s) trouve(s) dont %d sur le "
+        "site anglais, %d sans image, %d erreur(s) reseau",
+        len(cartes), trouvees, anglaises, introuvables, client.erreurs_reseau,
     )
-    return {"examined": len(cartes), "found": trouvees, "not_found": introuvables}
+    return {
+        "examined": len(cartes), "found": trouvees, "not_found": introuvables,
+        "found_en": anglaises,
+        # Pour que l'appelant puisse dire VRAI : sans reponse du tout, la
+        # source est injoignable ; avec des reponses mais sans image, elle
+        # est joignable et n'a simplement pas ces illustrations. Ce ne sont
+        # pas les memes conclusions, et pas les memes remedes.
+        "network_errors": client.erreurs_reseau,
+        "http_responses": client.reponses_http,
+    }
 
 
 def run_full_check(db: Session):

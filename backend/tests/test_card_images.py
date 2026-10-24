@@ -6,13 +6,15 @@ import requests
 
 from app.collectors import card_images
 from app.collectors.card_images import (
-    ClientImagesCartes, code_canonique, urls_candidates,
+    SOURCE_EN, SOURCE_FR, ClientImagesCartes, candidates_avec_source,
+    code_canonique, urls_candidates,
 )
 
 BASE_TEST = "https://exemple.test/cardlist/card"
+REPLI_TEST = "https://en.exemple.test/cardlist/card"
 
 
-def _reglages(base=BASE_TEST, verifier=True):
+def _reglages(base=BASE_TEST, verifier=True, repli=REPLI_TEST):
     """Pointe le collecteur sur une base de test, le temps d'un test.
 
     On ne tape jamais l'hote reel depuis la suite : un test qui depend du
@@ -21,6 +23,7 @@ def _reglages(base=BASE_TEST, verifier=True):
     return mock.patch.multiple(
         card_images.settings,
         card_image_base_url=base,
+        card_image_fallback_base_url=repli,
         card_image_verify=verifier,
     )
 
@@ -244,6 +247,107 @@ class TestDiagnostic(unittest.TestCase):
             rapport = _client(session).diagnostic("OP01-120")
         self.assertIn("erreur_reseau", rapport["tentatives"][0])
         self.assertIsNone(rapport["url_retenue"])
+
+
+class TestSiteSelonLaLangue(unittest.TestCase):
+    """Le jeu en français commence à OP09. Une carte absente de la liste
+    française n'a pas d'illustration sur le site français : l'y chercher
+    échouait à coup sûr, et laissait des centaines de fiches sans visuel."""
+
+    def test_une_carte_francaise_reste_sur_le_site_francais(self):
+        """Son illustration anglaise porterait un texte anglais, alors que
+        c'est la carte française qui est en vente."""
+        with _reglages():
+            sources = {s for _, s in candidates_avec_source("OP15-118", rang=0)}
+        self.assertEqual(sources, {SOURCE_FR})
+
+    def test_une_carte_anglaise_est_cherchee_en_anglais_d_abord(self):
+        with _reglages():
+            candidates = candidates_avec_source("OP01-024", rang=0, anglais=True)
+        self.assertEqual(candidates[0], (f"{REPLI_TEST}/OP01-024.webp", SOURCE_EN))
+        # Le site français reste essayé ensuite, au cas où la liste
+        # française aurait manqué la série de cette carte.
+        self.assertIn((f"{BASE_TEST}/OP01-024.webp", SOURCE_FR), candidates)
+
+    def test_un_repli_vide_le_desactive(self):
+        with _reglages(repli=""):
+            sources = {s for _, s in candidates_avec_source("OP01-024", rang=0,
+                                                            anglais=True)}
+        self.assertEqual(sources, {SOURCE_FR})
+
+    def test_la_source_retenue_est_enregistree(self):
+        attendue = f"{REPLI_TEST}/OP01-024.png"
+        session = SessionFactice({attendue: ReponseFactice(200, "image/png")})
+        with _reglages():
+            image = _client(session).chercher_image(
+                "Monkey.D.Luffy", "OP01-024", rang=0, anglais=True)
+        self.assertEqual(image.image_url, attendue)
+        self.assertEqual(image.source, SOURCE_EN)
+
+
+class TestIllustrationSelonLeRang(unittest.TestCase):
+    """Deux parallèles d'un même code valent 13 € et 850 €, et l'acheteur
+    regarde l'image pour savoir laquelle il achète."""
+
+    def test_un_rang_connu_ne_demande_que_son_illustration(self):
+        with _reglages():
+            urls = urls_candidates("OP17-022", rang=2)
+        self.assertTrue(all("_p2." in u for u in urls), urls)
+
+    def test_la_fiche_du_second_parallele_ne_recoit_pas_le_premier(self):
+        """Le défaut exact : essayer les suffixes à la suite posait l'image
+        de « _p1 » sur la fiche de « _p2 » dès que la première existait."""
+        premier = f"{BASE_TEST}/OP17-022_p1.webp"
+        session = SessionFactice({premier: ReponseFactice(200, "image/webp")})
+        with _reglages():
+            image = _client(session).chercher_image(
+                "Shanks (Parallèle 2)", "OP17-022", rang=2)
+        self.assertIsNone(image)
+        # Les appels sont des couples (methode, adresse) : comparer
+        # l'adresse seule a la liste passerait toujours, a tort.
+        self.assertNotIn(premier, [url for _, url in session.appels])
+
+    def test_l_impression_ordinaire_ne_recoit_pas_un_parallele(self):
+        with _reglages():
+            urls = urls_candidates("OP17-022", rang=0)
+        self.assertFalse(any("_p" in u for u in urls), urls)
+
+    def test_sans_rang_le_comportement_historique_est_garde(self):
+        """Les appels qui ne connaissent pas le rang ne changent pas."""
+        with _reglages():
+            self.assertEqual(urls_candidates("OP01-120", "Monkey D. Luffy"),
+                             urls_candidates("OP01-120", "Monkey D. Luffy",
+                                             rang=None, anglais=False))
+            self.assertEqual(len(urls_candidates("OP01-120")), 6)
+
+
+class TestPanneOuAbsence(unittest.TestCase):
+    """« Le site ne répond pas » et « le site répond qu'il n'a pas cette
+    image » doivent se distinguer : sans ça, un lot vide s'annonçait
+    toujours comme une panne réseau."""
+
+    def test_un_404_compte_comme_une_reponse(self):
+        session = SessionFactice()
+        client = _client(session)
+        with _reglages():
+            client.chercher_image("Zoro", "OP01-025", rang=0)
+        self.assertGreater(client.reponses_http, 0)
+        self.assertEqual(client.erreurs_reseau, 0)
+
+    def test_une_coupure_compte_comme_une_erreur_reseau(self):
+        class SessionCoupee:
+            headers = {}
+
+            def head(self, *a, **k):
+                raise requests.ConnectionError("coupe")
+
+            get = head
+
+        client = _client(SessionCoupee())
+        with _reglages():
+            client.chercher_image("Zoro", "OP01-025", rang=0)
+        self.assertGreater(client.erreurs_reseau, 0)
+        self.assertEqual(client.reponses_http, 0)
 
 
 if __name__ == "__main__":
