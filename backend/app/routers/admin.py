@@ -470,6 +470,12 @@ def diagnostic_variantes(
     series: str = Query(..., description="UNE valeur de serie OPECards."),
     limite: int = Query(5, ge=1, le=40,
                         description="Nombre de codes examines au plus."),
+    toutes: bool = Query(
+        False,
+        description="Examiner aussi les codes dont toutes les mentions ont "
+                    "deja un rang. Par defaut, seuls les codes portant une "
+                    "mention encore inconnue sont examines.",
+    ),
 ):
     """Mesure si les illustrations alternatives peuvent etre appariees.
 
@@ -509,13 +515,25 @@ def diagnostic_variantes(
 
     # Les mentions sans rang, regroupees par code, plus l'impression
     # ordinaire du meme code quand la serie la donne aussi.
+    #
+    # TOUTES les impressions d'un code, quel que soit leur rang. Ne garder
+    # que l'ordinaire et les mentions inconnues rendait la route aveugle
+    # des que certaines mentions avaient recu un rang : pour un code
+    # « ordinaire + Parallele + Super Leader Parallele », elle comparait
+    # deux impressions a trois fiches officielles, concluait « effectifs
+    # differents », et ne pouvait donc jamais mesurer la mention qui restait
+    # a etablir — precisement celle pour laquelle elle existe.
     par_code: dict = {}
     for carte in releve:
         code = code_canonique(carte.card_code)
         if not code:
             continue
-        if carte.rang_variante in (0, VARIANTE_SANS_RANG):
-            par_code.setdefault(code.upper(), []).append(carte)
+        par_code.setdefault(code.upper(), []).append(carte)
+
+    # Par defaut, seuls les codes qui ont encore quelque chose a apprendre.
+    if not toutes:
+        par_code = {code: cartes for code, cartes in par_code.items()
+                    if any(c.rang_variante == VARIANTE_SANS_RANG for c in cartes)}
 
     db = SessionLocal()
     session = requests.Session()
