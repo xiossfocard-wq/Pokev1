@@ -19,21 +19,20 @@ seule, et le module n'a besoin que de la bibliothèque standard.
 """
 import json
 import math
+import os
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 import urllib.error
 import urllib.request
 
 API_PAR_DEFAUT = "http://localhost:8000"
 
-# Taille de lot pour les visuels. La route plafonne à 200 : c'est délibéré,
-# pour ne pas marteler la source des images.
-LOT_VISUELS = 200
-
-# Garde-fou de la boucle des visuels. Le catalogue compte ~3900 cartes, donc
-# ~20 tours suffisent ; au-delà, c'est que quelque chose ne progresse pas et
-# il vaut mieux rendre la main que tourner en rond.
-MAX_TOURS = 30
+# Au-delà de cet âge, les prix sont relus au démarrage ; en deçà, on ouvre le
+# site tout de suite. La tâche de 02:00 les rafraîchit chaque nuit quand
+# l'application tourne : un PC éteint la nuit les retrouve donc au plus
+# vieux de la veille, et c'est ce cas que ce seuil rattrape.
+FRAICHEUR_HEURES = 20
 
 
 def _appeler(url: str, methode: str = "GET", delai: int = 120):
@@ -126,67 +125,85 @@ def remplir_catalogue(base: str) -> int:
 
 
 def remplir_visuels(base: str) -> None:
-    """Boucle sur l'enrichissement des visuels jusqu'à ce qu'il n'avance plus.
+    """Pose les visuels qui se déduisent du code, en quelques secondes.
 
-    La condition d'arrêt mérite une explication. La route sélectionne les
-    cartes dont l'image manque, en remettant en queue de file celles déjà
-    tentées — mais sans jamais les exclure. Donc tant qu'une seule carte
-    reste sans image, `examined` ne tombe jamais à zéro : s'arrêter là-dessus
-    bouclerait indéfiniment.
+    L'ancienne étape vérifiait les cartes une à une, avec la pause qu'on
+    doit au site interrogé : de dix à quarante minutes, pendant lesquelles
+    le site restait fermé. Or l'adresse d'un visuel se déduit du code. Un
+    échantillon vérifié suffit à établir le format, et les autres adresses
+    se posent d'un coup.
 
-    On s'arrête donc sur l'ABSENCE DE PROGRÈS : un lot qui ne trouve plus
-    aucune image nouvelle signifie soit que tout est récupéré, soit que la
-    source est hors d'atteinte. Dans les deux cas, insister ne sert à rien.
+    Ce qui résiste à la déduction se complète en arrière-plan, pendant que
+    le site est ouvert : attendre ces dernières cartes pour l'ouvrir n'avait
+    aucun sens.
     """
-    total = 0
-    anglaises = 0
-    reponses = 0
-    erreurs = 0
-    restantes = 0
-    for tour in range(1, MAX_TOURS + 1):
-        try:
-            r = _appeler(
-                f"{base}/api/admin/enrich-card-images?limit={LOT_VISUELS}",
-                methode="POST", delai=900)
-        except Exception as erreur:
-            print(f"   interrompu au tour {tour} : {erreur}")
-            break
+    try:
+        d = _appeler(f"{base}/api/admin/deduce-card-images", methode="POST", delai=300)
+    except Exception as erreur:
+        print(f"   déduction impossible : {str(erreur)[:60]}")
+        print("   les visuels se compléteront en arrière-plan.")
+        return
 
-        trouvees = r.get("found", 0)
-        examinees = r.get("examined", 0)
-        total += trouvees
-        anglaises += r.get("found_en", 0)
-        reponses += r.get("http_responses", 0)
-        erreurs += r.get("network_errors", 0)
+    groupes = d.get("groupes") or []
+    if not groupes:
+        print("   tous les visuels connus sont déjà en place.")
+        return
 
-        if examinees == 0:
-            break
-        if trouvees == 0:
-            restantes = examinees
-            break
-        print(f"   tour {tour} : +{trouvees} (total {total})")
-
-    if total:
-        detail = f", dont {anglaises} depuis le site anglais" if anglaises else ""
-        print(f"   {total} visuels récupérés{detail}")
-
-    # DIRE VRAI SUR CE QUI RESTE. Ce message affirmait « source injoignable »
-    # dès qu'un lot ne trouvait rien — y compris quand le site répondait
-    # parfaitement, mais n'avait pas ces images. Les deux situations n'ont
-    # ni la même cause ni le même remède.
-    if restantes and not total:
-        if reponses == 0 and erreurs:
-            print("   aucune image récupérée : les sites officiels ne répondent")
-            print("   pas depuis cette machine. Le reste fonctionne, les cartes")
-            print("   s'afficheront sans visuel.")
+    poses = 0
+    for g in groupes:
+        n = g.get("deduites", 0) + g.get("echantillon_servi", 0)
+        if g.get("format_etabli"):
+            poses += n
+            print(f"   {n} visuel(s) posé(s) d'un coup — {g['groupe']} "
+                  f"(échantillon {g['echantillon_servi']}/{g['echantillon']})")
         else:
-            print("   aucune nouvelle image : les sites officiels répondent, mais")
-            print("   ne publient pas d'illustration pour les cartes restantes.")
-            print("   Pour voir ce qu'ils répondent, adresse par adresse :")
+            print(f"   {g['groupe']} : format non établi "
+                  f"(échantillon {g['echantillon_servi']}/{g['echantillon']})")
+
+    # DIRE VRAI SUR CE QUI N'A PAS MARCHÉ. « Le site ne répond pas » et « le
+    # site répond sans image » n'ont ni la même cause ni le même remède.
+    if not poses:
+        if d.get("http_responses", 0) == 0 and d.get("network_errors", 0):
+            print("   les sites officiels ne répondent pas depuis cette machine.")
+        else:
+            print("   les sites répondent, mais pas au format attendu. Pour voir")
+            print("   ce qu'ils répondent, adresse par adresse :")
             print(f"     {base}/api/admin/debug-card-images?code=OP01-001&anglais=true")
-    elif restantes:
-        print("   les cartes restantes n'ont d'illustration publiée ni sur le")
-        print("   site français, ni sur le site anglais.")
+    print("   le reste se complète en arrière-plan, site ouvert.")
+
+
+def _donnees_du_jour(base: str) -> str:
+    """L'heure du dernier relevé des prix s'il est assez récent, sinon "".
+
+    Rend "" — donc « tout recharger » — dans le doute : prix jamais relevés,
+    API qui ne répond pas, ou rechargement complet demandé. Se tromper dans
+    ce sens coûte une attente ; dans l'autre, des prix périmés.
+    """
+    if os.environ.get("DEMARRAGE_COMPLET"):
+        return ""
+    try:
+        etat = _appeler(f"{base}/api/admin/price-index-status")
+        brut = etat.get("prices_updated_at")
+        if not brut:
+            return ""
+        releve = datetime.fromisoformat(brut)
+    except Exception:
+        return ""
+    if datetime.utcnow() - releve > timedelta(hours=FRAICHEUR_HEURES):
+        return ""
+    # L'heure est en UTC côté serveur ; on l'affiche en heure locale.
+    return (releve.replace(tzinfo=timezone.utc).astimezone()
+            .strftime("%d/%m à %H:%M"))
+
+
+def _deja_a_jour(base: str) -> bool:
+    """Saute une étape longue si les données sont du jour, et le dit."""
+    releve = _donnees_du_jour(base)
+    if not releve:
+        return False
+    print(f"   déjà à jour (prix relevés le {releve}) — étape sautée.")
+    print("   Pour tout recharger : ajouter -Complet à la commande de démarrage.")
+    return True
 
 
 def passer_aux_noms_francais(base: str) -> None:
@@ -447,10 +464,12 @@ def main() -> int:
     if etape == "catalogue":
         return 0 if remplir_catalogue(base) > 0 else 1
     if etape == "noms-fr":
-        passer_aux_noms_francais(base)
+        if not _deja_a_jour(base):
+            passer_aux_noms_francais(base)
         return 0
     if etape == "prix":
-        charger_les_prix(base)
+        if not _deja_a_jour(base):
+            charger_les_prix(base)
         return 0
     if etape == "annonces":
         premiere_collecte(base)

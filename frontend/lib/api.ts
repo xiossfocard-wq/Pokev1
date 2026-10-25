@@ -40,6 +40,7 @@ export interface PriceDetail {
 export interface PriceIndexStatus {
   cards_in_index: number;
   cards_priced: number;
+  prices_updated_at: string | null;
   cards_unpriced: number;
   progress_percent: number;
   // Anciens noms, conservés le temps que les appelants migrent. Ils ne

@@ -10,13 +10,18 @@
 # aucune carte, et rien n'indique que c'est normal. Ce script fait la
 # séquence complète dans l'ordre, et dit à chaque étape ce qu'il a obtenu.
 #
-# Usage :   bash scripts/demarrer.sh
+# Usage :   bash scripts/demarrer.sh             (rapide si les prix sont du jour)
+#           bash scripts/demarrer.sh --complet   (tout recharger)
 # Arrêt :   Ctrl+C
 #
 # Sous Windows : lancer depuis Git Bash ou WSL. Sinon, suivre les étapes
 # manuelles du README, qui sont les mêmes.
 
 set -u
+
+# Transmis au script des étapes, qui saute les étapes longues quand les
+# prix sont du jour — sauf si on demande explicitement de tout recharger.
+if [ "${1:-}" = "--complet" ]; then export DEMARRAGE_COMPLET=1; else unset DEMARRAGE_COMPLET; fi
 
 RACINE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PORT_API=8000
@@ -130,14 +135,14 @@ bleu "→ noms français (liste officielle)"
 
 # --- 4ter. Prix de référence ---------------------------------------------
 # C'est ce qui allume les marges et les scores d'affaire.
-bleu "→ prix de référence (peut prendre un long moment)"
+bleu "→ prix de référence"
 "$VPY" "$ETAPES" prix "$API"
 
 # --- 5. Visuels ----------------------------------------------------------
 # Les visuels se déduisent du code de la carte. Cette étape a besoin
 # d'Internet ; si elle échoue, le reste fonctionne, les cartes s'affichent
 # simplement sans image.
-bleu "→ visuels (plusieurs minutes pour un catalogue complet)"
+bleu "→ visuels"
 "$VPY" "$ETAPES" visuels "$API"
 
 # --- 5ter. Première collecte d'annonces ----------------------------------

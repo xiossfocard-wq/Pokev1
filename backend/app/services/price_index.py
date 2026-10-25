@@ -742,14 +742,23 @@ def index_stats(db: Session) -> dict:
     catalogue qui ont un prix de reference, donc pour lesquelles une marge
     peut etre calculee. Sans prix, une annonce est identifiee mais pas jugee.
     """
+    from sqlalchemy import func
+
     total = db.query(MarketCardPrice).count()
     chiffrees = (db.query(MarketCardPrice)
                  .filter(MarketCardPrice.price_eur.isnot(None)).count())
+    # Quand les prix de reference ont ete releves pour la derniere fois.
+    # C'est ce qui permet au script de demarrage de NE PAS tout recharger a
+    # chaque relance : des prix du jour n'ont pas besoin d'etre relus, et les
+    # relire faisait attendre une demi-heure avant de pouvoir ouvrir le site.
+    dernier = (db.query(func.max(MarketCardPrice.updated_at))
+               .filter(MarketCardPrice.source == "opecards").scalar())
     return {
         "cards_in_index": total,
         "cards_priced": chiffrees,
         "cards_unpriced": total - chiffrees,
         "progress_percent": round(100 * chiffrees / total, 1) if total else 0.0,
+        "prices_updated_at": dernier.isoformat() if dernier else None,
         # Conserves pour ne pas casser les appelants qui les lisent encore.
         # Ils ne decrivent plus une synchronisation de series, qui n'existe
         # plus, mais le meme decompte exprime en cartes.

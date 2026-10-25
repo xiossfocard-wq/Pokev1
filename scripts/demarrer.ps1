@@ -19,8 +19,19 @@
 # d'exécuter un script téléchargé, et le refus n'explique pas pourquoi.
 #
 # Arrêt : Ctrl+C.
+#
+# Relancer est rapide : si les prix ont été relevés dans les dernières
+# heures, les étapes longues (noms français, prix) sont sautées et le site
+# s'ouvre aussitôt. Pour forcer un rechargement complet :
+#
+#     powershell -ExecutionPolicy Bypass -File scripts\demarrer.ps1 -Complet
+
+param([switch]$Complet)
 
 $ErrorActionPreference = "Stop"
+
+# Transmis au script des étapes, qui décide de sauter ou non.
+if ($Complet) { $env:DEMARRAGE_COMPLET = "1" } else { Remove-Item Env:DEMARRAGE_COMPLET -ErrorAction SilentlyContinue }
 
 $Racine   = Split-Path -Parent $PSScriptRoot
 $Backend  = Join-Path $Racine "backend"
@@ -161,7 +172,7 @@ try {
     & $VenvPython $Etapes noms-fr $Api
 
     # --- 4ter. Prix de référence ----------------------------------------
-    Bleu "-> prix de référence (très long : des centaines de pages)"
+    Bleu "-> prix de référence"
     & $VenvPython $Etapes prix $Api
 
     # --- 5. Visuels ------------------------------------------------------
