@@ -179,5 +179,27 @@ class TestNotation(unittest.TestCase):
         self.assertNotEqual(a.status, ListingStatus.IGNORED)
 
 
+    def test_une_annonce_notee_avant_cette_version_est_renotee(self):
+        """Le proxy deja en tete du radar doit en sortir au repassage, sans
+        attendre qu'une nouvelle collecte le retrouve."""
+        from app.pipeline import rescore_unpriced_listings
+        ancienne = Listing(source=SourcePlatform.VINTED, external_id="ancienne",
+                           title="Monkey.D.Luffy OP05-119 proxy", url="https://vinted.test/a",
+                           price=2.48, currency="EUR", photo_urls=[],
+                           seller_reliability_score=80.0, status=ListingStatus.SCORED,
+                           reference_price=40.0, price_match_confidence="high",
+                           deal_score=87.0)
+        saine = self.noter("Monkey.D.Luffy OP05-119", 20.0)
+        self.db.add(ancienne)
+        self.db.commit()
+        r = rescore_unpriced_listings(self.db)
+        self.db.refresh(ancienne)
+        self.assertEqual(ancienne.status, ListingStatus.IGNORED)
+        # Seule l'ancienne est repassee : la saine, deja notee avec son cout,
+        # ne revient pas dans la file a chaque cycle.
+        self.assertEqual(r["examined"], 1)
+        self.assertIsNotNone(saine.purchase_cost_eur)
+
+
 if __name__ == "__main__":
     unittest.main()

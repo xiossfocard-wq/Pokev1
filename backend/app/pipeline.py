@@ -799,6 +799,11 @@ def rescore_unpriced_listings(
     condition = Listing.reference_price.is_(None)
     if include_uncertain:
         condition = condition | (Listing.price_match_confidence == "low")
+    # Les annonces notees avant le calcul du cout reel (contrefacons, lots,
+    # cartes gradees, etat, frais Vinted) : sans ce repassage, une contrefacon
+    # deja en tete du radar y serait restee. Une fois renotee, elle a un cout
+    # et sort de la file d'elle-meme.
+    condition = condition | Listing.purchase_cost_eur.is_(None)
 
     listings = (
         db.query(Listing)
