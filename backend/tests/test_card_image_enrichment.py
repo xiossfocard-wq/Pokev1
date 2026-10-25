@@ -19,6 +19,9 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.dirname(__file__))
+
+from garde_base import verifier_base_de_test  # noqa: E402
 
 # Le moteur est fige a l'import : voir la note dans test_api_routes.py.
 _fichier_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
@@ -76,6 +79,7 @@ def carte(nom, code, prix=10.0, langue=None, slug=None):
 class TestEnrichissementVisuels(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        verifier_base_de_test()
         init_db()
 
     def setUp(self):
@@ -212,6 +216,7 @@ class TestCeQueLaFicheSaitDElleMeme(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        verifier_base_de_test()
         init_db()
 
     def setUp(self):

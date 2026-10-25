@@ -17,6 +17,9 @@ import unittest
 from datetime import date, timedelta
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.dirname(__file__))
+
+from garde_base import verifier_base_de_test  # noqa: E402
 
 # Le moteur est fige a l'import : voir la note dans test_api_routes.py.
 _fichier_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
@@ -65,6 +68,7 @@ def carte(nom, prix, rarete=None, serie="Romance Dawn", code=None,
 class TestCatalogueHttp(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        verifier_base_de_test()
         init_db()
         cls.client = TestClient(app)
 
@@ -371,6 +375,7 @@ class TestAnnoncesDeLaCarte(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        verifier_base_de_test()
         init_db()
         cls.client = TestClient(app)
 
