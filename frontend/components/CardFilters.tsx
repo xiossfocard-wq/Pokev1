@@ -45,7 +45,7 @@ const classeChamp =
   "w-full rounded-sm border border-ink-700 bg-ink-950 px-2 py-1.5 text-xs text-parchment-100 focus:border-ember-500/60 focus:outline-none";
 
 const classeEtiquette =
-  "mb-1 block text-[11px] uppercase tracking-wide text-parchment-100/40";
+  "mb-1 block text-[11px] uppercase tracking-wide text-parchment-100/60";
 
 export default function CardFilters({
   valeurs,
@@ -76,7 +76,7 @@ export default function CardFilters({
         <button
           type="button"
           onClick={onReset}
-          className="text-[11px] text-parchment-100/45 underline-offset-2 hover:text-ember-400 hover:underline"
+          className="text-[11px] text-parchment-100/60 underline-offset-2 hover:text-ember-400 hover:underline"
         >
           Tout effacer
         </button>
@@ -137,7 +137,7 @@ export default function CardFilters({
             aria-label="Prix minimum"
             className={classeChamp}
           />
-          <span className="text-parchment-100/30">–</span>
+          <span className="text-parchment-100/60">–</span>
           <input
             type="number"
             min={0}
@@ -229,7 +229,7 @@ export default function CardFilters({
               className={`flex-1 rounded-sm border px-1.5 py-1 text-[11px] transition-colors ${
                 filtres.trend === valeur
                   ? "border-ember-500/60 bg-ember-500/15 text-ember-400"
-                  : "border-ink-700 text-parchment-100/50 hover:border-ink-600"
+                  : "border-ink-700 text-parchment-100/65 hover:border-ink-600"
               }`}
             >
               {libelle}
@@ -263,7 +263,7 @@ export default function CardFilters({
         </div>
       </div>
 
-      <label className="flex cursor-pointer items-center gap-2 text-[11px] text-parchment-100/55">
+      <label className="flex cursor-pointer items-center gap-2 text-[11px] text-parchment-100/65">
         <input
           type="checkbox"
           checked={filtres.withImageOnly}
@@ -274,7 +274,7 @@ export default function CardFilters({
       </label>
 
       <label
-        className="flex cursor-pointer items-center gap-2 text-[11px] text-parchment-100/55"
+        className="flex cursor-pointer items-center gap-2 text-[11px] text-parchment-100/65"
         title="Les cartes pour lesquelles au moins une annonce est en vente en ce moment"
       >
         <input
@@ -287,7 +287,7 @@ export default function CardFilters({
       </label>
 
       {valeurs && (
-        <p className="border-t border-ink-700 pt-2.5 text-[11px] leading-relaxed text-parchment-100/35">
+        <p className="border-t border-ink-700 pt-2.5 text-[11px] leading-relaxed text-parchment-100/60">
           {valeurs.total_cards.toLocaleString("fr-FR")} cartes dans le
           catalogue.{" "}
           {(() => {

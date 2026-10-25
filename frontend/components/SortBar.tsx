@@ -27,7 +27,7 @@ export default function SortBar({ sortBy, order, onChange }: SortBarProps) {
             className={`rounded-sm px-2 py-1 font-mono transition-colors ${
               active
                 ? "bg-ember-500/20 text-ember-400"
-                : "text-ink-600 hover:text-parchment-100"
+                : "text-ink-400 hover:text-parchment-100"
             }`}
           >
             {f.label}

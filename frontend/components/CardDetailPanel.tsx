@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import VisuelCarte from "./VisuelCarte";
 import CardListings from "@/components/CardListings";
 import { CatalogCardDetail, fetchCardDetail } from "@/lib/api";
+import { formatEur, formatFourchette, formatNombre } from "@/lib/format";
 
 /**
  * Fiche d'une carte : visuel, prix, themes, annonces en vente, tendance 7
@@ -51,7 +52,7 @@ function Courbe({ points }: { points: { captured_on: string; price_eur: number }
         preserveAspectRatio="none"
         className="h-12 w-full"
         role="img"
-        aria-label={`Évolution du prix sur ${points.length} relevés, de ${min.toFixed(2)} à ${max.toFixed(2)} euros`}
+        aria-label={`Évolution du prix sur ${points.length} relevés, de ${formatEur(min)} à ${formatEur(max)}`}
       >
         <path
           d={chemin}
@@ -61,9 +62,9 @@ function Courbe({ points }: { points: { captured_on: string; price_eur: number }
           vectorEffect="non-scaling-stroke"
         />
       </svg>
-      <div className="flex justify-between font-mono text-[10px] text-parchment-100/35">
+      <div className="flex justify-between font-mono text-[10px] text-parchment-100/60">
         <span>{points[0].captured_on}</span>
-        <span>{min.toFixed(2)} – {max.toFixed(2)} €</span>
+        <span>{formatFourchette(min, max)}</span>
         <span>{points[points.length - 1].captured_on}</span>
       </div>
     </div>
@@ -140,10 +141,10 @@ export default function CardDetailPanel({
                 // conclurait a un bug de l'application plutot qu'a une
                 // donnee que la source ne publie pas.
                 <>
-                  <p className="font-mono text-lg italic text-parchment-100/45">
+                  <p className="font-mono text-lg italic text-parchment-100/60">
                     Prix de référence inconnu
                   </p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-parchment-100/35">
+                  <p className="mt-1 text-[11px] leading-relaxed text-parchment-100/60">
                     Cette carte vient de la liste officielle, qui dit quelles
                     cartes existent mais pas ce qu&apos;elles valent. Aucune
                     marge ni score d&apos;affaire n&apos;est calculé pour elle
@@ -152,13 +153,13 @@ export default function CardDetailPanel({
                 </>
               ) : (
                 <p className="font-mono text-2xl text-parchment-100">
-                  {carte.price_eur.toFixed(2)} €
+                  {formatEur(carte.price_eur)}
                 </p>
               )}
-              <p className="text-xs text-parchment-100/50">{carte.trend_7d.label}</p>
+              <p className="text-xs text-parchment-100/65">{carte.trend_7d.label}</p>
               {carte.price_low_eur !== null && carte.price_high_eur !== null && (
-                <p className="mt-1 text-[11px] leading-relaxed text-parchment-100/35">
-                  Fourchette {carte.price_low_eur.toFixed(2)} – {carte.price_high_eur.toFixed(2)} €,
+                <p className="mt-1 text-[11px] leading-relaxed text-parchment-100/60">
+                  Fourchette {formatFourchette(carte.price_low_eur, carte.price_high_eur)},
                   dérivée de la volatilité récente. Ce ne sont pas des extrêmes
                   de ventes réellement conclues : la source ne publie pas cette
                   donnée.
@@ -167,13 +168,13 @@ export default function CardDetailPanel({
             </div>
 
             <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
-              <dt className="text-parchment-100/40">Code</dt>
+              <dt className="text-parchment-100/60">Code</dt>
               <dd className="font-mono text-parchment-100/80">{carte.card_code ?? "—"}</dd>
-              <dt className="text-parchment-100/40">Série</dt>
+              <dt className="text-parchment-100/60">Série</dt>
               <dd className="text-parchment-100/80">{carte.series_name ?? "—"}</dd>
-              <dt className="text-parchment-100/40">Rareté</dt>
+              <dt className="text-parchment-100/60">Rareté</dt>
               <dd className="text-parchment-100/80">{carte.rarity ?? "—"}</dd>
-              <dt className="text-parchment-100/40">Langue du nom</dt>
+              <dt className="text-parchment-100/60">Langue du nom</dt>
               <dd className="text-parchment-100/80">
                 {carte.language === "fr"
                   ? "Français"
@@ -189,7 +190,7 @@ export default function CardDetailPanel({
                 façon partout : décrite autrement d'un écran à l'autre, elle
                 laisserait croire à deux situations différentes. */}
             {carte.language === "en" && carte.language_note && (
-              <p className="rounded border border-ink-700 bg-ink-800/60 p-2.5 text-[11px] leading-relaxed text-parchment-100/50">
+              <p className="rounded border border-ink-700 bg-ink-800/60 p-2.5 text-[11px] leading-relaxed text-parchment-100/65">
                 {carte.language_note} Le jeu français n&apos;a commencé
                 qu&apos;à la série OP09 : les séries antérieures n&apos;y
                 figurent pas. La carte reste au catalogue, mais son nom et
@@ -199,7 +200,7 @@ export default function CardDetailPanel({
 
             {carte.themes_detail.length > 0 && (
               <div>
-                <h3 className="mb-1.5 text-[11px] uppercase tracking-wide text-parchment-100/40">
+                <h3 className="mb-1.5 text-[11px] uppercase tracking-wide text-parchment-100/60">
                   Thèmes
                 </h3>
                 <div className="flex flex-wrap gap-1.5">
@@ -219,12 +220,12 @@ export default function CardDetailPanel({
             <CardListings cardId={carte.id} />
 
             <div className="border-t border-ink-700 pt-3">
-              <h3 className="mb-1 text-[11px] uppercase tracking-wide text-parchment-100/40">
+              <h3 className="mb-1 text-[11px] uppercase tracking-wide text-parchment-100/60">
                 Tendance de fond
               </h3>
 
               {carte.trend_history.fiabilite === "insuffisant" ? (
-                <p className="text-[11px] leading-relaxed text-parchment-100/45">
+                <p className="text-[11px] leading-relaxed text-parchment-100/60">
                   {carte.trend_history.avertissement}
                   {carte.trend_history.points > 0 && (
                     <>
@@ -242,12 +243,12 @@ export default function CardDetailPanel({
                     {carte.trend_history.variation_pct !== null && (
                       <>
                         {carte.trend_history.variation_pct > 0 ? "+" : ""}
-                        {carte.trend_history.variation_pct.toFixed(1)} % sur{" "}
+                        {formatNombre(carte.trend_history.variation_pct, 1)} % sur{" "}
                         {carte.trend_history.jours_couverts} jours
                       </>
                     )}
                   </p>
-                  <p className="font-mono text-[11px] text-parchment-100/40">
+                  <p className="font-mono text-[11px] text-parchment-100/60">
                     {carte.trend_history.points} relevés ·{" "}
                     {LIBELLES_FIABILITE[carte.trend_history.fiabilite]} · qualité
                     d&apos;ajustement r² = {carte.trend_history.r2?.toFixed(2)}
@@ -258,19 +259,19 @@ export default function CardDetailPanel({
             </div>
 
             <div className="rounded-sm border border-ink-700 bg-ink-950 p-2.5">
-              <h3 className="mb-1 text-[11px] uppercase tracking-wide text-parchment-100/40">
+              <h3 className="mb-1 text-[11px] uppercase tracking-wide text-parchment-100/60">
                 Projection à {carte.projection.horizon_jours} jours
               </h3>
               {carte.projection.prix_projete_eur === null ? (
-                <p className="text-[11px] leading-relaxed text-parchment-100/45">
+                <p className="text-[11px] leading-relaxed text-parchment-100/60">
                   Aucune projection affichée : {carte.projection.avertissement}
                 </p>
               ) : (
                 <>
                   <p className="font-mono text-lg text-ember-400">
-                    ≈ {carte.projection.prix_projete_eur.toFixed(2)} €
+                    ≈ {formatEur(carte.projection.prix_projete_eur)}
                   </p>
-                  <p className="text-[11px] leading-relaxed text-parchment-100/45">
+                  <p className="text-[11px] leading-relaxed text-parchment-100/60">
                     {carte.projection.avertissement}
                   </p>
                 </>

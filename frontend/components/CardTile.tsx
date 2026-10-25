@@ -2,6 +2,7 @@
 
 import VisuelCarte from "./VisuelCarte";
 import { CatalogCard } from "@/lib/api";
+import { formatEur, formatFourchette, formatNombre } from "@/lib/format";
 
 /**
  * Une carte du catalogue, avec son visuel.
@@ -18,7 +19,7 @@ const COULEURS_TENDANCE: Record<string, string> = {
   hausse: "text-moss-400 border-moss-500/40 bg-moss-500/10",
   baisse: "text-rust-400 border-rust-500/40 bg-rust-500/10",
   stable: "text-parchment-100/60 border-ink-600 bg-ink-800",
-  inconnu: "text-parchment-100/40 border-ink-700 bg-ink-900",
+  inconnu: "text-parchment-100/60 border-ink-700 bg-ink-900",
 };
 
 function FlecheTendance({ direction }: { direction: string }) {
@@ -65,7 +66,7 @@ export default function CardTile({
               <span className="text-2xl opacity-30" aria-hidden>
                 ▭
               </span>
-              <span className="text-[10px] leading-tight text-parchment-100/35">
+              <span className="text-[10px] leading-tight text-parchment-100/60">
                 {raison === "absent" ? "Visuel pas encore récupéré" : "Visuel indisponible"}
               </span>
             </div>
@@ -92,7 +93,7 @@ export default function CardTile({
           {carte.display_name}
         </p>
 
-        <p className="text-[11px] text-parchment-100/45">
+        <p className="text-[11px] text-parchment-100/60">
           {carte.card_code ? `${carte.card_code} · ` : ""}
           {carte.series_name ?? "Série inconnue"}
         </p>
@@ -103,7 +104,7 @@ export default function CardTile({
             Le titre au survol porte la raison exacte. */}
         {carte.language === "en" && (
           <p
-            className="inline-flex w-fit items-center gap-1 rounded border border-ink-600 bg-ink-800 px-1.5 py-0.5 text-[10px] text-parchment-100/55"
+            className="inline-flex w-fit items-center gap-1 rounded border border-ink-600 bg-ink-800 px-1.5 py-0.5 text-[10px] text-parchment-100/65"
             title={carte.language_note ?? undefined}
           >
             <span aria-hidden>EN</span>
@@ -122,12 +123,12 @@ export default function CardTile({
                 ce qu'elles valent. On l'ecrit, au lieu d'afficher un
                 « 0,00 € » qui se lirait comme « cette carte ne vaut rien ». */}
             {carte.price_eur === null ? (
-              <p className="text-xs italic text-parchment-100/40">
+              <p className="text-xs italic text-parchment-100/60">
                 Prix de référence inconnu
               </p>
             ) : (
               <p className="font-mono text-base text-parchment-100">
-                {carte.price_eur.toFixed(2)} €
+                {formatEur(carte.price_eur)}
               </p>
             )}
             {carte.price_low_eur !== null && carte.price_high_eur !== null && (
@@ -135,10 +136,10 @@ export default function CardTile({
               // recente, pas des ventes conclues. Le dire la ou le chiffre
               // est lu, pas seulement dans une note de bas de page.
               <p
-                className="font-mono text-[10px] text-parchment-100/35"
+                className="font-mono text-[10px] text-parchment-100/60"
                 title="Fourchette dérivée de la volatilité récente, pas des ventes réellement conclues"
               >
-                {carte.price_low_eur.toFixed(2)} – {carte.price_high_eur.toFixed(2)} €
+                {formatFourchette(carte.price_low_eur, carte.price_high_eur)}
               </p>
             )}
           </div>
@@ -149,7 +150,7 @@ export default function CardTile({
           >
             <FlecheTendance direction={tendance.direction} />{" "}
             {tendance.variation_pct !== null
-              ? `${tendance.variation_pct > 0 ? "+" : ""}${tendance.variation_pct.toFixed(1)} %`
+              ? `${tendance.variation_pct > 0 ? "+" : ""}${formatNombre(tendance.variation_pct, 1)} %`
               : "—"}
           </span>
         </div>

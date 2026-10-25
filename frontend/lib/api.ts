@@ -35,6 +35,23 @@ export interface PriceDetail {
   // Alerte explicite (ex : le titre annonce une carte « V » mais la carte
   // trouvée dans l'index est la carte de base).
   warning?: string | null;
+  // Lot ou carte gradée : le prix d'une carte brute à l'unité ne s'applique
+  // pas, l'annonce reste visible mais sans marge. La phrase dit pourquoi.
+  non_comparable?: string;
+  // « Trop beau pour être vrai » : prix demandé sous le quart de la cote.
+  alerte?: string;
+  // L'état retenu a décoté la cote (LP, MP…) avant le calcul de la marge.
+  etat_retenu?: { etat: string; coefficient: number; reference_ajustee: number };
+}
+
+/** Le coût réel d'un achat, poste par poste (voir scoring/margin.py). */
+export interface PurchaseCostDetail {
+  article: number;
+  protection: number;
+  origine_protection: string | null;
+  port: number;
+  port_estime: boolean;
+  total: number;
 }
 
 export interface PriceIndexStatus {
@@ -85,6 +102,11 @@ export interface Listing {
   manual_status: string | null;
   manual_reference_price: number | null;
   manual_reviewed_at: string | null;
+  /** Ce que coûte vraiment l'achat : protection acheteur et port compris. */
+  purchase_cost_eur?: number | null;
+  purchase_cost_detail?: PurchaseCostDetail | null;
+  /** L'état coché par le vendeur sur Vinted (« Très bon état »…). */
+  seller_condition?: string | null;
 }
 
 export interface AppSettings {
@@ -479,6 +501,9 @@ export interface CardListing {
   price_eur: number;
   shipping_eur: number | null;
   total_eur: number;
+  total_detail?: PurchaseCostDetail | null;
+  alerte?: string | null;
+  non_comparable?: string | null;
   deal_score: number | null;
   margin_net_eur: number | null;
   margin_ratio: number | null;

@@ -38,7 +38,7 @@ export default function ListingColumn({
         <h2 className="flex items-center gap-2 font-display text-lg text-parchment-100">
           <span className={`h-2 w-2 rounded-full ${SOURCE_DOT[source]}`} />
           {SOURCE_LABEL[source]}
-          <span className="tabular font-mono text-xs font-normal text-ink-600">
+          <span className="tabular font-mono text-xs font-normal text-ink-400">
             {filtered ? `${listings.length} / ${total}` : total}
           </span>
         </h2>
@@ -59,7 +59,7 @@ export default function ListingColumn({
             <p className="text-sm text-parchment-100">
               {filtered ? "Rien ne passe ces filtres." : "Aucune annonce pour l'instant."}
             </p>
-            <p className="mt-1 text-xs text-ink-600">
+            <p className="mt-1 text-xs text-ink-400">
               {filtered
                 ? "Élargis la fiabilité ou baisse le score minimum."
                 : "Le prochain cycle de collecte en trouvera peut-être."}

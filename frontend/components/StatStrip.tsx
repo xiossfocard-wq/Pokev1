@@ -84,7 +84,7 @@ export default function StatStrip({ listings, indexStatus, dealThreshold, loadin
           key={t.label}
           className="rounded-lg border border-ink-700 bg-ink-800/60 px-3.5 py-3 backdrop-blur-sm"
         >
-          <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-600">
+          <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-400">
             {t.live && <span className="live-dot h-1.5 w-1.5 rounded-full bg-moss-400" />}
             {t.label}
           </div>
@@ -95,7 +95,7 @@ export default function StatStrip({ listings, indexStatus, dealThreshold, loadin
               {t.value}
             </div>
           )}
-          <div className="mt-1 truncate text-[11px] text-ink-600">{t.hint}</div>
+          <div className="mt-1 truncate text-[11px] text-ink-400">{t.hint}</div>
         </div>
       ))}
     </div>

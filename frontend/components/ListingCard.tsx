@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import type { Listing } from "@/lib/api";
+import { formatEur } from "@/lib/format";
 import DealScoreBadge from "./DealScoreBadge";
 import CorrectionPanel from "./CorrectionPanel";
 
@@ -16,21 +17,71 @@ function timeAgo(iso: string): string {
   return `il y a ${Math.floor(hours / 24)} j`;
 }
 
-function formatEur(value: number | null | undefined): string {
-  if (value === null || value === undefined) return "—";
-  return value.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
+/**
+ * Les raretés du jeu One Piece, sous le sigle qu'un joueur lit sur la carte.
+ *
+ * Elles arrivent sous deux formes : le code du catalogue (« SEC (Secret
+ * Rare) ») et le libellé déduit du titre (« Secret Rare », « Alternative »).
+ * Les styles étaient restés ceux du jeu Pokémon (« Special Illustration
+ * Rare », « Hyper Rare »…) : aucune carte One Piece n'en recevait un.
+ */
+const RARETES: { motif: RegExp; sigle: string; nom: string; style: string }[] = [
+  { motif: /^manga/i, sigle: "Manga", nom: "Manga Rare", style: "bg-gradient-to-r from-fuchsia-500/30 to-amber-400/30 text-amber-200 ring-1 ring-amber-400/50" },
+  { motif: /^(sec\b|secret)/i, sigle: "SEC", nom: "Secret Rare", style: "bg-gradient-to-r from-fuchsia-500/25 to-amber-400/25 text-amber-200 ring-1 ring-amber-400/40" },
+  { motif: /^(tr\b|treasure)/i, sigle: "TR", nom: "Treasure Rare", style: "bg-gradient-to-r from-amber-400/25 to-yellow-300/20 text-amber-200 ring-1 ring-amber-300/40" },
+  { motif: /^(sp\b|sp card|special)/i, sigle: "SP", nom: "Carte spéciale", style: "bg-gradient-to-r from-sky-400/25 to-fuchsia-500/25 text-sky-200 ring-1 ring-sky-400/40" },
+  { motif: /^alternative/i, sigle: "Alt", nom: "Illustration alternative", style: "bg-ember-500/20 text-ember-400 ring-1 ring-ember-500/40" },
+  { motif: /^(sr\b|super rare)/i, sigle: "SR", nom: "Super Rare", style: "bg-violet-500/20 text-violet-300 ring-1 ring-violet-400/30" },
+  { motif: /^(l\b|leader)/i, sigle: "L", nom: "Leader", style: "bg-rust-500/15 text-rust-400 ring-1 ring-rust-400/30" },
+  { motif: /^(p\b|promo)/i, sigle: "P", nom: "Promo", style: "bg-moss-500/15 text-moss-400" },
+  { motif: /^(r\b|rare)/i, sigle: "R", nom: "Rare", style: "bg-cyan-500/15 text-cyan-300" },
+  { motif: /^(uc\b|uncommon)/i, sigle: "UC", nom: "Peu commune", style: "bg-ink-700 text-parchment-100" },
+  { motif: /^(c\b|common)/i, sigle: "C", nom: "Commune", style: "bg-ink-700 text-ink-400" },
+];
+
+function rarete(libelle: string) {
+  return RARETES.find((r) => r.motif.test(libelle.trim())) ?? {
+    sigle: libelle, nom: libelle, style: "bg-ember-500/15 text-ember-400",
+  };
 }
 
-const RARITY_STYLES: Record<string, string> = {
-  "Special Illustration Rare": "bg-gradient-to-r from-fuchsia-500/25 to-amber-400/25 text-amber-200 ring-1 ring-amber-400/40",
-  "Secret Illustration Rare": "bg-gradient-to-r from-fuchsia-500/25 to-amber-400/25 text-amber-200 ring-1 ring-amber-400/40",
-  "Hyper Rare": "bg-gradient-to-r from-sky-400/25 to-fuchsia-500/25 text-sky-200 ring-1 ring-sky-400/40",
-  "Illustration Rare": "bg-ember-500/20 text-ember-400 ring-1 ring-ember-500/40",
-  "Shiny Ultra Rare": "bg-violet-500/20 text-violet-300 ring-1 ring-violet-400/30",
-  "Ultra Rare": "bg-violet-500/15 text-violet-300",
-  "Shiny Rare": "bg-cyan-500/15 text-cyan-300",
-  "Double Rare": "bg-ink-700 text-parchment-100",
+const ETATS: Record<string, string> = {
+  NM: "Near Mint : comme neuve",
+  LP: "Light Played : légères traces",
+  MP: "Moderately Played : usure visible",
+  HP: "Heavily Played : très abîmée",
+  DMG: "Damaged : endommagée",
 };
+
+/**
+ * Le texte à chercher sur Cardmarket : le NOM de la carte, tel que le
+ * catalogue l'a reconnu, sans la mention de version qui n'existe pas sous
+ * cette forme chez eux (« Shanks (Parallèle 1) » ne trouve rien). Jamais
+ * « Prix saisi par toi », le libellé d'une correction manuelle. Faute
+ * d'identification, le code de carte s'il figure dans le titre — un titre
+ * Vinted entier (« Carte one piece Luffy tbe ») ne trouve rien non plus.
+ */
+function rechercheCardmarket(listing: Listing): string {
+  const d = listing.price_detail;
+  if (d?.matched_card && d.confidence !== "manual") {
+    const nom = d.matched_card.replace(/\s*\((?:parall[eè]le|manga|alternative|alt)[^)]*\)\s*$/i, "").trim();
+    if (nom) return nom;
+  }
+  const code = listing.title.match(/\b(?:OP|ST|EB|PRB)\d{2}-\d{3}\b/i);
+  return code ? code[0].toUpperCase() : listing.title;
+}
+
+/** Le détail du coût, lisible au survol : d'où vient chaque euro. */
+function detailDuCout(listing: Listing): string | undefined {
+  const c = listing.purchase_cost_detail;
+  if (!c) return undefined;
+  const lignes = [`Article ${formatEur(c.article)}`];
+  if (c.protection > 0) {
+    lignes.push(`Protection acheteur ${formatEur(c.protection)}${c.origine_protection?.startsWith("calcul") ? " (0,70 € + 5 %)" : ""}`);
+  }
+  if (c.port > 0) lignes.push(`Port ${formatEur(c.port)}${c.port_estime ? " (estimé : Vinted le fixe au panier)" : ""}`);
+  return lignes.join(" · ");
+}
 
 const CONDITION_STYLES: Record<string, string> = {
   NM: "bg-moss-500/20 text-moss-400",
@@ -81,8 +132,12 @@ export default function ListingCard({
   // Cardmarket exige l'extension exacte dans l'URL d'une fiche produit,
   // indevinable depuis un titre Vinted : on pointe vers leur recherche.
   const cardmarketUrl = `https://www.cardmarket.com/fr/OnePiece/Products/Search?searchString=${encodeURIComponent(
-    detail?.matched_card || listing.title
+    rechercheCardmarket(listing)
   )}`;
+  const cout = listing.purchase_cost_eur;
+  const coutDiffere = cout !== null && cout !== undefined && Math.abs(cout - listing.price) >= 0.01;
+  const nonComparable = detail?.non_comparable;
+  const decote = detail?.etat_retenu;
 
   return (
     <article className="group relative overflow-hidden rounded-lg border border-ink-700 bg-ink-800/70 transition-colors hover:border-ember-500/40 hover:bg-ink-800">
@@ -97,7 +152,7 @@ export default function ListingCard({
           {photo ? (
             <Image src={photo} alt={`Photo de l'annonce : ${listing.title}`} fill sizes="68px" className="object-cover" unoptimized />
           ) : (
-            <div className="flex h-full items-center justify-center px-1 text-center text-[9px] text-ink-600">
+            <div className="flex h-full items-center justify-center px-1 text-center text-[9px] text-ink-400">
               pas de photo
             </div>
           )}
@@ -111,19 +166,37 @@ export default function ListingCard({
           <div className="mt-1.5 flex flex-wrap gap-1">
             {listing.condition_tier && (
               <span
-                className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${CONDITION_STYLES[listing.condition_tier] ?? "bg-ink-700 text-ink-600"}`}
-                title="État déduit du texte de l'annonce"
+                className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${CONDITION_STYLES[listing.condition_tier] ?? "bg-ink-700 text-ink-400"}`}
+                title={`${ETATS[listing.condition_tier] ?? listing.condition_tier} — le pire de l'état écrit dans l'annonce et de celui coché par le vendeur`}
               >
                 {listing.condition_tier}
               </span>
             )}
-            {listing.rarity_tier && (
-              <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${RARITY_STYLES[listing.rarity_tier] ?? "bg-ember-500/15 text-ember-400"}`}>
-                {listing.rarity_tier}
+            {listing.rarity_tier && (() => {
+              const r = rarete(listing.rarity_tier);
+              return (
+                <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${r.style}`} title={r.nom}>
+                  {r.sigle}
+                </span>
+              );
+            })()}
+            {nonComparable && (
+              <span
+                className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-sky-300"
+                title={nonComparable}
+              >
+                {nonComparable.startsWith("Carte gradée") ? "Gradée" : "Lot"}
               </span>
             )}
             {listing.is_vintage && (
-              <span className="rounded bg-moss-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-moss-400">Vintage</span>
+              // « Vintage » pour une carte de 2022 faisait sourire un
+              // collectionneur : ce sont les PREMIERS sets du jeu.
+              <span
+                className="rounded bg-moss-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-moss-400"
+                title="Premiers sets du jeu (Romance Dawn, Paramount War) ou première édition : recherchés des collectionneurs"
+              >
+                1ers sets
+              </span>
             )}
             {reviewed && (
               <span
@@ -139,19 +212,27 @@ export default function ListingCard({
             <span className="text-lg font-bold leading-none text-parchment-100">
               {formatEur(listing.price)}
             </span>
-            {listing.shipping_price > 0 && (
-              <span className="text-ink-600">+{formatEur(listing.shipping_price)} port</span>
-            )}
+            {coutDiffere ? (
+              <span className="text-ink-400" title={detailDuCout(listing)}>
+                ≈ {formatEur(cout)} payé
+              </span>
+            ) : listing.shipping_price > 0 ? (
+              <span className="text-ink-400">+{formatEur(listing.shipping_price)} port</span>
+            ) : null}
             {listing.margin_net !== null && (
               <span
                 className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${
                   uncertain
-                    ? "bg-ink-700 text-ink-600 line-through decoration-ink-600/60"
+                    ? "bg-ink-700 text-ink-400 line-through decoration-ink-600/60"
                     : marginPositive
                     ? "bg-moss-500/20 text-moss-400"
                     : "bg-rust-500/15 text-rust-400"
                 }`}
-                title={uncertain ? "Marge calculée sur un prix incertain — elle ne compte pas dans le score." : undefined}
+                title={
+                  uncertain
+                    ? "Marge calculée sur un prix incertain — elle ne compte pas dans le score."
+                    : "Marge nette estimée : cote (ajustée à l'état) moins les frais de revente sur Cardmarket, moins ce que l'achat coûte vraiment."
+                }
               >
                 {marginPositive ? "+" : ""}
                 {formatEur(listing.margin_net)}
@@ -160,14 +241,14 @@ export default function ListingCard({
           </div>
 
           {hasNoPrice ? (
-            <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-ink-600">
-              <span className="inline-block h-2 w-2 rounded-full ring-1 ring-ink-600" />
-              Prix marché introuvable
+            <p className="mt-1.5 flex items-start gap-1.5 text-[11px] leading-snug text-ink-400">
+              <span className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full ring-1 ring-ink-400" />
+              {nonComparable ?? "Prix marché introuvable"}
             </p>
           ) : (
             <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-[11px]">
               {meta && <span className={`inline-block h-2 w-2 rounded-full ${meta.dot}`} />}
-              <span className="text-ink-600">marché</span>
+              <span className="text-ink-400">cote</span>
               <span className="tabular font-mono font-semibold text-parchment-100">
                 {formatEur(listing.reference_price)}
               </span>
@@ -180,24 +261,40 @@ export default function ListingCard({
             </p>
           )}
 
+          {decote && (
+            <p className="mt-1 text-[11px] text-ink-400" title="La cote est celle d'une carte en très bon état">
+              état {decote.etat} : cote ramenée à{" "}
+              <span className="tabular font-mono text-parchment-100">{formatEur(decote.reference_ajustee)}</span>{" "}
+              (×{decote.coefficient.toLocaleString("fr-FR")})
+            </p>
+          )}
+
+          {detail?.alerte && (
+            <p className="mt-1.5 rounded-md border border-ember-500/40 bg-ember-500/10 px-2 py-1 text-[10px] leading-snug text-ember-400">
+              ⚠ {detail.alerte}
+            </p>
+          )}
+
           {detail?.warning && (
             <p className="mt-1.5 rounded-md border border-rust-500/40 bg-rust-500/10 px-2 py-1 text-[10px] leading-snug text-rust-400">
               ⚠ {detail.warning}
             </p>
           )}
 
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 text-[11px] text-ink-600">
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 text-[11px] text-ink-400">
             {listing.quality_vision_score !== null ? (
-              <span title="Estimation depuis les photos — pas un grading professionnel">
-                photo ~{Math.round(listing.quality_vision_score)}/100
+              <span title="Qualité estimée sur les photos de l'annonce — pas un grading professionnel">
+                qualité (photos) ~{Math.round(listing.quality_vision_score)}/100
               </span>
             ) : listing.quality_text_score !== null ? (
-              <span title="Estimation depuis le texte de l'annonce uniquement">
-                texte ~{Math.round(listing.quality_text_score)}/100
+              <span title="Qualité estimée sur le texte de l'annonce seulement : précision de la description, état annoncé">
+                qualité (texte) ~{Math.round(listing.quality_text_score)}/100
               </span>
             ) : null}
             {listing.seller_reliability_score !== null && (
-              <span>vendeur {Math.round(listing.seller_reliability_score)}/100</span>
+              <span title="Fiabilité du vendeur : nombre d'avis et note moyenne">
+                fiabilité vendeur {Math.round(listing.seller_reliability_score)}/100
+              </span>
             )}
             <span>{timeAgo(listing.first_seen_at)}</span>
           </div>
@@ -212,7 +309,7 @@ export default function ListingCard({
         type="button"
         onClick={() => setPanelOpen((o) => !o)}
         aria-expanded={panelOpen}
-        className="flex w-full items-center justify-center gap-1.5 border-t border-ink-700 py-1.5 text-[11px] text-ink-600 transition-colors hover:text-ember-400 md:hidden"
+        className="flex w-full items-center justify-center gap-1.5 border-t border-ink-700 py-1.5 text-[11px] text-ink-400 transition-colors hover:text-ember-400 md:hidden"
       >
         {panelOpen ? "Fermer" : "Détail & corriger"}
         <span aria-hidden="true">{panelOpen ? "⌃" : "⌄"}</span>

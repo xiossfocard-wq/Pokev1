@@ -118,7 +118,7 @@ export default function ExplorerPage() {
           <h1 className="font-display text-2xl text-parchment-100">
             Explorer le catalogue
           </h1>
-          <p className="mt-0.5 text-xs text-parchment-100/50">
+          <p className="mt-0.5 text-xs text-parchment-100/65">
             Chercher des cartes par thème, par budget et par type, et voir
             lesquelles bougent.
           </p>
@@ -155,7 +155,7 @@ export default function ExplorerPage() {
             <h2 className="font-display text-base text-parchment-100">
               En vogue cette semaine
             </h2>
-            <p className="text-[11px] text-parchment-100/40">
+            <p className="text-[11px] text-parchment-100/60">
               Classé en pourcentage, pas en euros : +12 € sur une carte à 400 €
               n&apos;est pas une tendance.
             </p>
@@ -183,7 +183,7 @@ export default function ExplorerPage() {
 
         <section className="min-w-0 flex-1">
           <div className="mb-2.5 flex items-baseline justify-between gap-3">
-            <p className="text-xs text-parchment-100/55">
+            <p className="text-xs text-parchment-100/65">
               {chargement
                 ? "Recherche…"
                 : `${total.toLocaleString("fr-FR")} carte${total > 1 ? "s" : ""} trouvée${total > 1 ? "s" : ""}`}
@@ -198,7 +198,7 @@ export default function ExplorerPage() {
                 >
                   ←
                 </button>
-                <span className="font-mono text-parchment-100/50">
+                <span className="font-mono text-parchment-100/65">
                   {page + 1} / {dernierePage + 1}
                 </span>
                 <button
@@ -220,7 +220,7 @@ export default function ExplorerPage() {
           )}
 
           {!erreur && !chargement && cartes.length === 0 && !catalogueVide && (
-            <p className="rounded-md border border-ink-700 bg-ink-900 p-4 text-xs text-parchment-100/50">
+            <p className="rounded-md border border-ink-700 bg-ink-900 p-4 text-xs text-parchment-100/65">
               Aucune carte ne correspond à ces filtres. Élargis la fourchette de
               prix, ou retire le thème.
             </p>

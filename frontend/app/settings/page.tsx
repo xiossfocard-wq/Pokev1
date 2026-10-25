@@ -44,7 +44,7 @@ export default function SettingsPage() {
           <Link href="/" className="font-display text-lg leading-none text-parchment-100">
             Radar
           </Link>
-          <span className="text-ink-600">/</span>
+          <span className="text-ink-400">/</span>
           <span className="text-sm text-parchment-100">Réglages</span>
           <Link
             href="/"
@@ -138,7 +138,7 @@ function Section({ title, intro, children }: { title: string; intro?: string; ch
   return (
     <section className="rounded-lg border border-ink-700 bg-ink-800/60 p-4">
       <h2 className="font-display text-lg text-parchment-100">{title}</h2>
-      {intro && <p className="mt-0.5 text-xs text-ink-600">{intro}</p>}
+      {intro && <p className="mt-0.5 text-xs text-ink-400">{intro}</p>}
       <div className="mt-3 flex flex-col gap-4">{children}</div>
     </section>
   );
@@ -164,7 +164,7 @@ function Field({
   return (
     <label className="block">
       <span className="mb-1 block text-sm text-parchment-100">{label}</span>
-      {hint && <span className="mb-1.5 block text-xs leading-relaxed text-ink-600">{hint}</span>}
+      {hint && <span className="mb-1.5 block text-xs leading-relaxed text-ink-400">{hint}</span>}
       <input
         type="number"
         value={value}

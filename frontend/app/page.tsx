@@ -157,28 +157,34 @@ export default function DashboardPage() {
   const all = useMemo(() => [...vinted, ...ebay], [vinted, ebay]);
   const vintedShown = useMemo(() => applyFilters(vinted, filters), [vinted, filters]);
   const ebayShown = useMemo(() => applyFilters(ebay, filters), [ebay, filters]);
+  // Sans clé eBay configurée, la colonne eBay restait vide et prenait la
+  // moitié de l'écran. Elle n'apparaît que si elle a quelque chose à
+  // montrer — ou si on l'a demandée explicitement avec le filtre.
+  const ebayVide = !loading && ebay.length === 0;
   const showVinted = filters.source !== "ebay";
-  const showEbay = filters.source !== "vinted";
+  const showEbay = filters.source === "ebay" || (filters.source !== "vinted" && !ebayVide);
 
   return (
     <>
       <header className="sticky top-0 z-20 border-b border-ink-800 bg-ink-950/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2.5">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 sm:flex-nowrap">
           <Link href="/" className="shrink-0">
             <span className="font-display text-lg leading-none text-parchment-100">Radar</span>
-            <span className="ml-1.5 hidden font-mono text-[10px] uppercase tracking-[0.14em] text-ink-600 sm:inline">
+            <span className="ml-1.5 hidden font-mono text-[10px] uppercase tracking-[0.14em] text-ink-400 sm:inline">
               à pépites
             </span>
           </Link>
 
-          <form onSubmit={handleSearch} className="flex min-w-0 flex-1 gap-1.5">
+          {/* Sur téléphone, les boutons écrasaient le champ de recherche à
+              quelques pixels : il passe sur sa propre ligne, pleine largeur. */}
+          <form onSubmit={handleSearch} className="order-last flex min-w-0 basis-full gap-1.5 sm:order-none sm:basis-auto sm:flex-1">
             <input
               type="search"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Chercher une carte : Luffy, Zoro alt art, OP01-120…"
               aria-label="Chercher une carte One Piece sur Vinted et eBay"
-              className="min-w-0 flex-1 rounded-md border border-ink-700 bg-ink-800/80 px-3 py-1.5 text-sm text-parchment-100 placeholder:text-ink-600 focus:border-ember-500 focus:outline-none"
+              className="min-w-0 flex-1 rounded-md border border-ink-700 bg-ink-800/80 px-3 py-1.5 text-sm text-parchment-100 placeholder:text-ink-400 focus:border-ember-500 focus:outline-none"
             />
             <button
               type="submit"
@@ -189,7 +195,7 @@ export default function DashboardPage() {
             </button>
           </form>
 
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:ml-0">
             <button
               onClick={handleCheckNow}
               disabled={checking}
@@ -227,14 +233,14 @@ export default function DashboardPage() {
             <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
               <h2 className="font-display text-xl text-parchment-100">
                 Résultats pour « {searchQuery} »
-                <span className="tabular ml-2 font-mono text-xs font-normal text-ink-600">
+                <span className="tabular ml-2 font-mono text-xs font-normal text-ink-400">
                   {searchResults.length}
                 </span>
               </h2>
               <button
                 type="button"
                 onClick={clearSearch}
-                className="rounded-md border border-ink-700 px-2.5 py-1 text-xs text-ink-600 transition-colors hover:border-ink-600 hover:text-parchment-100"
+                className="rounded-md border border-ink-700 px-2.5 py-1 text-xs text-ink-400 transition-colors hover:border-ink-600 hover:text-parchment-100"
               >
                 Retour au radar
               </button>
@@ -249,7 +255,7 @@ export default function DashboardPage() {
             {searching && (
               <div className="rounded-lg border border-dashed border-ink-700 px-4 py-8 text-center">
                 <p className="text-sm text-parchment-100">Recherche en direct sur Vinted et eBay</p>
-                <p className="mt-1 text-xs text-ink-600">
+                <p className="mt-1 text-xs text-ink-400">
                   Compte 1 à 6 minutes la première fois. Tu peux laisser la page ouverte.
                 </p>
                 {searchProgress && (
@@ -261,7 +267,7 @@ export default function DashboardPage() {
             {!searching && !searchError && searchResults.length === 0 && (
               <div className="rounded-lg border border-dashed border-ink-700 px-4 py-8 text-center">
                 <p className="text-sm text-parchment-100">Aucune annonce trouvée pour ce terme.</p>
-                <p className="mt-1 text-xs text-ink-600">Essaie un nom légèrement différent, ou reviens plus tard.</p>
+                <p className="mt-1 text-xs text-ink-400">Essaie un nom légèrement différent, ou reviens plus tard.</p>
               </div>
             )}
 
@@ -279,7 +285,14 @@ export default function DashboardPage() {
               <FilterChips value={filters} onChange={setFilters} />
             </div>
 
-            <div className="mb-3 flex gap-1 md:hidden">
+            {ebayVide && filters.source === "all" && (
+              <p className="mb-3 text-[11px] text-ink-400">
+                Aucune annonce eBay : la collecte eBay demande une clé d&apos;API (voir le README), ou
+                n&apos;a encore rien trouvé. Le radar montre Vinted en pleine largeur.
+              </p>
+            )}
+
+            <div className={`mb-3 flex gap-1 md:hidden ${showVinted && showEbay ? "" : "hidden"}`}>
               {(["vinted", "ebay"] as const).map((tab) => (
                 <button
                   key={tab}
@@ -287,7 +300,7 @@ export default function DashboardPage() {
                   aria-pressed={mobileTab === tab}
                   onClick={() => setMobileTab(tab)}
                   className={`flex-1 rounded-md py-1.5 text-xs font-medium capitalize transition-colors ${
-                    mobileTab === tab ? "bg-ember-500/20 text-ember-400" : "bg-ink-800 text-ink-600"
+                    mobileTab === tab ? "bg-ember-500/20 text-ember-400" : "bg-ink-800 text-ink-400"
                   }`}
                 >
                   {tab}
@@ -328,9 +341,13 @@ export default function DashboardPage() {
           </>
         )}
 
-        <footer className="mt-12 space-y-1 border-t border-ink-800 pt-4 text-center text-[11px] text-ink-600">
+        <footer className="mt-12 space-y-1 border-t border-ink-800 pt-4 text-center text-[11px] text-ink-400">
           <p>Scores de qualité = estimations automatiques, pas un grading professionnel.</p>
           <p>Prix de référence : OPECards (marché FR, relevé Cardmarket). Vérifie toujours l&apos;annonce et les photos avant d&apos;acheter.</p>
+          <p>
+            « Payé » = prix + protection acheteur Vinted (0,70 € + 5 %) + port estimé. La marge déduit aussi les frais de
+            revente sur Cardmarket, et la cote est ramenée à l&apos;état de la carte.
+          </p>
         </footer>
       </main>
     </>

@@ -13,7 +13,7 @@ export default function DealScoreBadge({ score, size = 56 }: DealScoreBadgeProps
   if (score === null) {
     return (
       <div
-        className="flex items-center justify-center rounded-full border border-ink-600 text-[10px] text-ink-600 font-mono"
+        className="flex items-center justify-center rounded-full border border-ink-600 text-[10px] text-ink-400 font-mono"
         style={{ width: size, height: size }}
         title="Pas encore de prix de référence trouvé pour cette annonce"
       >

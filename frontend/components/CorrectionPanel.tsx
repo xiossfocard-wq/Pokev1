@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { correctListing, type CorrectionAction, type Listing } from "@/lib/api";
+import { formatEur } from "@/lib/format";
 
 interface CorrectionPanelProps {
   listing: Listing;
@@ -10,13 +11,8 @@ interface CorrectionPanelProps {
   onChanged?: (updated: Listing) => void;
 }
 
-function formatEur(value: number | null | undefined): string {
-  if (value === null || value === undefined) return "—";
-  return value.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
-}
-
 const BTN = "rounded-md border px-2.5 py-1.5 text-[11px] font-medium transition-colors disabled:opacity-40";
-const BTN_QUIET = `${BTN} border-ink-700 text-ink-600 hover:border-ink-600 hover:text-parchment-100`;
+const BTN_QUIET = `${BTN} border-ink-700 text-ink-400 hover:border-ink-600 hover:text-parchment-100`;
 const BTN_NEUTRAL = `${BTN} border-ink-700 text-parchment-100 hover:border-ember-500 hover:text-ember-400`;
 const BTN_DANGER = `${BTN} border-ink-700 text-parchment-100 hover:border-rust-500 hover:text-rust-400`;
 const BTN_PRIMARY = `${BTN} border-ember-500/50 bg-ember-500/10 text-ember-400 hover:bg-ember-500/20`;
@@ -66,26 +62,26 @@ export default function CorrectionPanel({ listing, cardmarketUrl, searchUrl, onC
     <div className="border-t border-ink-700 bg-ink-900/60 px-3 py-3">
       {detail ? (
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
-          <dt className="text-ink-600">Carte retenue</dt>
+          <dt className="text-ink-400">Carte retenue</dt>
           <dd className="text-parchment-100">
             {detail.matched_card}
             {detail.matched_code && (
-              <span className="ml-1.5 font-mono text-ink-600">{detail.matched_code}</span>
+              <span className="ml-1.5 font-mono text-ink-400">{detail.matched_code}</span>
             )}
           </dd>
 
           {detail.series_name && (
             <>
-              <dt className="text-ink-600">Série</dt>
+              <dt className="text-ink-400">Série</dt>
               <dd className="text-parchment-100">{detail.series_name}</dd>
             </>
           )}
 
-          <dt className="text-ink-600">Prix marché</dt>
+          <dt className="text-ink-400">Prix marché</dt>
           <dd className="tabular font-mono text-parchment-100">
             {formatEur(detail.price_eur)}
             {hasRange && (
-              <span className="ml-1.5 text-ink-600">
+              <span className="ml-1.5 text-ink-400">
                 volatilité 7 j : {formatEur(listing.price_low_eur)}–{formatEur(listing.price_high_eur)}
               </span>
             )}
@@ -93,11 +89,11 @@ export default function CorrectionPanel({ listing, cardmarketUrl, searchUrl, onC
 
           {homonyms > 1 && (
             <>
-              <dt className="text-ink-600">Homonymes</dt>
+              <dt className="text-ink-400">Homonymes</dt>
               <dd className="text-parchment-100">
                 {homonyms} cartes de ce nom
                 {detail.candidates_min_eur != null && (
-                  <span className="tabular font-mono text-ink-600">
+                  <span className="tabular font-mono text-ink-400">
                     {" "}({formatEur(detail.candidates_min_eur)} → {formatEur(detail.candidates_max_eur)})
                   </span>
                 )}
@@ -105,11 +101,11 @@ export default function CorrectionPanel({ listing, cardmarketUrl, searchUrl, onC
             </>
           )}
 
-          <dt className="text-ink-600">Pourquoi</dt>
-          <dd className="text-ink-600">{detail.reason}</dd>
+          <dt className="text-ink-400">Pourquoi</dt>
+          <dd className="text-ink-400">{detail.reason}</dd>
         </dl>
       ) : (
-        <p className="text-[11px] text-ink-600">
+        <p className="text-[11px] text-ink-400">
           Aucune carte de l&apos;index ne correspond à ce titre — titre trop vague, ou carte
           absente de l&apos;index.
         </p>
@@ -140,7 +136,7 @@ export default function CorrectionPanel({ listing, cardmarketUrl, searchUrl, onC
           </div>
         ) : editingPrice ? (
           <div className="flex flex-wrap items-center gap-2">
-            <label className="text-[11px] text-ink-600" htmlFor={`prix-${listing.id}`}>
+            <label className="text-[11px] text-ink-400" htmlFor={`prix-${listing.id}`}>
               Prix réel du marché
             </label>
             <input
@@ -155,7 +151,7 @@ export default function CorrectionPanel({ listing, cardmarketUrl, searchUrl, onC
                 if (e.key === "Escape") setEditingPrice(false);
               }}
               placeholder="42,50"
-              className="tabular w-24 rounded-md border border-ink-700 bg-ink-800 px-2 py-1.5 font-mono text-[11px] text-parchment-100 placeholder:text-ink-600 focus:border-ember-500 focus:outline-none"
+              className="tabular w-24 rounded-md border border-ink-700 bg-ink-800 px-2 py-1.5 font-mono text-[11px] text-parchment-100 placeholder:text-ink-400 focus:border-ember-500 focus:outline-none"
             />
             <button type="button" disabled={busy} onClick={submitPrice} className={BTN_PRIMARY}>
               Valider
@@ -163,7 +159,7 @@ export default function CorrectionPanel({ listing, cardmarketUrl, searchUrl, onC
             <button
               type="button"
               onClick={() => setEditingPrice(false)}
-              className="text-[11px] text-ink-600 underline hover:text-parchment-100"
+              className="text-[11px] text-ink-400 underline hover:text-parchment-100"
             >
               Annuler
             </button>

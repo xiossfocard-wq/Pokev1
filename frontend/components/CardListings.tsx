@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { CardListing, CardListingsResult, fetchCardListings } from "@/lib/api";
+import { formatEur } from "@/lib/format";
 
 /**
  * Les annonces en vente pour une carte du catalogue.
@@ -19,7 +20,7 @@ import { CardListing, CardListingsResult, fetchCardListings } from "@/lib/api";
 function Score({ score, douteux }: { score: number | null; douteux: boolean }) {
   if (score === null) {
     return (
-      <span className="shrink-0 rounded-sm border border-ink-600 px-1.5 py-0.5 font-mono text-[10px] text-parchment-100/35">
+      <span className="shrink-0 rounded-sm border border-ink-600 px-1.5 py-0.5 font-mono text-[10px] text-parchment-100/60">
         non noté
       </span>
     );
@@ -31,12 +32,12 @@ function Score({ score, douteux }: { score: number | null; douteux: boolean }) {
   // mais sans la couleur qui invite a y croire. Un 86/100 vert sur une
   // carte mal identifiee est exactement le piege qu'on veut eviter.
   const ton = douteux
-    ? "border-ink-600 bg-ink-800 text-parchment-100/50"
+    ? "border-ink-600 bg-ink-800 text-parchment-100/65"
     : score >= 80
       ? "border-moss-500/40 bg-moss-500/10 text-moss-400"
       : score >= 60
         ? "border-ember-500/40 bg-ember-500/10 text-ember-400"
-        : "border-ink-600 bg-ink-800 text-parchment-100/55";
+        : "border-ink-600 bg-ink-800 text-parchment-100/65";
 
   const titre = douteux
     ? "Score d'affaire calculé contre le prix d'une carte dont l'identification est incertaine : à vérifier sur la photo avant d'y croire."
@@ -77,7 +78,7 @@ function Annonce({ annonce }: { annonce: CardListing }) {
               loading="lazy"
             />
           ) : (
-            <span className="flex h-full w-full items-center justify-center p-1 text-center text-[9px] leading-tight text-parchment-100/25">
+            <span className="flex h-full w-full items-center justify-center p-1 text-center text-[9px] leading-tight text-parchment-100/60">
               Pas de photo
             </span>
           )}
@@ -101,18 +102,31 @@ function Annonce({ annonce }: { annonce: CardListing }) {
             <Score score={annonce.deal_score} douteux={douteux} />
           </div>
 
+          {/* Le prix affiché, puis ce que l'achat coûte vraiment : sur Vinted,
+              la protection acheteur et le port s'ajoutent au panier. */}
           <p className="font-mono text-sm text-parchment-100">
-            {annonce.price_eur.toFixed(2)} €
-            {annonce.shipping_eur !== null && annonce.shipping_eur > 0 && (
-              <span className="text-[10px] text-parchment-100/35">
-                {" "}
-                + {annonce.shipping_eur.toFixed(2)} port ={" "}
-                {annonce.total_eur.toFixed(2)} €
+            {formatEur(annonce.price_eur)}
+            {Math.abs(annonce.total_eur - annonce.price_eur) >= 0.01 && (
+              <span
+                className="text-[10px] text-parchment-100/60"
+                title={
+                  annonce.total_detail
+                    ? `Protection acheteur ${formatEur(annonce.total_detail.protection)} · port ${formatEur(annonce.total_detail.port)}${annonce.total_detail.port_estime ? " (estimé)" : ""}`
+                    : undefined
+                }
+              >
+                {" "}≈ {formatEur(annonce.total_eur)} payé
               </span>
             )}
           </p>
+          {annonce.alerte && (
+            <p className="text-[10px] leading-snug text-ember-400">⚠ {annonce.alerte}</p>
+          )}
+          {annonce.non_comparable && (
+            <p className="text-[10px] leading-snug text-sky-300">{annonce.non_comparable}</p>
+          )}
 
-          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[10px] text-parchment-100/45">
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[10px] text-parchment-100/60">
             {annonce.source && (
               <span className="uppercase tracking-wide">{annonce.source}</span>
             )}
@@ -122,12 +136,12 @@ function Annonce({ annonce }: { annonce: CardListing }) {
                   annonce.margin_net_eur >= 0 ? "text-moss-400" : "text-rust-400"
                 }`}
               >
-                marge nette ≈ {annonce.margin_net_eur.toFixed(0)} €
+                marge nette ≈ {formatEur(annonce.margin_net_eur, 0)}
               </span>
             )}
             {annonce.condition_tier && <span>état {annonce.condition_tier}</span>}
             {annonce.seller_reliability_score !== null && (
-              <span>vendeur {annonce.seller_reliability_score.toFixed(0)}/100</span>
+              <span title="Fiabilité du vendeur : nombre d'avis et note moyenne">fiabilité vendeur {annonce.seller_reliability_score.toFixed(0)}/100</span>
             )}
             {douteux && (
               <span
@@ -180,12 +194,12 @@ export default function CardListings({ cardId }: { cardId: number }) {
 
   return (
     <div className="border-t border-ink-700 pt-3">
-      <h3 className="mb-1.5 text-[11px] uppercase tracking-wide text-parchment-100/40">
+      <h3 className="mb-1.5 text-[11px] uppercase tracking-wide text-parchment-100/60">
         En vente en ce moment
       </h3>
 
       {chargement && (
-        <p className="text-[11px] text-parchment-100/40">Recherche des annonces…</p>
+        <p className="text-[11px] text-parchment-100/60">Recherche des annonces…</p>
       )}
 
       {erreur && (
@@ -195,7 +209,7 @@ export default function CardListings({ cardId }: { cardId: number }) {
       )}
 
       {!chargement && !erreur && donnees?.count === 0 && (
-        <p className="text-[11px] leading-relaxed text-parchment-100/45">
+        <p className="text-[11px] leading-relaxed text-parchment-100/60">
           Aucune annonce pour cette carte en ce moment. Ce n&apos;est pas une
           panne : la collecte ne retient que ce qui est réellement en vente, et
           à un instant donné la plupart des cartes ne le sont pas.
@@ -204,11 +218,11 @@ export default function CardListings({ cardId }: { cardId: number }) {
 
       {donnees && donnees.count > 0 && (
         <>
-          <p className="mb-2 font-mono text-[10px] text-parchment-100/35">
+          <p className="mb-2 font-mono text-[10px] text-parchment-100/60">
             {donnees.count} annonce{donnees.count > 1 ? "s" : ""} ·{" "}
             {donnees.reference_price_eur === null
               ? "pas de prix de référence, donc pas de score"
-              : `référence ${donnees.reference_price_eur.toFixed(2)} €`}{" "}
+              : `cote ${formatEur(donnees.reference_price_eur)}`}{" "}
             · photos du vendeur, donc de l&apos;exemplaire réel
           </p>
           <ul className="flex list-none flex-col gap-2 p-0">

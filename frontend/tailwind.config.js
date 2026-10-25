@@ -10,6 +10,10 @@ module.exports = {
           800: "#1A1D26",
           700: "#252934",
           600: "#343A48",
+          // Texte secondaire. ink-600 servait aussi de couleur de TEXTE : 1,5:1
+          // de contraste sur le fond des cartes, illisible (le minimum WCAG
+          // est 4,5:1). Celui-ci donne 6,5:1 sur ink-800 et 5,6:1 sur ink-700.
+          400: "#9AA1B2",
         },
         parchment: {
           100: "#EDEAE1",

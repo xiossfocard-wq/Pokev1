@@ -28,7 +28,7 @@ interface ChipGroupProps<T extends string | number> {
 function ChipGroup<T extends string | number>({ label, options, selected, onSelect }: ChipGroupProps<T>) {
   return (
     <div className="flex items-center gap-1.5" role="group" aria-label={label}>
-      <span className="mr-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-600">
+      <span className="mr-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-400">
         {label}
       </span>
       {options.map((o) => {
@@ -42,7 +42,7 @@ function ChipGroup<T extends string | number>({ label, options, selected, onSele
             className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
               active
                 ? "border-ember-500/60 bg-ember-500/15 text-ember-400"
-                : "border-ink-700 text-ink-600 hover:border-ink-600 hover:text-parchment-100"
+                : "border-ink-700 text-ink-400 hover:border-ink-600 hover:text-parchment-100"
             }`}
           >
             {o.label}
