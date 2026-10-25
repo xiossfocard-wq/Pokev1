@@ -139,11 +139,34 @@ def refresh_catalog():
 @router.get("/price-index-status")
 def price_index_status():
     """Avancement de la construction de l'index de prix."""
+    from app.scheduler import rafraichissement_en_cours
+
     db = SessionLocal()
     try:
-        return index_stats(db)
+        return {**index_stats(db), "refresh_in_progress": rafraichissement_en_cours()}
     finally:
         db.close()
+
+
+@router.post("/refresh-sources")
+def refresh_sources():
+    """Rafraichit les noms francais et les prix EN ARRIERE-PLAN.
+
+    Rend la main tout de suite : le site reste utilisable pendant les
+    dizaines de minutes que prend la lecture des sources, et les prix se
+    mettent a jour sous les yeux de l'utilisateur. Un seul rafraichissement
+    a la fois — un second appel pendant le premier ne relance rien.
+
+        curl -X POST http://localhost:8000/api/admin/refresh-sources
+    """
+    from app.scheduler import lancer_sources_en_arriere_plan
+
+    lance = lancer_sources_en_arriere_plan()
+    return {
+        "lance": lance,
+        "message": ("rafraichissement lance en arriere-plan" if lance
+                    else "un rafraichissement est deja en cours"),
+    }
 
 
 @router.get("/test-price-match")

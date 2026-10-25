@@ -20,9 +20,11 @@
 #
 # Arrêt : Ctrl+C.
 #
-# Relancer est rapide : si les prix ont été relevés dans les dernières
-# heures, les étapes longues (noms français, prix) sont sautées et le site
-# s'ouvre aussitôt. Pour forcer un rechargement complet :
+# Relancer est rapide. Prix du jour : les étapes longues (noms français,
+# prix) sont sautées. Prix plus anciens : elles partent en arrière-plan, et
+# le site s'ouvre sans les attendre. Seule une première installation, sans
+# aucun prix, les fait au premier plan. Pour forcer un rechargement complet,
+# au premier plan :
 #
 #     powershell -ExecutionPolicy Bypass -File scripts\demarrer.ps1 -Complet
 

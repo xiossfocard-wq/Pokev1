@@ -172,38 +172,74 @@ def remplir_visuels(base: str) -> None:
     print("   le reste se complète en arrière-plan, site ouvert.")
 
 
-def _donnees_du_jour(base: str) -> str:
-    """L'heure du dernier relevé des prix s'il est assez récent, sinon "".
+def _etat_des_prix(base: str) -> tuple:
+    """(« frais » | « perimes » | « absents », heure du relevé, mise à jour en cours).
 
-    Rend "" — donc « tout recharger » — dans le doute : prix jamais relevés,
-    API qui ne répond pas, ou rechargement complet demandé. Se tromper dans
-    ce sens coûte une attente ; dans l'autre, des prix périmés.
+    « absents » dans le doute — prix jamais relevés ou API muette : c'est le
+    cas qui recharge tout, et se tromper dans ce sens coûte une attente,
+    alors que l'autre sens coûterait des prix périmés.
     """
-    if os.environ.get("DEMARRAGE_COMPLET"):
-        return ""
     try:
         etat = _appeler(f"{base}/api/admin/price-index-status")
-        brut = etat.get("prices_updated_at")
-        if not brut:
-            return ""
-        releve = datetime.fromisoformat(brut)
     except Exception:
-        return ""
-    if datetime.utcnow() - releve > timedelta(hours=FRAICHEUR_HEURES):
-        return ""
+        return "absents", None, False
+    en_cours = bool(etat.get("refresh_in_progress"))
+    brut = etat.get("prices_updated_at")
+    if not brut:
+        return "absents", None, en_cours
+    try:
+        releve = datetime.fromisoformat(brut)
+    except ValueError:
+        return "absents", None, en_cours
     # L'heure est en UTC côté serveur ; on l'affiche en heure locale.
-    return (releve.replace(tzinfo=timezone.utc).astimezone()
-            .strftime("%d/%m à %H:%M"))
+    heure = (releve.replace(tzinfo=timezone.utc).astimezone()
+             .strftime("%d/%m à %H:%M"))
+    if datetime.utcnow() - releve > timedelta(hours=FRAICHEUR_HEURES):
+        return "perimes", heure, en_cours
+    return "frais", heure, en_cours
 
 
-def _deja_a_jour(base: str) -> bool:
-    """Saute une étape longue si les données sont du jour, et le dit."""
-    releve = _donnees_du_jour(base)
-    if not releve:
+def _hors_du_premier_plan(base: str) -> bool:
+    """Décide si une étape longue doit tourner ici, en faisant attendre.
+
+    PRIX DU JOUR : rien à faire, on passe.
+    PRIX PÉRIMÉS : on les fait rafraîchir EN ARRIÈRE-PLAN et on ouvre le site
+    tout de suite. Ils se mettent à jour pendant qu'on s'en sert — attendre
+    une demi-heure pour regarder un catalogue qui existe déjà n'avait aucun
+    sens.
+    AUCUN PRIX : premier plan, avec la progression. C'est une première
+    installation, et voir avancer les séries est ce qui distingue le travail
+    d'un blocage.
+
+    « -Complet » force le premier plan dans tous les cas.
+    """
+    if os.environ.get("DEMARRAGE_COMPLET"):
         return False
-    print(f"   déjà à jour (prix relevés le {releve}) — étape sautée.")
-    print("   Pour tout recharger : ajouter -Complet à la commande de démarrage.")
-    return True
+    etat, heure, en_cours = _etat_des_prix(base)
+
+    if etat == "frais":
+        print(f"   déjà à jour (prix relevés le {heure}) — étape sautée.")
+        print("   Pour tout recharger : ajouter -Complet à la commande de démarrage.")
+        return True
+
+    if etat == "perimes":
+        if en_cours:
+            print("   mise à jour déjà en cours en arrière-plan.")
+            return True
+        try:
+            _appeler(f"{base}/api/admin/refresh-sources", methode="POST")
+        except Exception as erreur:
+            # L'arrière-plan n'a pas pu partir : on retombe sur le premier
+            # plan, plutôt que de laisser des prix périmés sans le dire.
+            print(f"   mise à jour en arrière-plan impossible ({str(erreur)[:50]}),")
+            print("   elle se fait ici.")
+            return False
+        print(f"   prix du {heure} : mise à jour lancée en arrière-plan.")
+        print("   Le site s'ouvre tout de suite ; noms et prix se rafraîchissent")
+        print("   pendant que vous l'utilisez (plusieurs dizaines de minutes).")
+        return True
+
+    return False
 
 
 def passer_aux_noms_francais(base: str) -> None:
@@ -464,11 +500,11 @@ def main() -> int:
     if etape == "catalogue":
         return 0 if remplir_catalogue(base) > 0 else 1
     if etape == "noms-fr":
-        if not _deja_a_jour(base):
+        if not _hors_du_premier_plan(base):
             passer_aux_noms_francais(base)
         return 0
     if etape == "prix":
-        if not _deja_a_jour(base):
+        if not _hors_du_premier_plan(base):
             charger_les_prix(base)
         return 0
     if etape == "annonces":

@@ -148,5 +148,48 @@ class TestOuLAmorcageSActive(unittest.TestCase):
                 self.assertEqual("amorcage" in ids, actif)
 
 
+
+class TestUnSeulRafraichissementALaFois(unittest.TestCase):
+    """Le rafraichissement des sources peut partir de trois endroits : la
+    tache de 02:00, l'amorcage, et le script quand les prix sont perimes.
+    Deux passages simultanes liraient chaque page deux fois et se
+    disputeraient la base."""
+
+    def test_un_second_lancement_ne_fait_rien(self):
+        import threading
+        demarre, liberer = threading.Event(), threading.Event()
+        appels = []
+
+        def lent():
+            appels.append(1)
+            demarre.set()
+            liberer.wait(5)
+
+        with mock.patch.object(scheduler, "_rafraichir_sources", side_effect=lent):
+            self.assertTrue(scheduler.lancer_sources_en_arriere_plan())
+            self.assertTrue(demarre.wait(5))
+            self.assertTrue(scheduler.rafraichissement_en_cours())
+            # Le second lancement, pendant le premier : refuse.
+            self.assertFalse(scheduler.lancer_sources_en_arriere_plan())
+            # Et la tache de nuit, si elle tombait a ce moment : sautee.
+            scheduler._job_sources_du_jour()
+            liberer.set()
+            for _ in range(50):
+                if not scheduler.rafraichissement_en_cours():
+                    break
+                threading.Event().wait(0.1)
+        self.assertEqual(len(appels), 1)
+        self.assertFalse(scheduler.rafraichissement_en_cours())
+
+    def test_un_echec_libere_le_verrou(self):
+        """Sinon une seule erreur bloquerait tous les rafraichissements
+        suivants, jusqu'au redemarrage du serveur."""
+        with mock.patch.object(scheduler, "_rafraichir_sources",
+                               side_effect=RuntimeError("source en panne")):
+            with self.assertRaises(RuntimeError):
+                scheduler._job_sources_du_jour()
+        self.assertFalse(scheduler.rafraichissement_en_cours())
+
+
 if __name__ == "__main__":
     unittest.main()

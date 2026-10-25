@@ -10,7 +10,8 @@
 # aucune carte, et rien n'indique que c'est normal. Ce script fait la
 # séquence complète dans l'ordre, et dit à chaque étape ce qu'il a obtenu.
 #
-# Usage :   bash scripts/demarrer.sh             (rapide si les prix sont du jour)
+# Usage :   bash scripts/demarrer.sh             (rapide : prix du jour sautés,
+#                                                 prix anciens rafraîchis en arrière-plan)
 #           bash scripts/demarrer.sh --complet   (tout recharger)
 # Arrêt :   Ctrl+C
 #

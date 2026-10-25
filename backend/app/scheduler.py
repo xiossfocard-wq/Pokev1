@@ -1,4 +1,5 @@
 import logging
+import threading
 from datetime import datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -38,7 +39,47 @@ def _job_releve_quotidien():
         db.close()
 
 
+# Un seul rafraichissement des sources a la fois. Il peut desormais partir de
+# trois endroits — la tache de 02:00, l'amorcage d'un serveur neuf, et le
+# script de demarrage quand les prix sont perimes — et deux passages
+# simultanes liraient chaque page deux fois et se disputeraient la base.
+_verrou_sources = threading.Lock()
+
+
 def _job_sources_du_jour():
+    """Rafraichit les sources, sauf si un rafraichissement est deja en cours."""
+    if not _verrou_sources.acquire(blocking=False):
+        logger.info("Sources : un rafraichissement est deja en cours, celui-ci est saute")
+        return
+    try:
+        _rafraichir_sources()
+    finally:
+        _verrou_sources.release()
+
+
+def rafraichissement_en_cours() -> bool:
+    return _verrou_sources.locked()
+
+
+def lancer_sources_en_arriere_plan() -> bool:
+    """Lance le rafraichissement des noms et des prix sans attendre sa fin.
+
+    Rend False si un rafraichissement tourne deja : le relancer ne ferait
+    que lire chaque page deux fois.
+
+    C'est ce qui permet d'ouvrir le site tout de suite quand les prix sont
+    perimes : ils se mettent a jour pendant qu'on s'en sert, au lieu de
+    faire attendre une demi-heure avant de pouvoir regarder quoi que ce
+    soit.
+    """
+    if rafraichissement_en_cours():
+        return False
+    threading.Thread(target=_job_sources_du_jour, name="sources-fr",
+                     daemon=True).start()
+    return True
+
+
+def _rafraichir_sources():
     """Rafraichit les noms francais puis les prix, une fois par nuit.
 
     POURQUOI LA NUIT, ET PAS DANS LE CYCLE RAPIDE
