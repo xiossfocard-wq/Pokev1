@@ -87,6 +87,27 @@ def run_check_now(
             "annonces_apres": apres, "nouvelles": apres - avant}
 
 
+@router.get("/controle-qualite")
+def controle_qualite():
+    """Controle la justesse des prix et la langue des cartes, sur la base reelle.
+
+    Ne corrige rien : rapporte les anomalies avec des exemples, pour qu'elles
+    puissent etre verifiees carte par carte. Variantes moins cheres que leur
+    base, prix aberrants pour leur rarete, prix venus d'autres sources,
+    cartes anglaises dans une serie francaise, langue fausse, annonces que
+    le filtre actuel ecarterait.
+
+        http://localhost:8000/api/admin/controle-qualite
+    """
+    from app.services.controle_qualite import controler
+
+    db = SessionLocal()
+    try:
+        return controler(db)
+    finally:
+        db.close()
+
+
 @router.get("/diagnostic")
 def diagnostic(
     sources: bool = Query(
