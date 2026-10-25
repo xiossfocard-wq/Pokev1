@@ -33,6 +33,10 @@ class ListingOut(BaseModel):
     price_high_eur: Optional[float] = None
     price_match_confidence: Optional[str] = None
     price_detail: Optional[dict] = None
+    price_incl_protection: Optional[float] = None
+    seller_condition: Optional[str] = None
+    purchase_cost_eur: Optional[float] = None
+    purchase_cost_detail: Optional[dict] = None
     status: str
     first_seen_at: datetime
     last_seen_at: datetime

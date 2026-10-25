@@ -48,6 +48,11 @@ _COLONNES_AJOUTEES = {
         ("manual_status", "VARCHAR(16)"),
         ("manual_reference_price", "DOUBLE PRECISION"),
         ("manual_reviewed_at", "TIMESTAMP"),
+        # Cout reel d'un achat et etat declare sur Vinted (26/10/2026).
+        ("price_incl_protection", "DOUBLE PRECISION"),
+        ("seller_condition", "VARCHAR(64)"),
+        ("purchase_cost_eur", "DOUBLE PRECISION"),
+        ("purchase_cost_detail", "JSON"),
     ],
     # Exploration du catalogue par theme + visuel de la carte (10/10/2026).
     "market_card_prices": [

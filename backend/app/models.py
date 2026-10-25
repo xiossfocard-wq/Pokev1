@@ -48,6 +48,19 @@ class Listing(Base):
     shipping_price = Column(Float, default=0.0)
     currency = Column(String(8), default="EUR")
 
+    # Ce que la page Vinted affiche a cote du prix : le prix protection
+    # acheteur comprise, et l'etat choisi par le vendeur dans le menu. Le
+    # scraper les relevait depuis le debut, mais le pipeline les jetait —
+    # le cout d'achat retenu ignorait donc la protection, et l'etat declare
+    # n'entrait pas dans le prix de reference.
+    price_incl_protection = Column(Float, nullable=True)
+    seller_condition = Column(String(64), nullable=True)
+    # Le cout REEL d'un achat — article, protection, port (estime quand
+    # l'annonce ne le dit pas) —, et son detail poste par poste, pour que
+    # l'interface puisse dire d'ou vient chaque euro.
+    purchase_cost_eur = Column(Float, nullable=True)
+    purchase_cost_detail = Column(JSON, nullable=True)
+
     photo_urls = Column(JSON, default=list)
 
     seller_username = Column(String(256), nullable=True)

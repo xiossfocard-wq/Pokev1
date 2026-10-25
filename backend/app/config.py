@@ -161,6 +161,12 @@ class Settings:
     vinted_request_delay_seconds: float = field(
         default_factory=lambda: _get_float("VINTED_REQUEST_DELAY_SECONDS", 8.0)
     )
+    # Le port Vinted se choisit au panier, pas sur l'annonce : il est donc
+    # ESTIME dans le cout d'achat, et affiche comme tel. Ordre de grandeur
+    # d'un envoi en point relais ; a ajuster a ce qu'on paie vraiment.
+    vinted_port_estime: float = field(
+        default_factory=lambda: _get_float("VINTED_PORT_ESTIME", 2.90)
+    )
     vinted_search_text: str = field(
         default_factory=lambda: os.environ.get("VINTED_SEARCH_TEXT", "carte one piece")
     )

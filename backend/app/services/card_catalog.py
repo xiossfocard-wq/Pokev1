@@ -515,7 +515,13 @@ def annonces_de_la_carte(db: Session, card_id: int, limite: int = 20) -> List[di
             "url": ligne.url,
             "price_eur": ligne.price,
             "shipping_eur": ligne.shipping_price,
-            "total_eur": round((ligne.price or 0) + (ligne.shipping_price or 0), 2),
+            # Le cout reel d'un achat (protection acheteur, port estime) quand
+            # la notation l'a calcule ; a defaut, article + port affiche.
+            "total_eur": (ligne.purchase_cost_eur if ligne.purchase_cost_eur is not None
+                          else round((ligne.price or 0) + (ligne.shipping_price or 0), 2)),
+            "total_detail": ligne.purchase_cost_detail,
+            "alerte": (ligne.price_detail or {}).get("alerte"),
+            "non_comparable": (ligne.price_detail or {}).get("non_comparable"),
             "deal_score": ligne.deal_score,
             "margin_net_eur": ligne.margin_net,
             "margin_ratio": ligne.margin_ratio,

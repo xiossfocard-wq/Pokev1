@@ -19,7 +19,11 @@ from app.collectors.ebay_browse import EbayBrowseClient
 from app.collectors.vinted_scraper import VintedScraper, VintedBlockedError
 from app.core.language_filter import looks_non_french
 from app.models import Listing, SourcePlatform, ListingStatus, PriceReference, NotificationSent, MarketCardPrice
-from app.scoring.margin import calculate_margin, normalize_margin_ratio
+from app.scoring.margin import (
+    DECOTE_PAR_ETAT, calculate_margin, cout_d_achat, etat_retenu, etat_vinted,
+    normalize_margin_ratio,
+)
+from app.scoring.pieges import detecter as detecter_pieges
 from app.scoring.quality_text import analyze_text_quality
 from app.scoring.card_appeal import detect_card_appeal
 from app.services.price_index import find_price_for_listing
@@ -131,7 +135,9 @@ def _get_or_fetch_reference_price(db: Session, title: str, description: str = ""
     if match is None:
         return None, None, None
     detail = match.to_dict()
-    label = f"zebradex ({detail['confidence']})"
+    # La source reelle du prix retenu : « zebradex » etait ecrit en dur
+    # depuis l'ancien index Pokemon, et designait aussi les prix OPECards.
+    label = f"{match.row.source or 'index'} ({detail['confidence']})"
     return match.row.price_eur, label, detail
 
 
@@ -191,6 +197,20 @@ def _score_listing(db: Session, listing: Listing, skip_vision: bool = False):
     if (settings.french_only and not listing.manual_reviewed_at
             and looks_non_french(listing.title, listing.description)):
         listing.status = ListingStatus.IGNORED
+        listing.scored_at = datetime.utcnow()
+        db.commit()
+        return
+
+    # LES PIEGES qu'un collectionneur repere au premier coup d'oeil (voir
+    # scoring/pieges.py). Une contrefacon n'est jamais une affaire : avant
+    # cette garde, « … proxy fan art » a 2,48 EUR arrivait EN TETE du radar,
+    # score 82. Elle est ecartee, avec sa raison — sauf si l'utilisateur a
+    # lui-meme examine l'annonce, auquel cas son verdict prime.
+    pieges = detecter_pieges(listing.title, listing.description)
+    if pieges.contrefacon and not listing.manual_reviewed_at:
+        listing.status = ListingStatus.IGNORED
+        listing.price_detail = {
+            "exclusion": f"contrefaçon probable : « {pieges.contrefacon} »"}
         listing.scored_at = datetime.utcnow()
         db.commit()
         return
@@ -283,6 +303,34 @@ def _score_listing(db: Session, listing: Listing, skip_vision: bool = False):
                 # perdre l'identification acquise.
                 source_label, price_detail = source_ocr, detail_ocr
 
+    # LE COUT REEL D'UN ACHAT, calcule avant la branche « pas de prix » : il
+    # ne depend pas de la cote, et s'affiche aussi pour un lot. Article,
+    # protection acheteur (relevee sur la page Vinted quand elle y est), port
+    # — estime quand l'annonce ne le dit pas, et marque comme tel. Voir
+    # scoring/margin.cout_d_achat.
+    source = getattr(listing.source, "value", listing.source)
+    cout = cout_d_achat(source, listing.price, listing.shipping_price,
+                        listing.price_incl_protection, settings.vinted_port_estime)
+    listing.purchase_cost_eur = cout["total"]
+    listing.purchase_cost_detail = cout
+
+    # L'ETAT AJUSTE LE PRIX DE REFERENCE, qui est celui d'une carte en tres
+    # bon etat. Le pire de l'etat ecrit dans l'annonce et de celui coche sur
+    # Vinted : une contradiction se resout du cote prudent.
+    etat = etat_retenu(listing.condition_tier, etat_vinted(listing.seller_condition))
+    if etat:
+        listing.condition_tier = etat
+    decote = DECOTE_PAR_ETAT.get(etat, 1.0)
+
+    # Lot ou carte gradee : le prix d'une carte brute a l'unite ne dit rien de
+    # leur valeur. L'annonce reste visible — un lot peut contenir la carte
+    # qu'on cherche — mais SANS marge : elle passe par la branche « pas de
+    # prix » ci-dessous, qui efface ce qui derive du prix et garde ce qui
+    # derive de l'identification. Un prix saisi a la main, lui, est respecte.
+    if pieges.non_comparable and listing.manual_reference_price is None:
+        reference_price = None
+        price_detail = {**(price_detail or {}), "non_comparable": pieges.non_comparable}
+
     if reference_price is None:
         # NB (04/08/2026) : avant, ce cas utilisait IGNORED, ce qui faisait
         # disparaître l'annonce du dashboard (routers/listings.py exclut
@@ -342,12 +390,35 @@ def _score_listing(db: Session, listing: Listing, skip_vision: bool = False):
         if price_detail.get("rarity"):
             listing.rarity_tier = price_detail["rarity"]
 
+    reference_ajustee = reference_price * decote
+    detail = dict(listing.price_detail or {})
+    if decote < 1.0:
+        detail["etat_retenu"] = {"etat": etat, "coefficient": decote,
+                                 "reference_ajustee": round(reference_ajustee, 2)}
+    else:
+        detail.pop("etat_retenu", None)
+
     margin_result = calculate_margin(
-        listing_price=listing.price,
-        listing_shipping=listing.shipping_price or 0.0,
-        reference_price=reference_price,
+        listing_price=cout["article"] + cout["protection"],
+        listing_shipping=cout["port"],
+        reference_price=reference_ajustee,
         resale_channel="cardmarket",
     )
+
+    # TROP BEAU POUR ETRE VRAI. Une carte cotee qui se vend au quart de sa
+    # cote, c'est l'affaire qu'on chasse — et c'est aussi la ou se logent les
+    # contrefacons non declarees, les arnaques et les erreurs d'identification.
+    # L'annonce garde son score (les vraies affaires partent vite), mais elle
+    # porte un avertissement visible. Mesure sur le prix DEMANDE, pas sur le
+    # cout total : c'est le prix fixe par le vendeur qui est suspect, pas le
+    # port qui s'y ajoute.
+    if (reference_price >= SEUIL_ALERTE_COTE
+            and cout["article"] < reference_ajustee * PART_ALERTE_COTE):
+        detail["alerte"] = ("Prix à moins d'un quart de la cote : vérifie "
+                            "l'authenticité et le vendeur avant d'acheter.")
+    else:
+        detail.pop("alerte", None)
+    listing.price_detail = detail or None
     listing.margin_net = margin_result.net_margin
     listing.margin_ratio = margin_result.margin_ratio
 
@@ -522,6 +593,10 @@ def run_vinted_check(db: Session):
             url=item.url,
             price=item.price,
             shipping_price=0.0,  # à affiner : Vinted affiche le port au niveau du panier, pas de l'item
+            # Releves par le scraper depuis le debut, jetes jusqu'ici : le
+            # prix protection comprise et l'etat coche par le vendeur.
+            price_incl_protection=(item.raw or {}).get("price_incl_protection_acheteur"),
+            seller_condition=(item.raw or {}).get("condition"),
             currency=item.currency,
             photo_urls=item.photo_urls,
             seller_username=item.seller_username,
@@ -876,6 +951,12 @@ def check_vinted_availability(db: Session, limit: int = 10, pool: int = 200) -> 
     return {"checked": verifiees, "gone": disparues, "examined": len(listings)}
 
 
+
+# « Trop beau pour etre vrai » : une carte cotee au moins SEUIL_ALERTE_COTE,
+# demandee a moins de PART_ALERTE_COTE de sa cote ajustee a son etat. En dessous
+# de ce seuil de cote, un ecart de quelques euros ne dit rien.
+SEUIL_ALERTE_COTE = 15.0
+PART_ALERTE_COTE = 0.25
 
 # Part de l'echantillon qui doit repondre avec LE MEME format pour qu'on
 # l'etende au reste. Trois sur quatre : assez pour qu'un format faux soit
