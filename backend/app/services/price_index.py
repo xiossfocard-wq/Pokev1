@@ -43,6 +43,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.collectors.zebradex_prices import ZebraDexClient
+from app.collectors.cardlist_fr import rang_de_parallele
 from app.matching.title_parser import (
     NAME_SUFFIXES, extract_card_codes, extract_name_candidates,
     extract_set_number, extract_variant,
@@ -598,8 +599,36 @@ _RARETE_CORROBORE = {
 }
 
 
+# Les variantes d'ILLUSTRATION, et le rang de fiche qu'elles designent.
+#
+# Le rang d'une fiche (0 = ordinaire, 1 = premiere alternative, 2 = seconde)
+# vient de la liste officielle, et l'appariement « Parallele = 1, Manga = 2 »
+# a ete etabli en comparant les images des deux sources (voir
+# collectors/opecards_prices.RANGS_PAR_MENTION).
+#
+# POURQUOI LE RANG, ET PLUS LA FIN DU NOM. On lisait la variante d'une fiche
+# sur la fin de son slug : « shanks-parallele » -> « parallele ». Depuis que
+# chaque alternative a sa propre fiche — « shanks-parallele-1 »,
+# « shanks-parallele-2 » —, cette lecture ne reconnaissait plus rien, et les
+# trois fiches d'un code passaient toutes pour des impressions ordinaires.
+# La mediane de leurs prix etait alors retenue : une annonce de la carte
+# ordinaire, a 0,75 EUR, etait evaluee au prix du parallele, et s'affichait
+# comme une affaire. Le rang, lui, ne depend pas de l'orthographe.
+_RANG_DE_VARIANTE = {"parallele": 1, "alternative": 1, "alt": 1, "manga": 2}
+
+
+def _rang(ligne) -> int:
+    return rang_de_parallele(ligne.name_slug)
+
+
 def _variante_satisfaite(ligne, variant: str) -> bool:
     """Vrai si `ligne` porte bien la variante annoncee, par son nom ou sa rarete."""
+    if variant in _RANG_DE_VARIANTE:
+        # Le rang EXACT. Quand le titre dit « manga » et que le code n'a
+        # qu'un parallele, on retient ce parallele pour donner un ordre de
+        # grandeur — mais rien ne prouve que ce soit l'illustration manga, et
+        # le prix doit etre marque incertain plutot qu'affiche comme sur.
+        return _rang(ligne) == _RANG_DE_VARIANTE[variant]
     famille = _FAMILLES_VARIANTE.get(variant, {variant})
     if _variant_tail((ligne.name_slug or "").lower()) in famille:
         return True
@@ -628,15 +657,31 @@ def _choisir_selon_variante(group: List[MarketCardPrice],
     if len(group) < 2:
         return group
 
+    if variant in _RANG_DE_VARIANTE:
+        voulu = _RANG_DE_VARIANTE[variant]
+        exactes = [l for l in group if _rang(l) == voulu]
+        if exactes:
+            return exactes
+        # Le rang annonce n'existe pas pour ce code — un seul parallele,
+        # par exemple, quand le titre dit « manga ». On retient l'alternative
+        # la plus proche plutot que toutes : la mediane de plusieurs
+        # alternatives retomberait sur la plus chere.
+        alternatives = sorted({_rang(l) for l in group if _rang(l) >= 1})
+        if alternatives:
+            return [l for l in group if _rang(l) == alternatives[0]]
+        # Aucune alternative : groupe inchange, et _flag_variant_mismatch le
+        # signalera plutot que de trancher au hasard.
+        return group
+
     if variant:
         correspondantes = [l for l in group if _variante_satisfaite(l, variant)]
-        # Groupe inchange si aucune ne correspond : on ne sait pas choisir,
-        # et _flag_variant_mismatch le signalera plutot que de trancher au
-        # hasard.
-        return correspondantes or group
+        # Une variante de TYPE (« leader ») ou de RARETE (« sec ») n'est pas
+        # une illustration : parmi les cartes qui la portent, l'impression
+        # ordinaire reste la bonne, sauf annonce contraire.
+        ordinaires = [l for l in correspondantes if _rang(l) == 0]
+        return ordinaires or correspondantes or group
 
-    ordinaires = [l for l in group
-                  if _variant_tail((l.name_slug or "").lower()) is None]
+    ordinaires = [l for l in group if _rang(l) == 0]
     return ordinaires or group
 
 
