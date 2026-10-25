@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import VisuelCarte from "./VisuelCarte";
 import { CatalogCard } from "@/lib/api";
 
 /**
@@ -56,25 +56,21 @@ export default function CardTile({
       className="group flex flex-col overflow-hidden rounded-md border border-ink-700 bg-ink-900 text-left transition-colors hover:border-ember-500/60"
     >
       <div className="relative aspect-[63/88] w-full bg-ink-950">
-        {carte.image_url ? (
-          <Image
-            src={carte.image_url}
-            alt={carte.display_name}
-            fill
-            sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 200px"
-            className="object-contain"
-            unoptimized
-          />
-        ) : (
-          <div className="flex h-full w-full flex-col items-center justify-center gap-1 p-2 text-center">
-            <span className="text-2xl opacity-30" aria-hidden>
-              ▭
-            </span>
-            <span className="text-[10px] leading-tight text-parchment-100/35">
-              Visuel pas encore récupéré
-            </span>
-          </div>
-        )}
+        <VisuelCarte
+          src={carte.image_url}
+          alt={carte.display_name}
+          sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 200px"
+          repli={(raison) => (
+            <div className="flex h-full w-full flex-col items-center justify-center gap-1 p-2 text-center">
+              <span className="text-2xl opacity-30" aria-hidden>
+                ▭
+              </span>
+              <span className="text-[10px] leading-tight text-parchment-100/35">
+                {raison === "absent" ? "Visuel pas encore récupéré" : "Visuel indisponible"}
+              </span>
+            </div>
+          )}
+        />
 
         {annonces > 0 && (
           <span

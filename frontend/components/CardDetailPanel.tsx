@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
+import VisuelCarte from "./VisuelCarte";
 import CardListings from "@/components/CardListings";
 import { CatalogCardDetail, fetchCardDetail } from "@/lib/api";
 
@@ -122,13 +122,14 @@ export default function CardDetailPanel({
           <div className="flex flex-col gap-4">
             {carte.image_url && (
               <div className="relative mx-auto aspect-[63/88] w-44">
-                <Image
+                {/* Pas de repli visible ici : le panneau montre déjà le nom
+                    et le code juste dessous, un cadre vide n'y ajouterait
+                    rien. Mais plus de cadre cassé non plus. */}
+                <VisuelCarte
                   src={carte.image_url}
                   alt={carte.display_name}
-                  fill
                   sizes="176px"
-                  className="object-contain"
-                  unoptimized
+                  repli={() => null}
                 />
               </div>
             )}
