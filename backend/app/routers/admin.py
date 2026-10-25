@@ -50,10 +50,67 @@ def _sync_prices_with_own_session(batch_size: int):
 
 
 @router.post("/run-check-now")
-def run_check_now(background_tasks: BackgroundTasks):
-    """Declenche un cycle de collecte immediatement, en tache de fond."""
-    background_tasks.add_task(_run_check_with_own_session)
-    return {"status": "cycle de verification lance en arriere-plan"}
+def run_check_now(
+    background_tasks: BackgroundTasks,
+    attendre: bool = Query(
+        False,
+        description="Attendre la fin de la collecte et rendre son resultat, "
+                    "au lieu de rendre la main tout de suite.",
+    ),
+):
+    """Declenche un cycle de collecte immediatement.
+
+    Par defaut en tache de fond. Avec « attendre=true », la reponse arrive
+    a la fin du cycle et dit combien d'annonces il a apporte : c'est ce que
+    le script de demarrage demande, parce qu'il comptait les annonces
+    aussitot l'appel rendu — avant meme que la collecte n'ait commence — et
+    concluait donc toujours « aucune annonce ».
+    """
+    if not attendre:
+        background_tasks.add_task(_run_check_with_own_session)
+        return {"status": "cycle de verification lance en arriere-plan"}
+
+    from app.models import Listing
+
+    db = SessionLocal()
+    try:
+        avant = db.query(Listing).count()
+    finally:
+        db.close()
+    _run_check_with_own_session()
+    db = SessionLocal()
+    try:
+        apres = db.query(Listing).count()
+    finally:
+        db.close()
+    return {"status": "cycle termine", "annonces_avant": avant,
+            "annonces_apres": apres, "nouvelles": apres - avant}
+
+
+@router.get("/diagnostic")
+def diagnostic(
+    sources: bool = Query(
+        True,
+        description="Tester aussi Vinted et les sites officiels depuis cette "
+                    "machine (une vingtaine de secondes).",
+    ),
+):
+    """Bilan de sante complet, a ouvrir dans un navigateur.
+
+    Catalogue, prix, visuels, annonces, reglages de collecte, ce que Vinted
+    et les sites officiels repondent DEPUIS CETTE MACHINE, et les dernieres
+    erreurs du journal. Une seule adresse au lieu d'une commande par
+    hypothese. Aucun secret n'y figure.
+
+        http://localhost:8000/api/admin/diagnostic
+    """
+    from app.services.diagnostic import etablir_diagnostic
+
+    db = SessionLocal()
+    try:
+        return etablir_diagnostic(db, avec_sources=sources)
+    finally:
+        db.close()
 
 
 @router.post("/sync-prices")

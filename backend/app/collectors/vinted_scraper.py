@@ -160,6 +160,12 @@ class VintedScraper:
         self.session.headers.update(DEFAULT_HEADERS)
         self._last_request_ts = 0.0
         self._consecutive_blocks = 0
+        # La raison du dernier echec, en clair. _get rend None dans cinq cas
+        # — robots.txt qui interdit, erreur reseau, 403, 429, autre code — et
+        # sans elle, le diagnostic ne pouvait dire que « bloque ou echoue ».
+        # Or ces cas n'ont pas le meme remede, et l'un d'eux (robots.txt) n'en
+        # a pas du tout.
+        self.derniere_erreur: Optional[str] = None
         self._cooldown_until = 0.0
 
     def _wait_for_slot(self):
@@ -183,6 +189,9 @@ class VintedScraper:
                 "app/core/robots_compliance.py). Ce n'est pas contournable "
                 "depuis la config de ce scraper, par choix.", url,
             )
+            self.derniere_erreur = (
+                "robots.txt de Vinted interdit cette adresse (ou n'a pas pu etre "
+                "lu) : la requete n'est pas envoyee, par choix du projet")
             return None
 
         self._wait_for_slot()
@@ -192,12 +201,16 @@ class VintedScraper:
         except requests.RequestException as exc:
             logger.warning("Vinted: erreur réseau sur %s (%s)", url, exc)
             self._last_request_ts = time.time()
+            self.derniere_erreur = f"erreur reseau : {str(exc)[:150]}"
             return None
 
         self._last_request_ts = time.time()
 
         if resp.status_code in (403, 429):
             self._consecutive_blocks += 1
+            self.derniere_erreur = (
+                f"HTTP {resp.status_code} : Vinted refuse la requete "
+                f"({'acces interdit' if resp.status_code == 403 else 'trop de requetes'})")
             logger.warning(
                 "Vinted: statut %s sur %s (blocages consécutifs: %d)",
                 resp.status_code, url, self._consecutive_blocks,
@@ -216,8 +229,10 @@ class VintedScraper:
 
         if resp.status_code != 200:
             logger.warning("Vinted: statut inattendu %s sur %s", resp.status_code, url)
+            self.derniere_erreur = f"HTTP {resp.status_code} inattendu"
             return None
 
+        self.derniere_erreur = None
         return resp
 
     @staticmethod
@@ -272,8 +287,9 @@ class VintedScraper:
         if resp is None:
             return {
                 "ok": False,
-                "reason": "Requête bloquée ou échouée avant même de recevoir une "
-                          "réponse — voir les logs Render pour le détail (403/429/timeout).",
+                "reason": self.derniere_erreur or (
+                    "Requête bloquée ou échouée avant même de recevoir une "
+                    "réponse (403/429/timeout) — détail dans le journal du serveur."),
                 "url_tentee": f"{self.base_url}{path}",
             }
 

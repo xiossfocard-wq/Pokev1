@@ -192,8 +192,11 @@ def _etat_des_prix(base: str) -> tuple:
     except ValueError:
         return "absents", None, en_cours
     # L'heure est en UTC côté serveur ; on l'affiche en heure locale.
-    heure = (releve.replace(tzinfo=timezone.utc).astimezone()
-             .strftime("%d/%m à %H:%M"))
+    # Le « à » reste HORS du format : sous Windows, un caractère non ASCII
+    # dans strftime a valu des erreurs d'encodage selon la version et la
+    # langue du système.
+    local = releve.replace(tzinfo=timezone.utc).astimezone()
+    heure = local.strftime("%d/%m") + " à " + local.strftime("%H:%M")
     if datetime.utcnow() - releve > timedelta(hours=FRAICHEUR_HEURES):
         return "perimes", heure, en_cours
     return "frais", heure, en_cours
@@ -419,47 +422,34 @@ def _balayer_les_prix_perimes(base: str, depart: float, chiffrees: int,
 
 
 def premiere_collecte(base: str) -> None:
-    """Déclenche un premier passage de collecte d'annonces.
+    """Fait un premier passage de collecte d'annonces, et dit ce qu'il a donné.
 
     Sans elle, le planificateur attend son intervalle — vingt minutes par
-    défaut — avant d'aller voir quoi que ce soit. On ouvrirait donc
-    l'application sur un tableau de bord vide, sans rien qui distingue
-    « ça n'a pas encore commencé » de « c'est cassé ».
+    défaut — avant d'aller voir quoi que ce soit, et le radar s'ouvre vide.
 
-    Un échec n'est pas grave : le planificateur repassera tout seul. On le
-    dit, et on continue.
+    Elle ATTEND la fin du passage. La version précédente lançait la collecte
+    en tâche de fond puis comptait les annonces aussitôt, avant même que la
+    collecte n'ait commencé : elle concluait donc toujours « aucune
+    annonce », quoi que Vinted ait répondu ensuite.
     """
     try:
-        avant = _appeler(f"{base}/api/listings?limit=1", delai=30)
-        deja = len(avant) if isinstance(avant, list) else 0
-    except Exception:
-        deja = 0
-    if deja:
-        print(f"   {deja} annonce(s) déjà en base, passage non déclenché")
-        return
-
-    try:
-        _appeler(f"{base}/api/admin/run-check-now", methode="POST", delai=900)
+        r = _appeler(f"{base}/api/admin/run-check-now?attendre=true",
+                     methode="POST", delai=900)
     except Exception as erreur:
-        print(f"   collecte impossible pour l'instant : {erreur}")
+        print(f"   collecte impossible pour l'instant : {str(erreur)[:80]}")
         print("   le planificateur réessaiera tout seul dans quelques minutes.")
         return
 
-    try:
-        apres = _appeler(f"{base}/api/listings?limit=200", delai=60)
-        nombre = len(apres) if isinstance(apres, list) else 0
-    except Exception:
-        nombre = 0
-
-    if nombre:
-        print(f"   {nombre} annonce(s) collectée(s)")
+    nouvelles = r.get("nouvelles", 0)
+    total = r.get("annonces_apres", 0)
+    if nouvelles:
+        print(f"   {nouvelles} nouvelle(s) annonce(s), {total} au total")
+    elif total:
+        print(f"   aucune nouvelle annonce, {total} déjà en base")
     else:
-        # Vinted est nettement plus hostile aux adresses de centre de
-        # données qu'à une connexion résidentielle. Dire les deux causes
-        # possibles vaut mieux qu'un « 0 » muet.
-        print("   aucune annonce pour l'instant.")
-        print("   Soit il n'y a rien en vente qui corresponde, soit la")
-        print("   collecte a été refusée. Le planificateur réessaiera.")
+        print("   aucune annonce.")
+        print("   Pour voir ce que Vinted répond depuis cette machine :")
+        print(f"     {base}/api/admin/diagnostic")
 
 
 def bilan(base: str) -> None:
