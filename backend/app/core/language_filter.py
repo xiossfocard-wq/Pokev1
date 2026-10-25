@@ -196,6 +196,49 @@ _SHORT_TOKEN_PATTERN = re.compile(
     r"(?<![a-z0-9])(" + "|".join(sorted(_LANGUAGE_CODES, key=len, reverse=True)) + r")(?![a-z0-9])"
 )
 
+# Sigles lus en MAJUSCULES, sur le texte d'ORIGINE.
+#
+# « EN » et « US » ne peuvent pas entrer dans _LANGUAGE_CODES, qui travaille
+# sur le texte passe en minuscules : « en » est l'un des mots les plus
+# frequents du francais (« carte en tres bon etat »). Resultat, deux titres
+# releves sur Vinted le 25/10/2026 passaient pour francais :
+#
+#     « Carte one piece Katakuri op03-099 alt art EN psa 10 »
+#     « Buggy SP Wanted US »
+#
+# C'est la CASSE qui les distingue : un vendeur qui ecrit « Katakuri EN »
+# etiquette une langue, pas une preposition. Deux garde-fous : un titre ecrit
+# tout en capitales ne dit rien de sa casse, et « EN BON ETAT » reste la
+# preposition meme en capitales.
+_SIGLES_MAJUSCULES = re.compile(r"(?<![A-Za-z0-9])(EN|ENG|US|USA|UK)(?![A-Za-z0-9])")
+_SUITE_DE_PREPOSITION = re.compile(
+    r"\s+(?:BON|BONNE|TRES|TRÈS|PARFAIT|PARFAITE|EXCELLENT|EXCELLENTE|ETAT|ÉTAT|"
+    r"VENTE|FRANCAIS|FRANÇAIS|STOCK|LOT|PLUS|NEUF|NEUVE|FR)\b",
+    re.IGNORECASE,
+)
+# Un titre « crie » quand la plupart de ses MOTS ORDINAIRES sont en
+# capitales : sa casse n'est alors plus un indice. On ne compte pas les codes
+# de carte ni les raretes (« ST01 », « OP03-099 », « SEC », « SP ») : ils sont
+# en capitales par nature, et sur un titre court comme « Zoro ST01-001 EN »
+# ils faisaient passer le titre pour crie.
+_MOT_ORDINAIRE = re.compile(r"(?<![\w-])[^\W\d_]{4,}(?![\w-])")
+_PART_MAJUSCULES_MAX = 0.6
+
+
+def _sigle_en_majuscules(texte: str) -> Optional[str]:
+    """Le premier sigle de langue ecrit en capitales dans un titre en casse
+    normale, ou None."""
+    mots = _MOT_ORDINAIRE.findall(texte)
+    if mots and sum(m.isupper() for m in mots) / len(mots) > _PART_MAJUSCULES_MAX:
+        return None
+    for trouve in _SIGLES_MAJUSCULES.finditer(texte):
+        sigle = trouve.group(1)
+        if sigle == "EN" and _SUITE_DE_PREPOSITION.match(texte, trouve.end()):
+            continue
+        return sigle
+    return None
+
+
 _NON_LATIN_SCRIPT_PATTERN = re.compile(
     "["
     "぀-ヿ"
@@ -243,6 +286,14 @@ def detect_language(*texts) -> LanguageVerdict:
         if found:
             return LanguageVerdict(False, lang, "high",
                                    [f"langue annoncee explicitement : « {found.group(0)} »"])
+
+    # Sur chaque texte separement : un titre en casse normale et une
+    # description tout en capitales ne se jugent pas a la meme aune.
+    for texte in texts:
+        majuscule = _sigle_en_majuscules(texte or "")
+        if majuscule:
+            return LanguageVerdict(False, "en", "high",
+                                   [f"sigle de langue « {majuscule} » ecrit en capitales"])
 
     sigle = _SHORT_TOKEN_PATTERN.search(text)
     if sigle:

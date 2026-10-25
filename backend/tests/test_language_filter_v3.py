@@ -220,5 +220,48 @@ class TestRetroCompatibilite(unittest.TestCase):
         self.assertTrue(looks_non_french("Kaido", "État japonais, très bon état"))
 
 
+
+class TestSiglesEnCapitales(unittest.TestCase):
+    """« EN » et « US » ecrits en capitales par le vendeur.
+
+    Releves sur Vinted le 25/10/2026, depuis le poste de l'utilisateur, ces
+    deux titres passaient pour francais et entraient dans le radar avec un
+    score — alors qu'une carte anglaise ne vaut pas le prix d'une francaise.
+    En minuscules, « en » est une preposition ordinaire : c'est la CASSE qui
+    porte l'information.
+    """
+
+    def test_les_titres_reels_sont_ecartes(self):
+        for titre in ("Carte one piece Katakuri op03-099 alt art EN psa 10",
+                      "Buggy SP Wanted US"):
+            with self.subTest(titre=titre):
+                self.assertTrue(looks_non_french(titre))
+                self.assertEqual(detect_language(titre).language, "en")
+
+    def test_un_titre_court_avec_code_de_carte(self):
+        """Le code « ST01 » est en capitales par nature : il ne doit pas
+        faire passer un titre court pour un titre ecrit tout en capitales."""
+        self.assertTrue(looks_non_french("Zoro ST01-001 EN"))
+
+    def test_la_preposition_reste_francaise(self):
+        for titre in ("Carte en très bon état de collection",
+                      "Luffy OP01-120 EN BON ÉTAT",
+                      "Portgas D. Ace OP02-013 SR EN parfait état",
+                      "Ener OP15-118 SEC en français"):
+            with self.subTest(titre=titre):
+                self.assertFalse(looks_non_french(titre))
+
+    def test_un_titre_tout_en_capitales_ne_dit_rien_de_sa_casse(self):
+        """Un faux positif coute plus qu'un faux negatif : on n'ecarte pas
+        une annonce francaise sur un indice qu'on ne peut pas lire."""
+        for titre in ("LUFFY OP01-120 EN TRES BON ETAT",
+                      "CARTE ONE PIECE SHANKS US"):
+            with self.subTest(titre=titre):
+                self.assertFalse(looks_non_french(titre))
+
+    def test_un_titre_francais_du_releve_reste_francais(self):
+        self.assertFalse(looks_non_french("Monkey D. Luffy – SP EB02-061 | One Piece"))
+
+
 if __name__ == "__main__":
     unittest.main()

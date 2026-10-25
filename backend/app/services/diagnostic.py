@@ -71,9 +71,16 @@ def erreurs_recentes(dossier: Path = Path("."), nombre: int = 25) -> list:
         if not chemin.exists():
             continue
         try:
-            texte = chemin.read_text(encoding="utf-8", errors="replace")
+            brut = chemin.read_bytes()
         except OSError:
             continue
+        # Sous Windows, Python ecrit son journal dans l'encodage du systeme
+        # (cp1252 en francais), pas en UTF-8 : lu en UTF-8, « Démarrage »
+        # devenait « D�marrage ». On tente l'UTF-8, puis cp1252.
+        try:
+            texte = brut.decode("utf-8")
+        except UnicodeDecodeError:
+            texte = brut.decode("cp1252", errors="replace")
         lignes += [l for l in texte.splitlines()
                    if "WARNING" in l or "ERROR" in l or "Traceback" in l
                    or "Error:" in l or "Exception" in l]

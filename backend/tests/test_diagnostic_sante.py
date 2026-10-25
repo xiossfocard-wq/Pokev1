@@ -104,6 +104,13 @@ class TestJournaux(unittest.TestCase):
         self.assertNotIn("ABC123", lignes)
         self.assertIn("***", lignes)
 
+    def test_un_journal_windows_en_cp1252_reste_lisible(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            Path(dossier, "api.log.err").write_bytes(
+                "WARNING app.main: Démarrage avec des modules inactifs\n".encode("cp1252"))
+            lignes = diagnostic.erreurs_recentes(Path(dossier))
+        self.assertIn("Démarrage", lignes[0])
+
     def test_sans_journal_liste_vide(self):
         """Sur un hebergement, aucun fichier : pas une erreur."""
         with tempfile.TemporaryDirectory() as dossier:
