@@ -140,6 +140,21 @@ def _est_alternative(display_name: str) -> bool:
 SOURCE_FR = "onepiece-cardgame"
 SOURCE_EN = "onepiece-cardgame-en"
 
+# Marque des adresses DEDUITES du code sans avoir ete verifiees une a une.
+# Voir pipeline.deduire_visuels : elles sont posees d'un coup pour que le
+# catalogue s'affiche tout de suite, puis verifiees en arriere-plan.
+MARQUE_DEDUITE = ":deduit"
+
+
+def base_de_source(source: str) -> Optional[str]:
+    """L'adresse de base qui correspond a une source d'images."""
+    source = (source or "").replace(MARQUE_DEDUITE, "")
+    if source == SOURCE_FR:
+        return settings.card_image_base_url.rstrip("/")
+    if source == SOURCE_EN:
+        return (settings.card_image_fallback_base_url or "").rstrip("/") or None
+    return None
+
 
 def suffixe_de_rang(rang: Optional[int]) -> Optional[str]:
     """0 -> « », 1 -> « _p1 », 2 -> « _p2 ». None si le rang est inconnu.
@@ -254,6 +269,19 @@ class ClientImagesCartes:
             "image": reponse.status_code == 200
             and type_contenu.startswith("image/"),
         }
+
+    def verifier(self, url: str) -> Optional[bool]:
+        """True : c'est une image. False : le site a REPONDU que non.
+        None : pas de reponse — on ne sait pas, et on ne conclut rien.
+
+        La distinction compte pour qui s'en sert : effacer une adresse sur
+        une simple coupure reseau viderait le catalogue de ses visuels au
+        premier incident.
+        """
+        resultat = self._sonder(url)
+        if "erreur_reseau" in resultat:
+            return None
+        return bool(resultat.get("image"))
 
     def chercher_image(self, display_name: str,
                        card_code: Optional[str] = None,

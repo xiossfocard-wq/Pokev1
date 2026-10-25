@@ -213,6 +213,27 @@ def snapshot_card_prices(limit: Optional[int] = Query(None, ge=1)):
         db.close()
 
 
+@router.post("/deduce-card-images")
+def deduce_card_images():
+    """Pose d'un coup les visuels qui se deduisent du code.
+
+    Un echantillon reparti est verifie ; si au moins trois sur quatre
+    repondent avec le meme format, il est etendu a toutes les cartes sans
+    visuel. Quelques secondes, au lieu de dix a quarante minutes de
+    verification carte par carte. Les adresses deduites sont ensuite
+    verifiees en arriere-plan, et retirees si le site les refuse.
+
+        curl -X POST http://localhost:8000/api/admin/deduce-card-images
+    """
+    from app.pipeline import deduire_visuels
+
+    db = SessionLocal()
+    try:
+        return deduire_visuels(db)
+    finally:
+        db.close()
+
+
 @router.post("/enrich-card-images")
 def enrich_card_images_now(limit: int = Query(40, ge=1, le=200)):
     """Complete le visuel des cartes qui n'en ont pas encore.

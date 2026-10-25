@@ -204,8 +204,16 @@ def _job_images():
     autre rythme : le catalogue compte des milliers de cartes, les images se
     remplissent sur plusieurs heures sans bloquer la chasse aux annonces.
     """
+    from app.pipeline import deduire_visuels, verifier_visuels_deduits
+
     db = SessionLocal()
     try:
+        # D'abord confirmer ou retirer les adresses deduites : une adresse
+        # refusee doit repasser par la recherche complete au plus tot. Puis
+        # deduire ce qui peut l'etre, d'un coup. Enfin, chercher une a une
+        # les cartes qui resistent a la deduction.
+        verifier_visuels_deduits(db)
+        deduire_visuels(db)
         enrich_card_images(db, limit=40)
     except Exception:  # noqa: BLE001
         logger.exception("Enrichissement des visuels echoue")

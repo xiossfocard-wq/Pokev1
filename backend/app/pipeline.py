@@ -25,7 +25,10 @@ from app.scoring.card_appeal import detect_card_appeal
 from app.services.price_index import find_price_for_listing
 from app.scoring.deal_score import calculate_deal_score, QualityBlend
 from app.scoring.seller_reliability import score_ebay_seller, score_vinted_seller
-from app.collectors.card_images import SOURCE_EN, ClientImagesCartes
+from app.collectors.card_images import (
+    MARQUE_DEDUITE, SOURCE_EN, ClientImagesCartes, base_de_source,
+    code_canonique, suffixe_de_rang,
+)
 from app.vision.quality_vision import analyze_card_photos
 from app.notifications.telegram import send_telegram_message, format_deal_alert
 from app.notifications.email_notif import send_email_notification, format_deal_alert_html
@@ -872,6 +875,187 @@ def check_vinted_availability(db: Session, limit: int = 10, pool: int = 200) -> 
     )
     return {"checked": verifiees, "gone": disparues, "examined": len(listings)}
 
+
+
+# Part de l'echantillon qui doit repondre avec LE MEME format pour qu'on
+# l'etende au reste. Trois sur quatre : assez pour qu'un format faux soit
+# ecarte (il echouerait presque partout), pas au point d'exiger que chaque
+# carte existe — certaines n'ont simplement pas d'illustration publiee.
+SEUIL_DEDUCTION = 0.75
+TAILLE_ECHANTILLON = 8
+
+
+def _repartis(liste: list, nombre: int) -> list:
+    """`nombre` elements pris a intervalles reguliers, pas les premiers.
+
+    Les premiers d'une liste triee par code sont tous de la meme serie : un
+    echantillon fait d'eux ne dirait rien des autres series, qui peuvent
+    etre servies differemment.
+    """
+    if nombre <= 0:
+        return []
+    if nombre >= len(liste):
+        return list(liste)
+    pas = len(liste) / nombre
+    return [liste[int(i * pas)] for i in range(nombre)]
+
+
+def deduire_visuels(db: Session, taille_echantillon: int = TAILLE_ECHANTILLON,
+                    client: Optional[ClientImagesCartes] = None) -> dict:
+    """Pose en quelques secondes les visuels qui se deduisent du code.
+
+    POURQUOI
+    --------
+    L'adresse d'une illustration se deduit du code de la carte. La verifier
+    carte par carte, avec la pause qu'on doit a un site qu'on interroge,
+    prenait de dix a quarante minutes pour les cartes anglaises — pendant
+    lesquelles le catalogue restait gris.
+
+    COMMENT, SANS POSER D'ADRESSE FAUSSE A L'AVEUGLE
+    ------------------------------------------------
+    On verifie un ECHANTILLON reparti — series differentes, et quelques
+    illustrations alternatives pour eprouver aussi leur suffixe. Si au
+    moins trois sur quatre repondent avec le meme format, ce format est
+    etendu a toutes les autres d'un coup. Sinon on ne deduit rien, et la
+    verification carte par carte reste la seule voie.
+
+    Les adresses ainsi posees sont MARQUEES « deduites ». Le travail de fond
+    les verifie ensuite une a une (verifier_visuels_deduits) et retire
+    celles que le site refuse, qui repassent alors par la recherche
+    complete. Et l'interface affiche un repli propre pour une image qui ne
+    charge pas : une deduction fausse coute une case « visuel indisponible »
+    le temps qu'elle soit corrigee, pas un cadre casse.
+
+    Les cartes du jeu francais et les autres forment deux groupes distincts,
+    eprouves separement : elles ne sont pas servies par le meme site.
+    """
+    from collections import Counter
+
+    from app.collectors.cardlist_fr import rang_de_parallele
+    from app.core.langues import FRANCAIS
+
+    cartes = (
+        db.query(MarketCardPrice)
+        .filter(MarketCardPrice.image_url.is_(None))
+        .filter(MarketCardPrice.card_code.isnot(None))
+        .filter(MarketCardPrice.card_code != "")
+        .order_by(MarketCardPrice.card_code)
+        .all()
+    )
+    client = client or ClientImagesCartes()
+    maintenant = datetime.utcnow()
+    groupes = []
+
+    for anglais in (False, True):
+        membres = [c for c in cartes if (c.language != FRANCAIS) == anglais]
+        if not membres:
+            continue
+
+        ordinaires = [c for c in membres if rang_de_parallele(c.name_slug) == 0]
+        variantes = [c for c in membres if rang_de_parallele(c.name_slug) > 0]
+        part_variantes = min(len(variantes), max(1, taille_echantillon // 4)) if variantes else 0
+        echantillon = (_repartis(ordinaires, taille_echantillon - part_variantes)
+                       + _repartis(variantes, part_variantes))
+
+        formats = Counter()
+        for carte in echantillon:
+            image = client.chercher_image(carte.display_name, carte.card_code,
+                                          rang=rang_de_parallele(carte.name_slug),
+                                          anglais=anglais)
+            carte.image_checked_at = maintenant
+            if image is not None:
+                carte.image_url = image.image_url
+                carte.image_source = image.source
+                formats[(image.source, image.image_url.rsplit(".", 1)[-1])] += 1
+
+        (source, extension), retenus = (formats.most_common(1)[0]
+                                        if formats else ((None, None), 0))
+        etabli = bool(echantillon) and retenus / len(echantillon) >= SEUIL_DEDUCTION
+        base = base_de_source(source) if etabli else None
+
+        deduites = 0
+        if base:
+            deja_vues = {id(c) for c in echantillon}
+            for carte in membres:
+                if id(carte) in deja_vues or carte.image_url:
+                    continue
+                code = code_canonique(carte.card_code)
+                suffixe = suffixe_de_rang(rang_de_parallele(carte.name_slug))
+                if not code or suffixe is None:
+                    continue
+                carte.image_url = f"{base}/{code}{suffixe}.{extension}"
+                carte.image_source = f"{source}{MARQUE_DEDUITE}"
+                carte.image_checked_at = maintenant
+                deduites += 1
+
+        groupes.append({
+            "groupe": "absentes du jeu francais" if anglais else "jeu francais",
+            "cartes": len(membres),
+            "echantillon": len(echantillon),
+            "echantillon_servi": sum(formats.values()),
+            "format": f"{source} .{extension}" if source else None,
+            "format_etabli": etabli,
+            "deduites": deduites,
+        })
+
+    db.commit()
+    for g in groupes:
+        logger.info("Visuels deduits (%s) : echantillon %d/%d, format %s, %d deduit(s)",
+                    g["groupe"], g["echantillon_servi"], g["echantillon"],
+                    g["format"] if g["format_etabli"] else "non etabli", g["deduites"])
+    return {
+        "groupes": groupes,
+        "deduites": sum(g["deduites"] for g in groupes),
+        "verifiees": sum(g["echantillon_servi"] for g in groupes),
+        # Comme pour l'enrichissement : distinguer « le site ne repond pas »
+        # de « le site repond sans image ».
+        "network_errors": client.erreurs_reseau,
+        "http_responses": client.reponses_http,
+    }
+
+
+def verifier_visuels_deduits(db: Session, limit: int = 150,
+                             client: Optional[ClientImagesCartes] = None) -> dict:
+    """Verifie, en arriere-plan, les adresses posees par deduction.
+
+    Une adresse confirmee perd sa marque. Une adresse que le site REFUSE est
+    retiree : la carte repasse alors par la recherche complete, qui essaie
+    les autres formats et l'autre site. Une simple absence de reponse ne
+    retire RIEN — sinon une coupure de quelques minutes viderait le
+    catalogue de ses visuels.
+    """
+    cartes = (
+        db.query(MarketCardPrice)
+        .filter(MarketCardPrice.image_source.like(f"%{MARQUE_DEDUITE}"))
+        .order_by(MarketCardPrice.image_checked_at.asc().nullsfirst())
+        .limit(limit)
+        .all()
+    )
+    if not cartes:
+        return {"examined": 0, "confirmed": 0, "removed": 0, "unknown": 0}
+
+    client = client or ClientImagesCartes()
+    confirmees, retirees, inconnues = 0, 0, 0
+    for carte in cartes:
+        verdict = client.verifier(carte.image_url)
+        carte.image_checked_at = datetime.utcnow()
+        if verdict is True:
+            carte.image_source = carte.image_source.replace(MARQUE_DEDUITE, "")
+            confirmees += 1
+        elif verdict is False:
+            carte.image_url = None
+            carte.image_source = None
+            # Remise en tete de file : elle doit etre recherchee pour de bon,
+            # pas attendre derriere des milliers de cartes deja examinees.
+            carte.image_checked_at = None
+            retirees += 1
+        else:
+            inconnues += 1
+    db.commit()
+    logger.info("Visuels deduits : %d confirme(s), %d retire(s), %d sans reponse",
+                confirmees, retirees, inconnues)
+    return {"examined": len(cartes), "confirmed": confirmees,
+            "removed": retirees, "unknown": inconnues}
 
 def enrich_card_images(db: Session, limit: int = 40) -> dict:
     """Complete progressivement le visuel des cartes du catalogue.
