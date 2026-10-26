@@ -1,3 +1,4 @@
+import html
 import logging
 
 import requests
@@ -29,15 +30,18 @@ def send_telegram_message(bot_token: str, chat_id: str, text: str) -> bool:
         return False
 
 
-def format_deal_alert(listing) -> str:
-    """Construit le texte du message d'alerte à partir d'un objet Listing."""
-    margin_txt = f"{listing.margin_net:.2f} €" if listing.margin_net is not None else "N/A"
+def format_deal_alert(listing, mode: str = "collection") -> str:
+    """Construit le texte du message d'alerte à partir d'un objet Listing.
+
+    Le titre est échappé : le message part en HTML, et un titre d'annonce
+    contenant « < » faisait refuser le message entier par Telegram."""
+    from app.notifications.contenu import lignes_de_l_affaire
+
+    corps = "\n".join(f"{intitule} : {html.escape(valeur)}"
+                      for intitule, valeur in lignes_de_l_affaire(listing, mode))
     return (
         f"🔥 <b>Bonne affaire détectée</b> (score {listing.deal_score:.0f}/100)\n\n"
-        f"<b>{listing.title}</b>\n"
-        f"Prix : {listing.price:.2f} € (+{listing.shipping_price:.2f} € port)\n"
-        f"Référence marché : {listing.reference_price or 'N/A'} €\n"
-        f"Marge estimée : {margin_txt}\n"
-        f"Source : {listing.source.value if hasattr(listing.source, 'value') else listing.source}\n\n"
+        f"<b>{html.escape(listing.title)}</b>\n"
+        f"{corps}\n\n"
         f"{listing.url}"
     )

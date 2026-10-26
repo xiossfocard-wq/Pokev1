@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -37,6 +37,8 @@ class ListingOut(BaseModel):
     seller_condition: Optional[str] = None
     purchase_cost_eur: Optional[float] = None
     purchase_cost_detail: Optional[dict] = None
+    savings_eur: Optional[float] = None
+    savings_ratio: Optional[float] = None
     status: str
     first_seen_at: datetime
     last_seen_at: datetime
@@ -67,6 +69,7 @@ class SettingsUpdate(BaseModel):
     seller_weight: Optional[float] = None
     check_interval_minutes: Optional[int] = None
     min_listing_price: Optional[float] = None
+    mode_evaluation: Optional[Literal["collection", "revente"]] = None
 
 
 class SettingsOut(BaseModel):
@@ -76,3 +79,4 @@ class SettingsOut(BaseModel):
     seller_weight: float
     check_interval_minutes: int
     min_listing_price: float
+    mode_evaluation: Literal["collection", "revente"] = "collection"

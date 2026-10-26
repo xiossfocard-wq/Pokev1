@@ -524,6 +524,7 @@ def annonces_de_la_carte(db: Session, card_id: int, limite: int = 20) -> List[di
             "non_comparable": (ligne.price_detail or {}).get("non_comparable"),
             "deal_score": ligne.deal_score,
             "margin_net_eur": ligne.margin_net,
+            "savings_eur": ligne.savings_eur,
             "margin_ratio": ligne.margin_ratio,
             "condition_tier": ligne.condition_tier,
             "quality_text_score": ligne.quality_text_score,

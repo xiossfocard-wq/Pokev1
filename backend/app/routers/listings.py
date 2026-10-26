@@ -34,6 +34,7 @@ def _min_price_filter(db: Session):
 SORTABLE_FIELDS = {
     "deal_score": Listing.deal_score,
     "margin_net": Listing.margin_net,
+    "savings_eur": Listing.savings_eur,
     "first_seen_at": Listing.first_seen_at,
     "price": Listing.price,
 }

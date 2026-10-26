@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { CardListing, CardListingsResult, fetchCardListings } from "@/lib/api";
 import { formatEur } from "@/lib/format";
+import { useModeEvaluation } from "@/lib/mode";
 
 /**
  * Les annonces en vente pour une carte du catalogue.
@@ -54,6 +55,7 @@ function Score({ score, douteux }: { score: number | null; douteux: boolean }) {
 }
 
 function Annonce({ annonce }: { annonce: CardListing }) {
+  const mode = useModeEvaluation();
   const [index, setIndex] = useState(0);
   const photos = annonce.photo_urls ?? [];
   const photo = photos[index];
@@ -130,7 +132,16 @@ function Annonce({ annonce }: { annonce: CardListing }) {
             {annonce.source && (
               <span className="uppercase tracking-wide">{annonce.source}</span>
             )}
-            {annonce.margin_net_eur !== null && (
+            {mode === "collection" && annonce.savings_eur != null ? (
+              <span
+                className={`font-mono ${annonce.savings_eur >= 0 ? "text-moss-400" : "text-rust-400"}`}
+                title="Par rapport à la cote, protection acheteur et port compris"
+              >
+                {annonce.savings_eur >= 0
+                  ? `économie ≈ ${formatEur(annonce.savings_eur, 0)}`
+                  : `${formatEur(-annonce.savings_eur, 0)} plus cher que la cote`}
+              </span>
+            ) : annonce.margin_net_eur !== null && (
               <span
                 className={`font-mono ${
                   annonce.margin_net_eur >= 0 ? "text-moss-400" : "text-rust-400"

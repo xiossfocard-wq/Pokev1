@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { fetchSettings, updateSettings, type AppSettings } from "@/lib/api";
+import { fetchSettings, updateSettings, type AppSettings, type ModeEvaluation } from "@/lib/api";
+import { definirMode } from "@/lib/mode";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -28,7 +29,9 @@ export default function SettingsPage() {
     setSaving(true);
     setSaveError(null);
     try {
-      setSettings(await updateSettings(settings));
+      const enregistres = await updateSettings(settings);
+      setSettings(enregistres);
+      definirMode(enregistres.mode_evaluation);
       setSaved(true);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
@@ -72,6 +75,28 @@ export default function SettingsPage() {
 
         {settings && (
           <div className="flex flex-col gap-4">
+            <Section
+              title="Ce que tu cherches"
+              intro="Change ce que « bonne affaire » veut dire : le score, le tri et les alertes suivent. Les scores déjà calculés sont recalculés à l'enregistrement."
+            >
+              <div className="grid gap-2 sm:grid-cols-2">
+                <ChoixMode
+                  valeur="collection"
+                  actuel={settings.mode_evaluation}
+                  onChange={(m) => set("mode_evaluation", m)}
+                  titre="Collection"
+                  texte="Je garde la carte. Une affaire, c'est la payer moins cher que sa cote, protection acheteur et port compris."
+                />
+                <ChoixMode
+                  valeur="revente"
+                  actuel={settings.mode_evaluation}
+                  onChange={(m) => set("mode_evaluation", m)}
+                  titre="Revente"
+                  texte="Je revends sur Cardmarket. Une affaire, c'est la marge qui reste après les frais de vente et le port de réexpédition."
+                />
+              </div>
+            </Section>
+
             <Section title="Ce que tu vois">
               <Field
                 label="Prix minimum affiché (€)"
@@ -105,10 +130,17 @@ export default function SettingsPage() {
 
             <Section
               title="Pondération du score"
-              intro="Les trois valeurs sont ramenées à un total de 100 % ; pas besoin qu'elles somment exactement."
+              intro="Les trois valeurs sont ramenées à un total de 100 % ; pas besoin qu'elles somment exactement. Changer un poids recalcule tous les scores."
             >
               <div className="grid gap-3 sm:grid-cols-3">
-                <Field label="Marge" value={settings.margin_weight} onChange={(v) => set("margin_weight", v)} min={0} max={1} step={0.05} />
+                <Field
+                  label={settings.mode_evaluation === "collection" ? "Économie" : "Marge"}
+                  value={settings.margin_weight}
+                  onChange={(v) => set("margin_weight", v)}
+                  min={0}
+                  max={1}
+                  step={0.05}
+                />
                 <Field label="Qualité" value={settings.quality_weight} onChange={(v) => set("quality_weight", v)} min={0} max={1} step={0.05} />
                 <Field label="Vendeur" value={settings.seller_weight} onChange={(v) => set("seller_weight", v)} min={0} max={1} step={0.05} />
               </div>
@@ -131,6 +163,43 @@ export default function SettingsPage() {
         )}
       </main>
     </>
+  );
+}
+
+function ChoixMode({
+  valeur,
+  actuel,
+  onChange,
+  titre,
+  texte,
+}: {
+  valeur: ModeEvaluation;
+  actuel: ModeEvaluation;
+  onChange: (mode: ModeEvaluation) => void;
+  titre: string;
+  texte: string;
+}) {
+  const choisi = valeur === actuel;
+  return (
+    <label
+      className={`block cursor-pointer rounded-md border p-3 transition-colors focus-within:ring-2 focus-within:ring-ember-500/60 ${
+        choisi ? "border-ember-500 bg-ember-500/10" : "border-ink-700 bg-ink-900 hover:border-ink-600"
+      }`}
+    >
+      <input
+        type="radio"
+        name="mode_evaluation"
+        value={valeur}
+        checked={choisi}
+        onChange={() => onChange(valeur)}
+        className="sr-only"
+      />
+      <span className={`block text-sm font-medium ${choisi ? "text-ember-400" : "text-parchment-100"}`}>
+        {choisi ? "● " : "○ "}
+        {titre}
+      </span>
+      <span className="mt-1 block text-xs leading-relaxed text-ink-400">{texte}</span>
+    </label>
   );
 }
 

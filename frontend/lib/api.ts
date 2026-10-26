@@ -22,6 +22,9 @@ export interface PriceDetail {
   series_name: string | null;
   matched_card: string;
   matched_code: string | null;
+  // « shanks-parallele-1 » : le rang de la version, qui donne la fiche à
+  // choisir sur Cardmarket (V.1, V.2, V.3).
+  matched_name_slug?: string | null;
   confidence: string;
   reason: string;
   source: string;
@@ -107,9 +110,21 @@ export interface Listing {
   purchase_cost_detail?: PurchaseCostDetail | null;
   /** L'état coché par le vendeur sur Vinted (« Très bon état »…). */
   seller_condition?: string | null;
+  /** Mode collection : ce que l'achat coûte de moins que la cote (ajustée à
+   *  l'état), frais compris. Négatif quand l'annonce est plus chère. */
+  savings_eur?: number | null;
+  savings_ratio?: number | null;
 }
 
+/**
+ * Ce que « bonne affaire » veut dire. Collection : payer la carte moins cher
+ * que sa cote, frais d'achat compris. Revente : la marge après les frais de
+ * revente sur Cardmarket.
+ */
+export type ModeEvaluation = "collection" | "revente";
+
 export interface AppSettings {
+  mode_evaluation: ModeEvaluation;
   deal_score_threshold: number;
   margin_weight: number;
   quality_weight: number;
@@ -119,7 +134,7 @@ export interface AppSettings {
   min_listing_price: number;
 }
 
-export type SortField = "deal_score" | "margin_net" | "first_seen_at" | "price";
+export type SortField = "deal_score" | "margin_net" | "savings_eur" | "first_seen_at" | "price";
 export type SortOrder = "asc" | "desc";
 
 // En dev local sans variable d'env définie, on suppose le backend sur le
@@ -506,6 +521,7 @@ export interface CardListing {
   non_comparable?: string | null;
   deal_score: number | null;
   margin_net_eur: number | null;
+  savings_eur?: number | null;
   margin_ratio: number | null;
   condition_tier: string | null;
   quality_text_score: number | null;

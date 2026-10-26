@@ -34,16 +34,16 @@ def send_email_notification(
         return False
 
 
-def format_deal_alert_html(listing) -> str:
-    margin_txt = f"{listing.margin_net:.2f} €" if listing.margin_net is not None else "N/A"
+def format_deal_alert_html(listing, mode: str = "collection") -> str:
+    from html import escape
+
+    from app.notifications.contenu import lignes_de_l_affaire
+
+    lignes = "".join(f"<li>{intitule} : {escape(valeur)}</li>"
+                     for intitule, valeur in lignes_de_l_affaire(listing, mode))
     return f"""
     <h2>🔥 Bonne affaire détectée (score {listing.deal_score:.0f}/100)</h2>
-    <p><strong>{listing.title}</strong></p>
-    <ul>
-      <li>Prix : {listing.price:.2f} € (+{listing.shipping_price:.2f} € port)</li>
-      <li>Référence marché : {listing.reference_price or 'N/A'} €</li>
-      <li>Marge estimée : {margin_txt}</li>
-      <li>Source : {listing.source.value if hasattr(listing.source, 'value') else listing.source}</li>
-    </ul>
-    <p><a href="{listing.url}">Voir l'annonce</a></p>
+    <p><strong>{escape(listing.title)}</strong></p>
+    <ul>{lignes}</ul>
+    <p><a href="{escape(listing.url, quote=True)}">Voir l'annonce</a></p>
     """

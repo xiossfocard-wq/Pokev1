@@ -27,7 +27,7 @@ from app.scoring.pieges import detecter as detecter_pieges
 from app.scoring.quality_text import analyze_text_quality
 from app.scoring.card_appeal import detect_card_appeal
 from app.services.price_index import find_price_for_listing
-from app.scoring.deal_score import calculate_deal_score, QualityBlend
+from app.scoring.deal_score import calculate_deal_score, DealScoreWeights, QualityBlend
 from app.scoring.seller_reliability import score_ebay_seller, score_vinted_seller
 from app.collectors.card_images import (
     MARQUE_DEDUITE, SOURCE_EN, ClientImagesCartes, base_de_source,
@@ -36,6 +36,7 @@ from app.collectors.card_images import (
 from app.vision.quality_vision import analyze_card_photos
 from app.notifications.telegram import send_telegram_message, format_deal_alert
 from app.notifications.email_notif import send_email_notification, format_deal_alert_html
+from app.settings_service import load_app_settings
 
 logger = logging.getLogger(__name__)
 
@@ -422,17 +423,12 @@ def _score_listing(db: Session, listing: Listing, skip_vision: bool = False):
     listing.margin_net = margin_result.net_margin
     listing.margin_ratio = margin_result.margin_ratio
 
-    # Une marge calculee sur un prix de reference douteux n'est pas une
-    # information : c'est un chiffre inventé. Quand le rapprochement est
-    # incertain (nom seul, plusieurs cartes homonymes aux prix tres
-    # differents, variante qui ne correspond pas), la marge reste AFFICHEE
-    # a titre indicatif mais ne pese plus dans le score - sinon ce sont
-    # justement les rapprochements les plus fragiles qui trustent le haut
-    # du classement, avec des "+63 EUR" qui n'existent pas.
-    prix_doute = bool(price_detail and price_detail.get("uncertain"))
-    margin_score = 50.0 if prix_doute else normalize_margin_ratio(margin_result.margin_ratio)
-
-    quality_blend = QualityBlend(text_score=text_quality.score, vision_score=vision_score)
+    # MODE COLLECTION : ce qu'on economise par rapport a la cote ajustee a
+    # l'etat, frais d'achat compris. Calcule dans les deux modes, pour que
+    # passer de l'un a l'autre recalcule les scores sans renoter les annonces.
+    listing.savings_eur = round(reference_ajustee - cout["total"], 2)
+    listing.savings_ratio = (listing.savings_eur / reference_ajustee
+                             if reference_ajustee > 0 else 0.0)
 
     if listing.source == SourcePlatform.EBAY:
         seller_result = score_ebay_seller(
@@ -449,17 +445,85 @@ def _score_listing(db: Session, listing: Listing, skip_vision: bool = False):
         listing.seller_reliability_score = seller_result.score
         listing.seller_reliability_detail = seller_result.detail
 
+    listing.deal_score = calculer_deal_score(listing, load_app_settings(db))
+    listing.status = ListingStatus.SCORED
+    listing.scored_at = datetime.utcnow()
+    db.commit()
+
+
+# En mode collection, une carte payee la moitie de sa cote recoit tous les
+# points d'« affaire » : au-dela, ce n'est plus l'affaire qui grandit, c'est
+# le risque — voir l'alerte « trop beau pour etre vrai ».
+PLAFOND_ECONOMIE = 0.5
+
+
+def calculer_deal_score(listing: Listing, reglages: dict) -> Optional[float]:
+    """Le score d'une annonce deja chiffree, a partir de ce qu'elle porte.
+
+    Separe de _score_listing pour que changer de mode ou de poids dans les
+    reglages recalcule tous les scores d'un coup, sans renoter les annonces.
+    Et parce que les poids reglables n'etaient JAMAIS lus : calculate_deal_score
+    etait appele sans eux, et les curseurs du tableau de bord ne changeaient
+    rien au classement.
+    """
+    if listing.reference_price is None:
+        return None
+
+    # Une marge calculee sur un prix de reference douteux n'est pas une
+    # information : c'est un chiffre inventé. Quand le rapprochement est
+    # incertain (nom seul, plusieurs cartes homonymes aux prix tres
+    # differents, variante qui ne correspond pas), la marge reste AFFICHEE
+    # a titre indicatif mais ne pese plus dans le score - sinon ce sont
+    # justement les rapprochements les plus fragiles qui trustent le haut
+    # du classement, avec des "+63 EUR" qui n'existent pas.
+    prix_doute = bool((listing.price_detail or {}).get("uncertain"))
+    if reglages.get("mode_evaluation") == "revente" or listing.savings_ratio is None:
+        part_affaire = normalize_margin_ratio(listing.margin_ratio or 0.0)
+    else:
+        part_affaire = normalize_margin_ratio(listing.savings_ratio, cap_ratio=PLAFOND_ECONOMIE)
+    margin_score = 50.0 if prix_doute else part_affaire
+
+    poids = DealScoreWeights(
+        margin=float(reglages.get("margin_weight", 0.5)),
+        quality=float(reglages.get("quality_weight", 0.3)),
+        seller=float(reglages.get("seller_weight", 0.2)),
+    )
+    try:
+        poids.normalized()
+    except ValueError:
+        # Trois poids a zero : on garde l'equilibre par defaut plutot que de
+        # faire echouer la notation de toutes les annonces.
+        poids = DealScoreWeights()
+
+    quality_blend = QualityBlend(
+        text_score=listing.quality_text_score if listing.quality_text_score is not None else 50.0,
+        vision_score=listing.quality_vision_score,
+    )
+    appeal = detect_card_appeal(listing.title, listing.description)
     score_brut = min(100.0, calculate_deal_score(
         margin_score_0_100=margin_score,
         quality_blend=quality_blend,
         seller_score_0_100=listing.seller_reliability_score or 50.0,
+        weights=poids,
     ) + appeal["appeal_bonus"])
-    listing.deal_score = (
-        round(score_brut * UNCERTAIN_SCORE_CAP / 100.0, 1) if prix_doute else score_brut
+    return round(score_brut * UNCERTAIN_SCORE_CAP / 100.0, 1) if prix_doute else score_brut
+
+
+def recalculer_scores(db: Session) -> dict:
+    """Recalcule le score de toutes les annonces chiffrees, apres un
+    changement de mode ou de poids dans les reglages. Aucune requete externe,
+    un seul enregistrement : quelques centaines d'annonces en une seconde."""
+    reglages = load_app_settings(db)
+    annonces = (
+        db.query(Listing)
+        .filter(Listing.reference_price.isnot(None),
+                Listing.status.in_([ListingStatus.SCORED, ListingStatus.NOTIFIED]))
+        .all()
     )
-    listing.status = ListingStatus.SCORED
-    listing.scored_at = datetime.utcnow()
+    for annonce in annonces:
+        annonce.deal_score = calculer_deal_score(annonce, reglages)
     db.commit()
+    return {"rescored": len(annonces)}
 
 
 def _maybe_notify(db: Session, listing: Listing, threshold: float):
@@ -469,9 +533,10 @@ def _maybe_notify(db: Session, listing: Listing, threshold: float):
         return
 
     sent_any = False
+    mode = load_app_settings(db).get("mode_evaluation", "collection")
 
     if settings.telegram_bot_token and settings.telegram_chat_id:
-        text = format_deal_alert(listing)
+        text = format_deal_alert(listing, mode)
         ok = send_telegram_message(settings.telegram_bot_token, settings.telegram_chat_id, text)
         db.add(NotificationSent(listing_id=listing.id, channel="telegram", success=ok))
         sent_any = sent_any or ok
@@ -484,7 +549,7 @@ def _maybe_notify(db: Session, listing: Listing, threshold: float):
             smtp_password=settings.smtp_password,
             to_address=settings.notification_email_to,
             subject=f"🔥 Bonne affaire One Piece (score {listing.deal_score:.0f})",
-            body=format_deal_alert_html(listing),
+            body=format_deal_alert_html(listing, mode),
         )
         db.add(NotificationSent(listing_id=listing.id, channel="email", success=ok))
         sent_any = sent_any or ok
@@ -799,11 +864,12 @@ def rescore_unpriced_listings(
     condition = Listing.reference_price.is_(None)
     if include_uncertain:
         condition = condition | (Listing.price_match_confidence == "low")
-    # Les annonces notees avant le calcul du cout reel (contrefacons, lots,
-    # cartes gradees, etat, frais Vinted) : sans ce repassage, une contrefacon
-    # deja en tete du radar y serait restee. Une fois renotee, elle a un cout
-    # et sort de la file d'elle-meme.
-    condition = condition | Listing.purchase_cost_eur.is_(None)
+    # Les annonces notees avant le cout reel et le mode collection
+    # (contrefacons, lots, cartes gradees, etat, frais Vinted, economie) :
+    # sans ce repassage, une contrefacon deja en tete du radar y serait
+    # restee. Une fois renotee, elle a une economie calculee et sort de la
+    # file d'elle-meme.
+    condition = condition | Listing.savings_eur.is_(None)
 
     listings = (
         db.query(Listing)

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import type { Listing } from "@/lib/api";
 import { formatEur } from "@/lib/format";
+import { useModeEvaluation } from "@/lib/mode";
 import DealScoreBadge from "./DealScoreBadge";
 import CorrectionPanel from "./CorrectionPanel";
 
@@ -54,21 +55,36 @@ const ETATS: Record<string, string> = {
 };
 
 /**
- * Le texte à chercher sur Cardmarket : le NOM de la carte, tel que le
- * catalogue l'a reconnu, sans la mention de version qui n'existe pas sous
- * cette forme chez eux (« Shanks (Parallèle 1) » ne trouve rien). Jamais
- * « Prix saisi par toi », le libellé d'une correction manuelle. Faute
- * d'identification, le code de carte s'il figure dans le titre — un titre
- * Vinted entier (« Carte one piece Luffy tbe ») ne trouve rien non plus.
+ * Ce qu'on cherche sur Cardmarket, et quelle fiche y choisir.
+ *
+ * Cardmarket nomme ses cartes One Piece « Shanks (OP01-120) (V.2) » : nom
+ * anglais, CODE, puis version. Chercher le code trouve toutes les versions
+ * et rééditions d'une carte (vérifié : « OP01-120 » renvoie ses 15 fiches,
+ * Romance Dawn, The Best, japonaises, promos), là où le nom seul renvoie
+ * tous les Shanks du jeu, et où un nom français peut ne rien trouver.
+ *
+ * La version se lit au rang de la fiche, comme rang_de_parallele côté
+ * serveur : l'impression ordinaire est la V.1, la première illustration
+ * alternative la V.2, la seconde (le manga) la V.3 — l'ordre vérifié sur
+ * OP01-120, où les prix le confirment (3,99 €, 78,90 €, 2 130 €).
  */
-function rechercheCardmarket(listing: Listing): string {
+function rechercheCardmarket(listing: Listing): { texte: string; version: string | null } {
   const d = listing.price_detail;
-  if (d?.matched_card && d.confidence !== "manual") {
-    const nom = d.matched_card.replace(/\s*\((?:parall[eè]le|manga|alternative|alt)[^)]*\)\s*$/i, "").trim();
-    if (nom) return nom;
+  const identifiee = d && d.confidence !== "manual";
+  if (identifiee && d.matched_code) {
+    const rang = d.matched_name_slug?.match(/-(?:parallele|alternative|alt)(?:-(\d+))?$/);
+    const version = rang ? `V.${(rang[1] ? Number(rang[1]) : 1) + 1}` : "V.1";
+    return { texte: d.matched_code, version };
   }
   const code = listing.title.match(/\b(?:OP|ST|EB|PRB)\d{2}-\d{3}\b/i);
-  return code ? code[0].toUpperCase() : listing.title;
+  if (code) return { texte: code[0].toUpperCase(), version: null };
+  // Ni code ni identification : le nom reconnu, sans la mention de version
+  // (« Shanks (Parallèle 1) » ne trouve rien), sinon le titre de l'annonce.
+  if (identifiee && d.matched_card) {
+    const nom = d.matched_card.replace(/\s*\((?:parall[eè]le|manga|alternative|alt)[^)]*\)\s*$/i, "").trim();
+    if (nom) return { texte: nom, version: null };
+  }
+  return { texte: listing.title, version: null };
 }
 
 /** Le détail du coût, lisible au survol : d'où vient chaque euro. */
@@ -131,9 +147,13 @@ export default function ListingCard({
   )}`;
   // Cardmarket exige l'extension exacte dans l'URL d'une fiche produit,
   // indevinable depuis un titre Vinted : on pointe vers leur recherche.
+  const cardmarket = rechercheCardmarket(listing);
   const cardmarketUrl = `https://www.cardmarket.com/fr/OnePiece/Products/Search?searchString=${encodeURIComponent(
-    rechercheCardmarket(listing)
+    cardmarket.texte
   )}`;
+  const mode = useModeEvaluation();
+  const economie = listing.savings_eur;
+  const montrerEconomie = mode === "collection" && economie !== null && economie !== undefined;
   const cout = listing.purchase_cost_eur;
   const coutDiffere = cout !== null && cout !== undefined && Math.abs(cout - listing.price) >= 0.01;
   const nonComparable = detail?.non_comparable;
@@ -219,7 +239,32 @@ export default function ListingCard({
             ) : listing.shipping_price > 0 ? (
               <span className="text-ink-400">+{formatEur(listing.shipping_price)} port</span>
             ) : null}
-            {listing.margin_net !== null && (
+            {montrerEconomie ? (
+              <span
+                className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${
+                  uncertain
+                    ? "bg-ink-700 text-ink-400 line-through decoration-ink-600/60"
+                    : economie >= 0
+                    ? "bg-moss-500/20 text-moss-400"
+                    : "bg-rust-500/15 text-rust-400"
+                }`}
+                title={
+                  uncertain
+                    ? "Économie calculée sur un prix incertain — elle ne compte pas dans le score."
+                    : `${economie >= 0 ? "Ce que tu paies de moins" : "Ce que tu paies de plus"} que la cote${
+                        decote ? " (ramenée à l'état de la carte)" : ""
+                      }, protection acheteur et port compris${
+                        listing.savings_ratio != null && economie >= 0
+                          ? ` : ${Math.round(listing.savings_ratio * 100)} % sous la cote`
+                          : ""
+                      }. Sans compter le port d'un achat sur Cardmarket : l'écart réel est un peu plus favorable.${
+                        listing.margin_net != null ? ` Si tu revendais : marge ${formatEur(listing.margin_net)}.` : ""
+                      }`
+                }
+              >
+                {economie >= 0 ? `économie ${formatEur(economie)}` : `${formatEur(-economie)} plus cher`}
+              </span>
+            ) : listing.margin_net !== null && (
               <span
                 className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${
                   uncertain
@@ -319,6 +364,7 @@ export default function ListingCard({
         <CorrectionPanel
           listing={listing}
           cardmarketUrl={cardmarketUrl}
+          cardmarketVersion={cardmarket.version}
           searchUrl={searchUrl}
           onChanged={onChanged}
         />

@@ -27,6 +27,12 @@ DEFAULTS = {
     # par defaut, tout en laissant le seuil reglable depuis le dashboard.
     # Une annonce dont le prix est INFERIEUR OU EGAL a ce seuil est masquee.
     "min_listing_price": 1.0,
+    # Ce que « bonne affaire » veut dire. En COLLECTION (defaut) : payer la
+    # carte moins cher que sa cote, frais d'achat compris — on la garde. En
+    # REVENTE : la marge apres frais de revente sur Cardmarket. Une carte
+    # achetee 3,75 EUR sous sa cote est une affaire pour un collectionneur,
+    # meme si la revendre ne rapporterait rien une fois les frais payes.
+    "mode_evaluation": "collection",
 }
 
 

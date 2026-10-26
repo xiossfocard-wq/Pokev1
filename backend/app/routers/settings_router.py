@@ -10,6 +10,11 @@ from app.schemas import SettingsOut, SettingsUpdate
 # Une seule definition, dans settings_service.
 from app.settings_service import DEFAULTS, load_app_settings
 
+# Les reglages dont depend le score deja stocke de chaque annonce : en changer
+# un recalcule tous les scores, sinon le classement affiche resterait celui
+# de l'ancien reglage jusqu'a ce que chaque annonce soit recollectee.
+REGLAGES_DU_SCORE = {"mode_evaluation", "margin_weight", "quality_weight", "seller_weight"}
+
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
@@ -32,4 +37,7 @@ def update_settings(update: SettingsUpdate, db: Session = Depends(get_db)):
         else:
             db.add(AppSettings(key=key, value=value))
     db.commit()
+    if REGLAGES_DU_SCORE & updates.keys():
+        from app.pipeline import recalculer_scores  # local : pipeline est lourd a importer
+        recalculer_scores(db)
     return _load_all(db)

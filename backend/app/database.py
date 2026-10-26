@@ -53,6 +53,9 @@ _COLONNES_AJOUTEES = {
         ("seller_condition", "VARCHAR(64)"),
         ("purchase_cost_eur", "DOUBLE PRECISION"),
         ("purchase_cost_detail", "JSON"),
+        # Mode collection : economie par rapport a la cote (26/10/2026).
+        ("savings_eur", "DOUBLE PRECISION"),
+        ("savings_ratio", "DOUBLE PRECISION"),
     ],
     # Exploration du catalogue par theme + visuel de la carte (10/10/2026).
     "market_card_prices": [

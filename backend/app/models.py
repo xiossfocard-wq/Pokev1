@@ -60,6 +60,12 @@ class Listing(Base):
     # l'interface puisse dire d'ou vient chaque euro.
     purchase_cost_eur = Column(Float, nullable=True)
     purchase_cost_detail = Column(JSON, nullable=True)
+    # MODE COLLECTION : ce qu'on economise par rapport a la cote (ajustee a
+    # l'etat), frais d'achat compris, en euros et en part de la cote. La
+    # marge, elle, suppose une revente sur Cardmarket et en deduit les frais :
+    # pour qui garde la carte, elle sous-estimait toutes les affaires.
+    savings_eur = Column(Float, nullable=True)
+    savings_ratio = Column(Float, nullable=True)
 
     photo_urls = Column(JSON, default=list)
 

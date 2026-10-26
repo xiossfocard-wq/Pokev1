@@ -7,6 +7,8 @@ import { formatEur } from "@/lib/format";
 interface CorrectionPanelProps {
   listing: Listing;
   cardmarketUrl: string;
+  /** La fiche à choisir parmi les résultats Cardmarket : « V.2 »… */
+  cardmarketVersion?: string | null;
   searchUrl: string;
   onChanged?: (updated: Listing) => void;
 }
@@ -23,7 +25,13 @@ const BTN_PRIMARY = `${BTN} border-ember-500/50 bg-ember-500/10 text-ember-400 h
  * Toujours rendu EN DEHORS du lien principal de la carte : on ne peut pas
  * imbriquer des liens ou des boutons dans un lien.
  */
-export default function CorrectionPanel({ listing, cardmarketUrl, searchUrl, onChanged }: CorrectionPanelProps) {
+export default function CorrectionPanel({
+  listing,
+  cardmarketUrl,
+  cardmarketVersion,
+  searchUrl,
+  onChanged,
+}: CorrectionPanelProps) {
   const [busy, setBusy] = useState(false);
   const [editingPrice, setEditingPrice] = useState(false);
   const [priceInput, setPriceInput] = useState("");
@@ -112,8 +120,20 @@ export default function CorrectionPanel({ listing, cardmarketUrl, searchUrl, onC
       )}
 
       <div className="mt-2.5 flex flex-wrap gap-2 border-t border-ink-800 pt-2.5">
-        <a href={cardmarketUrl} target="_blank" rel="noopener noreferrer" className={BTN_NEUTRAL}>
-          Vérifier sur Cardmarket ↗
+        <a
+          href={cardmarketUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={BTN_NEUTRAL}
+          title={
+            cardmarketVersion
+              ? `Cardmarket liste toutes les versions et rééditions de ce code : choisis « (${cardmarketVersion}) » dans l'édition d'origine.${
+                  cardmarketVersion === "V.1" ? " Une carte sans illustration alternative n'a pas de mention de version." : ""
+                }`
+              : undefined
+          }
+        >
+          Vérifier sur Cardmarket{cardmarketVersion ? ` (${cardmarketVersion})` : ""} ↗
         </a>
         <a href={searchUrl} target="_blank" rel="noopener noreferrer" className={BTN_QUIET}>
           Recherche Google ↗

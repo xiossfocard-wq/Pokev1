@@ -17,11 +17,13 @@ import ListingColumn from "@/components/ListingColumn";
 import ListingCard from "@/components/ListingCard";
 import StatStrip from "@/components/StatStrip";
 import FilterChips, { applyFilters, DEFAULT_FILTERS, type Filters } from "@/components/FilterChips";
+import { useModeEvaluation } from "@/lib/mode";
 
 const REFRESH_INTERVAL_MS = 60_000;
 const DEFAULT_DEAL_THRESHOLD = 70;
 
 export default function DashboardPage() {
+  const mode = useModeEvaluation();
   const [vinted, setVinted] = useState<Listing[]>([]);
   const [ebay, setEbay] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -345,8 +347,14 @@ export default function DashboardPage() {
           <p>Scores de qualité = estimations automatiques, pas un grading professionnel.</p>
           <p>Prix de référence : OPECards (marché FR, relevé Cardmarket). Vérifie toujours l&apos;annonce et les photos avant d&apos;acheter.</p>
           <p>
-            « Payé » = prix + protection acheteur Vinted (0,70 € + 5 %) + port estimé. La marge déduit aussi les frais de
-            revente sur Cardmarket, et la cote est ramenée à l&apos;état de la carte.
+            « Payé » = prix + protection acheteur Vinted (0,70 € + 5 %) + port estimé. La cote est ramenée à l&apos;état
+            de la carte.{" "}
+            {mode === "collection"
+              ? "Mode collection : l'économie compare ce que tu paies à la cote."
+              : "Mode revente : la marge déduit aussi les frais de revente sur Cardmarket."}{" "}
+            <Link href="/settings" className="underline decoration-ink-600 underline-offset-2 hover:text-parchment-100">
+              Changer de mode
+            </Link>
           </p>
         </footer>
       </main>
