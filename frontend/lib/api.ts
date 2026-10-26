@@ -566,6 +566,8 @@ export interface CarteSuivie extends Partial<Omit<CatalogCard, "id" | "card_code
   /** Coût réel maximum, protection acheteur et port compris. */
   prix_max: number | null;
   suivie_depuis: string | null;
+  /** Dernière recherche Vinted de la carte (UTC, sans fuseau). */
+  derniere_recherche_at: string | null;
   introuvable: boolean;
   annonces: {
     nombre: number;
@@ -591,6 +593,24 @@ export function suivreCarte(cardId: number, prixMax: number | null): Promise<Car
     method: "PUT",
     body: JSON.stringify({ prix_max: prixMax }),
   });
+}
+
+/** Bilan de la dernière recherche Vinted des cartes de la liste. */
+export interface EtatChasse {
+  fin_at: string | null;
+  cherchees?: number;
+  nouvelles?: number;
+  bloque?: boolean;
+  erreur?: string;
+}
+
+export function fetchEtatChasse(): Promise<EtatChasse> {
+  return apiFetch<EtatChasse>("/api/suivi/etat");
+}
+
+/** Cherche tout de suite les cartes de la liste sur Vinted, en arrière-plan. */
+export function chercherMaListe(): Promise<{ status: string; cartes: number }> {
+  return apiFetch<{ status: string; cartes: number }>("/api/suivi/chercher", { method: "POST" });
 }
 
 export function nePlusSuivreCarte(cardId: number): Promise<{ status: string }> {

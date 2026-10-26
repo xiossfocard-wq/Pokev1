@@ -673,29 +673,7 @@ def run_vinted_check(db: Session):
             db.commit()
             continue
 
-        seller_result = score_vinted_seller(
-            review_count=item.seller_review_count,
-            average_rating=item.seller_average_rating,
-        )
-
-        listing = Listing(
-            source=SourcePlatform.VINTED,
-            external_id=item.item_id,
-            title=item.title,
-            description=item.description or "",
-            url=item.url,
-            price=item.price,
-            shipping_price=0.0,  # à affiner : Vinted affiche le port au niveau du panier, pas de l'item
-            # Releves par le scraper depuis le debut, jetes jusqu'ici : le
-            # prix protection comprise et l'etat coche par le vendeur.
-            price_incl_protection=(item.raw or {}).get("price_incl_protection_acheteur"),
-            seller_condition=(item.raw or {}).get("condition"),
-            currency=item.currency,
-            photo_urls=item.photo_urls,
-            seller_username=item.seller_username,
-            seller_reliability_score=seller_result.score,
-            seller_reliability_detail=seller_result.detail,
-        )
+        listing = _nouvelle_annonce_vinted(item)
         db.add(listing)
         db.commit()
         _score_listing(db, listing)
@@ -714,6 +692,135 @@ def _existing_by_external_id(db: Session, source, external_ids: list) -> dict:
         .all()
     )
     return {row.external_id: row for row in rows}
+
+
+def _nouvelle_annonce_vinted(item) -> Listing:
+    """Une annonce Vinted telle que le scraper l'a relevee.
+
+    Une seule construction pour la collecte, la recherche ciblee et la chasse
+    de « Ma liste ». Elles etaient ecrites a part, et la recherche ciblee
+    oubliait le prix protection comprise et l'etat coche par le vendeur :
+    ses annonces avaient un cout estime et un etat inconnu.
+    """
+    seller_result = score_vinted_seller(
+        review_count=item.seller_review_count,
+        average_rating=item.seller_average_rating,
+    )
+    brut = item.raw or {}
+    return Listing(
+        source=SourcePlatform.VINTED,
+        external_id=item.item_id,
+        title=item.title,
+        description=item.description or "",
+        url=item.url,
+        price=item.price,
+        shipping_price=0.0,  # Vinted fixe le port au panier : il est ESTIME dans le cout d'achat
+        price_incl_protection=brut.get("price_incl_protection_acheteur"),
+        seller_condition=brut.get("condition"),
+        currency=item.currency,
+        photo_urls=item.photo_urls,
+        seller_username=item.seller_username,
+        seller_reliability_score=seller_result.score,
+        seller_reliability_detail=seller_result.detail,
+    )
+
+
+# Combien de cartes de « Ma liste » sont cherchees a chaque cycle de
+# collecte. Vinted bloque les rafales : trois recherches de plus toutes les
+# vingt minutes restent dans l'allure d'un humain qui navigue, et la file
+# tourne — la carte cherchee il y a le plus longtemps passe en premier.
+CARTES_CHASSEES_PAR_CYCLE = 3
+
+# Le bilan de la derniere chasse, pour que la page « Ma liste » puisse dire
+# pourquoi une recherche demandee n'a rien donne (Vinted injoignable, ou qui
+# demande de ralentir) au lieu d'attendre en silence. En memoire : il ne
+# sert qu'a la session en cours.
+DERNIERE_CHASSE: dict = {}
+
+
+def chasser_ma_liste(db: Session, par_cycle: int = CARTES_CHASSEES_PAR_CYCLE,
+                     cle: Optional[tuple] = None) -> dict:
+    """Cherche sur Vinted les cartes de « Ma liste ».
+
+    La collecte de fond ne cherche que « carte one piece » : une carte
+    precise n'y apparait que par hasard, parmi les dernieres annonces
+    publiees. Sans cette chasse, la liste attendait qu'une carte suivie passe
+    par la, au lieu d'aller la chercher. `cle` (code, fiche) : ne chercher
+    que cette carte, a l'instant ou on l'ajoute.
+    """
+    bilan = {"cherchees": 0, "nouvelles": 0, "bloque": False}
+    if not settings.vinted_enabled:
+        return bilan
+    for suivie, requete in suivi_service.a_chercher(db, par_cycle, cle=cle):
+        try:
+            resultats = _vinted_scraper.search_card_listings(
+                search_text=requete, sort_order="newest_first"
+            )
+        except VintedBlockedError as exc:
+            # Vinted demande de ralentir : on s'arrete la, le prochain cycle
+            # reprendra la file ou elle en est.
+            logger.warning("Chasse de Ma liste : %s", exc)
+            bilan["bloque"] = True
+            break
+        except Exception as exc:
+            logger.error("Chasse de Ma liste, recherche « %s » echouee (%s)", requete, exc)
+            bilan["erreur"] = str(exc)
+            break
+
+        # Le scraper ne leve pas d'erreur quand Vinted ne repond pas : il rend
+        # une liste vide et note la raison. Sans ce controle, une panne
+        # marquait la carte « cherchee » — on aurait cru qu'il n'y avait rien
+        # a vendre. Une recherche ratee n'est pas une recherche : on s'arrete,
+        # la carte reste en tete de file pour le prochain cycle.
+        panne = getattr(_vinted_scraper, "derniere_erreur", None)
+        if not resultats and panne:
+            logger.warning("Chasse de Ma liste interrompue : %s", panne)
+            bilan["erreur"] = panne
+            break
+
+        suivie.derniere_recherche_at = datetime.utcnow()
+        bilan["cherchees"] += 1
+        connues = _existing_by_external_id(db, SourcePlatform.VINTED,
+                                           [item.item_id for item in resultats])
+        for item in resultats:
+            existante = connues.get(item.item_id)
+            if existante:
+                existante.last_seen_at = datetime.utcnow()
+                continue
+            annonce = _nouvelle_annonce_vinted(item)
+            db.add(annonce)
+            db.commit()
+            _score_listing(db, annonce)
+            _maybe_notify(db, annonce)
+            bilan["nouvelles"] += 1
+        db.commit()
+    if bilan["cherchees"]:
+        logger.info("Chasse de Ma liste : %d carte(s) cherchee(s), %d annonce(s) nouvelle(s)",
+                    bilan["cherchees"], bilan["nouvelles"])
+    if bilan["cherchees"] or bilan.get("erreur") or bilan["bloque"]:
+        DERNIERE_CHASSE.clear()
+        DERNIERE_CHASSE.update(bilan, fin_at=datetime.utcnow().isoformat())
+    return bilan
+
+
+def chasser_en_arriere_plan(cle: Optional[tuple] = None, par_cycle: int = 1) -> None:
+    """Lance la chasse sans faire attendre la page : une recherche Vinted
+    prend plusieurs secondes par carte, delai de politesse compris."""
+    import threading
+
+    from app.database import SessionLocal
+
+    def tache():
+        db = SessionLocal()
+        try:
+            chasser_ma_liste(db, par_cycle=par_cycle, cle=cle)
+        except Exception as exc:
+            db.rollback()
+            logger.error("Chasse de Ma liste en arriere-plan echouee (%s)", exc)
+        finally:
+            db.close()
+
+    threading.Thread(target=tache, name="chasse-ma-liste", daemon=True).start()
 
 
 def run_targeted_search(db: Session, query: str, limit: int = 60, on_progress=None) -> list:
@@ -766,24 +873,7 @@ def run_targeted_search(db: Session, query: str, limit: int = 60, on_progress=No
 
         for position, item in enumerate(new_items, start=1):
             progress(f"Vinted : analyse de l'annonce {position}/{len(new_items)}…")
-            seller_result = score_vinted_seller(
-                review_count=item.seller_review_count,
-                average_rating=item.seller_average_rating,
-            )
-            listing = Listing(
-                source=SourcePlatform.VINTED,
-                external_id=item.item_id,
-                title=item.title,
-                description=item.description or "",
-                url=item.url,
-                price=item.price,
-                shipping_price=0.0,
-                currency=item.currency,
-                photo_urls=item.photo_urls,
-                seller_username=item.seller_username,
-                seller_reliability_score=seller_result.score,
-                seller_reliability_detail=seller_result.detail,
-            )
+            listing = _nouvelle_annonce_vinted(item)
             db.add(listing)
             db.commit()
             _score_listing(db, listing)
@@ -1334,6 +1424,11 @@ def run_full_check(db: Session):
     # seront recalculees au fur et a mesure.
     run_ebay_check(db)
     run_vinted_check(db)
+    try:
+        chasser_ma_liste(db)
+    except Exception as exc:
+        db.rollback()
+        logger.error("Chasse de Ma liste echouee (%s)", exc)
 
     # NB (22/10/2026) : la synchronisation ZebraDex a ete retiree d'ici.
     # Cette source ne couvre pas One Piece — c'est le constat qui a fait

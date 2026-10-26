@@ -5,8 +5,8 @@ import Link from "next/link";
 import CardDetailPanel from "@/components/CardDetailPanel";
 import SuiviCarte from "@/components/SuiviCarte";
 import VisuelCarte from "@/components/VisuelCarte";
-import type { CarteSuivie } from "@/lib/api";
-import { formatEur } from "@/lib/format";
+import { chercherMaListe, fetchEtatChasse, type CarteSuivie } from "@/lib/api";
+import { formatEur, ilYA } from "@/lib/format";
 import { rechargerListe, useCartesSuivies } from "@/lib/suivi";
 
 /**
@@ -24,6 +24,71 @@ export default function MaListePage() {
   useEffect(() => {
     rechargerListe().catch((e) => setErreur(e instanceof Error ? e.message : String(e)));
   }, []);
+
+  // Une recherche Vinted prend quelques secondes par carte. Deux attentes,
+  // à ne pas confondre :
+  // - « Chercher maintenant » vient d'être cliqué : la recherche tourne, le
+  //   bouton l'indique jusqu'à ce que chaque carte ait été cherchée (trois
+  //   minutes au plus) ;
+  // - une carte n'a encore jamais été cherchée (tout juste ajoutée, ou suivie
+  //   avant la chasse) : le prochain cycle s'en charge, le bouton reste
+  //   disponible pour ne pas attendre.
+  // Dans les deux cas, la liste se recharge seule toutes les dix secondes.
+  const [rechercheDepuis, setRechercheDepuis] = useState<number | null>(null);
+  const [lancement, setLancement] = useState<string | null>(null);
+  const actives = (liste ?? []).filter((e) => !e.introuvable);
+  const jamaisCherchees = actives.filter((e) => e.derniere_recherche_at === null).length;
+  const enCours =
+    rechercheDepuis !== null &&
+    Date.now() - rechercheDepuis < 3 * 60_000 &&
+    actives.some(
+      (e) => e.derniere_recherche_at === null || Date.parse(`${e.derniere_recherche_at}Z`) < rechercheDepuis
+    );
+  useEffect(() => {
+    if (!enCours && jamaisCherchees === 0) return;
+    const debut = Date.now();
+    const minuterie = setInterval(() => {
+      if (Date.now() - debut > 3 * 60_000) {
+        clearInterval(minuterie);
+        return;
+      }
+      rechargerListe().catch(() => {});
+      if (rechercheDepuis === null) return;
+      // La recherche demandée est-elle finie, et a-t-elle échoué ? Sans ce
+      // bilan, une panne de Vinted laissait la page attendre en silence.
+      fetchEtatChasse()
+        .then((etat) => {
+          if (!etat.fin_at || Date.parse(`${etat.fin_at}Z`) < rechercheDepuis) return;
+          if (etat.erreur || etat.bloque) {
+            setLancement(
+              `Vinted n'a pas répondu${etat.erreur ? ` (${etat.erreur})` : " : il demande de ralentir"}. Nouvel essai au prochain cycle de collecte.`
+            );
+            setRechercheDepuis(null);
+          } else {
+            setLancement(
+              `${etat.cherchees ?? 0} carte${(etat.cherchees ?? 0) > 1 ? "s" : ""} cherchée${(etat.cherchees ?? 0) > 1 ? "s" : ""} sur Vinted, ${etat.nouvelles ?? 0} annonce${(etat.nouvelles ?? 0) > 1 ? "s" : ""} nouvelle${(etat.nouvelles ?? 0) > 1 ? "s" : ""}.`
+            );
+          }
+        })
+        .catch(() => {});
+    }, 10_000);
+    return () => clearInterval(minuterie);
+  }, [enCours, jamaisCherchees, rechercheDepuis]);
+
+  async function chercher() {
+    setLancement(null);
+    try {
+      const r = await chercherMaListe();
+      setRechercheDepuis(Date.now() - 1000);
+      setLancement(
+        r.cartes > 0
+          ? `Recherche lancée sur Vinted pour ${r.cartes} carte${r.cartes > 1 ? "s" : ""} : compte quelques secondes par carte.`
+          : "Ta liste est vide."
+      );
+    } catch (e) {
+      setLancement(`Recherche impossible. [${e instanceof Error ? e.message : String(e)}]`);
+    }
+  }
 
   const dansLeBudget = (liste ?? []).filter((e) => (e.annonces?.dans_le_budget ?? 0) > 0).length;
 
@@ -83,14 +148,26 @@ export default function MaListePage() {
 
         {liste !== null && liste.length > 0 && (
           <>
-            <p className="mt-4 font-mono text-[11px] text-ink-400">
-              {liste.length} carte{liste.length > 1 ? "s" : ""} suivie{liste.length > 1 ? "s" : ""}
-              {dansLeBudget > 0 && (
-                <span className="text-amber-200">
-                  {" "}· {dansLeBudget} avec une annonce dans ton budget
-                </span>
-              )}
-            </p>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+              <p className="font-mono text-[11px] text-ink-400">
+                {liste.length} carte{liste.length > 1 ? "s" : ""} suivie{liste.length > 1 ? "s" : ""}
+                {dansLeBudget > 0 && (
+                  <span className="text-amber-200">
+                    {" "}· {dansLeBudget} avec une annonce dans ton budget
+                  </span>
+                )}
+              </p>
+              <button
+                type="button"
+                onClick={chercher}
+                disabled={enCours}
+                title="Les cartes de ta liste sont cherchées sur Vinted à chaque cycle, trois à la fois. Ce bouton les cherche toutes maintenant."
+                className="rounded-md border border-amber-300/50 bg-amber-300/10 px-2.5 py-1 text-xs font-medium text-amber-200 transition-colors hover:bg-amber-300/20 disabled:opacity-50"
+              >
+                {enCours ? "Recherche en cours…" : "Chercher maintenant"}
+              </button>
+            </div>
+            {lancement && <p className="mt-1 text-[11px] text-ink-400">{lancement}</p>}
             <ul className="mt-2 flex list-none flex-col gap-2 p-0">
               {liste.map((entree) => (
                 <Ligne
@@ -166,6 +243,9 @@ function Ligne({ entree, onOuvrir }: { entree: CarteSuivie; onOuvrir: (id: numbe
             cote{" "}
             <span className="tabular font-mono text-parchment-100">
               {entree.price_eur != null ? formatEur(entree.price_eur) : "inconnue"}
+            </span>
+            <span title="Les cartes de ta liste sont cherchées sur Vinted à chaque cycle de collecte, à tour de rôle.">
+              {" "}· {entree.derniere_recherche_at ? `cherchée sur Vinted ${ilYA(entree.derniere_recherche_at)}` : "pas encore cherchée sur Vinted"}
             </span>
           </p>
 

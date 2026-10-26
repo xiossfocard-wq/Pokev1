@@ -25,3 +25,19 @@ export function formatNombre(value: number, decimales = 2): string {
 export function formatFourchette(bas: number, haut: number): string {
   return `${formatNombre(bas)} – ${formatEur(haut)}`;
 }
+
+/**
+ * « il y a 12 min ». Le serveur rend ses dates en UTC sans fuseau : on le
+ * précise, sinon le navigateur les lirait en heure locale, décalées d'une à
+ * deux heures.
+ */
+export function ilYA(iso: string | null | undefined): string {
+  if (!iso) return "jamais";
+  const date = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : `${iso}Z`);
+  const minutes = Math.floor((Date.now() - date.getTime()) / 60000);
+  if (minutes < 1) return "à l'instant";
+  if (minutes < 60) return `il y a ${minutes} min`;
+  const heures = Math.floor(minutes / 60);
+  if (heures < 24) return `il y a ${heures} h`;
+  return `il y a ${Math.floor(heures / 24)} j`;
+}

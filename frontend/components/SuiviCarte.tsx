@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { formatEur } from "@/lib/format";
 import { retirer, suivre, useCartesSuivies } from "@/lib/suivi";
 
@@ -30,6 +31,7 @@ export default function SuiviCarte({
   const [saisie, setSaisie] = useState("");
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [vientDAjouter, setVientDAjouter] = useState(false);
 
   function ouvrir() {
     // Proposer la cote comme point de départ : c'est le prix auquel la carte
@@ -50,9 +52,11 @@ export default function SuiviCarte({
     }
     setOccupe(true);
     try {
+      const etaitSuivie = suivie;
       await suivre(cardId, valeur);
       setEdition(false);
       setErreur(null);
+      setVientDAjouter(!etaitSuivie);
     } catch (err) {
       setErreur(err instanceof Error ? err.message : String(err));
     } finally {
@@ -150,6 +154,15 @@ export default function SuiviCarte({
         </form>
       )}
 
+      {vientDAjouter && suivie && (
+        <p className="mt-2 text-[11px] text-ink-400">
+          Recherche lancée sur Vinted : les annonces trouvées apparaissent dans{" "}
+          <Link href="/suivi" className="text-amber-200 underline decoration-amber-300/40 underline-offset-2">
+            Ma liste
+          </Link>{" "}
+          d&apos;ici une minute.
+        </p>
+      )}
       {erreur && <p className="mt-2 text-[11px] text-rust-400">{erreur}</p>}
     </div>
   );

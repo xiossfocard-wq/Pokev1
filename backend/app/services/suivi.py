@@ -10,8 +10,9 @@ Le budget se compare au cout REEL de l'achat (protection acheteur et port
 compris) : un budget de 60 EUR veut dire « je suis pret a payer 60 EUR »,
 pas « je veux voir 60 EUR sur l'annonce ».
 """
+import re
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -100,6 +101,8 @@ def _entree(db: Session, suivie: CarteSuivie, carte: Optional[MarketCardPrice]) 
         "name_slug": suivie.name_slug,
         "prix_max": suivie.prix_max,
         "suivie_depuis": suivie.created_at.isoformat() if suivie.created_at else None,
+        "derniere_recherche_at": (suivie.derniere_recherche_at.isoformat()
+                                  if suivie.derniere_recherche_at else None),
     }
     if carte is None:
         # La carte a disparu du catalogue (base reconstruite sans elle) : on
@@ -148,3 +151,48 @@ def lister(db: Session) -> List[dict]:
         -((e.get("annonces") or {}).get("nombre") or 0),
         e.get("display_name") or e["name_slug"],
     ))
+
+
+# La mention de version des fiches : « Shanks (Parallèle 1) ». Les vendeurs
+# ne l'ecrivent pas ainsi — « alt art », « parallele », « SP »… — et une
+# recherche qui l'exige ne trouverait presque rien. On cherche la carte, et
+# c'est l'identification de chaque annonce qui dit quelle version elle est.
+_MENTION_DE_VERSION = re.compile(r"\s*\((?:parall[eè]le|manga|alternative|alt)[^)]*\)\s*$", re.I)
+
+
+def requete_vinted(carte: MarketCardPrice) -> str:
+    """« Shanks OP01-120 » : le nom de la carte et son code, comme un vendeur
+    les ecrit dans un titre."""
+    nom = _MENTION_DE_VERSION.sub("", carte.display_name or "").strip()
+    return " ".join(part for part in (nom, carte.card_code) if part)
+
+
+def a_chercher(db: Session, nombre: int,
+               cle: Optional[tuple] = None) -> List[Tuple[CarteSuivie, str]]:
+    """Les cartes a chercher maintenant, avec leur requete : jamais
+    cherchees d'abord, puis la plus anciennement cherchee. Deux fiches d'une
+    meme carte (ordinaire et parallele) font la meme requete : elle n'est
+    lancee qu'une fois."""
+    requete = db.query(CarteSuivie)
+    if cle is not None:
+        requete = requete.filter(CarteSuivie.card_code == cle[0], CarteSuivie.name_slug == cle[1])
+    suivies = sorted(requete.all(), key=lambda c: (c.derniere_recherche_at is not None,
+                                                  c.derniere_recherche_at or datetime.min))
+    choisies, deja = [], set()
+    for suivie in suivies:
+        carte = (db.query(MarketCardPrice)
+                 .filter(MarketCardPrice.card_code == suivie.card_code,
+                         MarketCardPrice.name_slug == suivie.name_slug)
+                 .first())
+        if carte is None:
+            continue
+        texte = requete_vinted(carte)
+        if texte in deja:
+            # Meme requete qu'une carte deja choisie : la recherche la couvre.
+            suivie.derniere_recherche_at = datetime.utcnow()
+            continue
+        deja.add(texte)
+        choisies.append((suivie, texte))
+        if len(choisies) >= nombre:
+            break
+    return choisies

@@ -57,6 +57,10 @@ _COLONNES_AJOUTEES = {
         ("savings_eur", "DOUBLE PRECISION"),
         ("savings_ratio", "DOUBLE PRECISION"),
     ],
+    # « Ma liste » : date de la derniere recherche Vinted (26/10/2026).
+    "cartes_suivies": [
+        ("derniere_recherche_at", "TIMESTAMP"),
+    ],
     # Exploration du catalogue par theme + visuel de la carte (10/10/2026).
     "market_card_prices": [
         ("theme_slugs", "VARCHAR(512)"),

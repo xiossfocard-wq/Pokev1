@@ -193,6 +193,9 @@ class CarteSuivie(Base):
     name_slug = Column(String(256), nullable=False)
     prix_max = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # Derniere recherche Vinted de cette carte (voir pipeline.chasser_ma_liste) :
+    # fait tourner la file, et dit a l'utilisateur quand elle a ete cherchee.
+    derniere_recherche_at = Column(DateTime, nullable=True)
 
 
 class ZebraDexSeriesState(Base):
