@@ -3,6 +3,7 @@
 import VisuelCarte from "./VisuelCarte";
 import { CatalogCard } from "@/lib/api";
 import { formatEur, formatFourchette, formatNombre } from "@/lib/format";
+import { useCartesSuivies } from "@/lib/suivi";
 
 /**
  * Une carte du catalogue, avec son visuel.
@@ -37,6 +38,8 @@ export default function CardTile({
   onSelect?: (carte: CatalogCard) => void;
 }) {
   const tendance = carte.trend_7d;
+  const { budgets } = useCartesSuivies();
+  const suivie = budgets.has(carte.id);
   const couleur = COULEURS_TENDANCE[tendance.direction] ?? COULEURS_TENDANCE.inconnu;
 
   // Une affaire se voit depuis la grille, pas seulement en ouvrant la fiche.
@@ -84,6 +87,19 @@ export default function CardTile({
           >
             {annonces} en vente
             {meilleur !== null && ` · ${meilleur.toFixed(0)}`}
+          </span>
+        )}
+
+        {suivie && (
+          <span
+            title={
+              budgets.get(carte.id) != null
+                ? `Dans ta liste · budget ${formatEur(budgets.get(carte.id) as number)}`
+                : "Dans ta liste"
+            }
+            className="absolute right-1.5 top-1.5 rounded-sm border border-amber-300/60 bg-ink-950/80 px-1.5 py-0.5 text-[11px] text-amber-200 backdrop-blur-sm"
+          >
+            ★
           </span>
         )}
       </div>

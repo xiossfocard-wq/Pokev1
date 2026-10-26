@@ -114,6 +114,8 @@ export interface Listing {
    *  l'état), frais compris. Négatif quand l'annonce est plus chère. */
   savings_eur?: number | null;
   savings_ratio?: number | null;
+  /** La fiche reconnue : repère les cartes de « Ma liste » sur le radar. */
+  matched_card_id?: number | null;
 }
 
 /**
@@ -472,6 +474,8 @@ export interface CatalogCardDetail extends CatalogCard {
   history: { captured_on: string; price_eur: number }[];
   trend_history: CardTrendHistory;
   projection: CardProjection;
+  /** Dans « Ma liste » : le budget, ou null si la carte n'est pas suivie. */
+  suivi: { prix_max: number | null } | null;
 }
 
 export function fetchCardDetail(
@@ -548,4 +552,47 @@ export function fetchCardListings(
   limit = 20
 ): Promise<CardListingsResult> {
   return apiFetch<CardListingsResult>(`/api/cards/${cardId}/listings?limit=${limit}`);
+}
+
+// ---------------------------------------------------------------------------
+// « Ma liste » : les cartes suivies, et le budget de chacune.
+// ---------------------------------------------------------------------------
+
+export interface CarteSuivie extends Partial<Omit<CatalogCard, "id" | "card_code" | "name_slug">> {
+  /** null quand la carte a disparu du catalogue (`introuvable`). */
+  id: number | null;
+  card_code: string | null;
+  name_slug: string;
+  /** Coût réel maximum, protection acheteur et port compris. */
+  prix_max: number | null;
+  suivie_depuis: string | null;
+  introuvable: boolean;
+  annonces: {
+    nombre: number;
+    dans_le_budget: number;
+    moins_chere: {
+      id: number;
+      title: string;
+      url: string;
+      source: ListingSource;
+      cout_eur: number;
+      price_eur: number;
+      condition_tier: string | null;
+    } | null;
+  } | null;
+}
+
+export function fetchCartesSuivies(): Promise<CarteSuivie[]> {
+  return apiFetch<CarteSuivie[]>("/api/suivi");
+}
+
+export function suivreCarte(cardId: number, prixMax: number | null): Promise<CarteSuivie> {
+  return apiFetch<CarteSuivie>(`/api/suivi/${cardId}`, {
+    method: "PUT",
+    body: JSON.stringify({ prix_max: prixMax }),
+  });
+}
+
+export function nePlusSuivreCarte(cardId: number): Promise<{ status: string }> {
+  return apiFetch<{ status: string }>(`/api/suivi/${cardId}`, { method: "DELETE" });
 }

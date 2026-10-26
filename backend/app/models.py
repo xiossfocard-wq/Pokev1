@@ -172,6 +172,29 @@ class AppSettings(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class CarteSuivie(Base):
+    """Une carte que l'utilisateur cherche, et le prix qu'il est pret a y
+    mettre, protection acheteur et port compris.
+
+    Un collectionneur ne chasse pas « une bonne affaire » en general : il
+    chasse SA carte. Le radar classait toutes les annonces au meme titre ;
+    une carte suivie est signalee partout ou elle apparait, et une annonce
+    sous le budget declenche une alerte quel que soit son score.
+
+    La carte est designee par son code et son nom de fiche, qui ne changent
+    pas, plutot que par l'identifiant de sa ligne : une base reconstruite
+    renumerote les lignes, et la liste pointerait alors vers d'autres cartes.
+    """
+    __tablename__ = "cartes_suivies"
+    __table_args__ = (UniqueConstraint("card_code", "name_slug", name="uq_carte_suivie"),)
+
+    id = Column(Integer, primary_key=True)
+    card_code = Column(String(32), nullable=True)
+    name_slug = Column(String(256), nullable=False)
+    prix_max = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class ZebraDexSeriesState(Base):
     """
     Suivi de synchronisation des series ZebraDex (158 series FR au

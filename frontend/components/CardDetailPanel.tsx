@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import VisuelCarte from "./VisuelCarte";
 import CardListings from "@/components/CardListings";
+import SuiviCarte from "@/components/SuiviCarte";
 import { CatalogCardDetail, fetchCardDetail } from "@/lib/api";
 import { formatEur, formatFourchette, formatNombre } from "@/lib/format";
 
@@ -123,14 +124,17 @@ export default function CardDetailPanel({
           <div className="flex flex-col gap-4">
             {carte.image_url && (
               <div className="relative mx-auto aspect-[63/88] w-44">
-                {/* Pas de repli visible ici : le panneau montre déjà le nom
-                    et le code juste dessous, un cadre vide n'y ajouterait
-                    rien. Mais plus de cadre cassé non plus. */}
+                {/* Le cadre garde sa place (63×88, le format d'une carte) :
+                    un repli vide y laissait un grand trou sans explication. */}
                 <VisuelCarte
                   src={carte.image_url}
                   alt={carte.display_name}
                   sizes="176px"
-                  repli={() => null}
+                  repli={() => (
+                    <div className="flex h-full w-full items-center justify-center rounded-md border border-dashed border-ink-700 p-3 text-center text-[11px] text-ink-400">
+                      Visuel indisponible pour l&apos;instant
+                    </div>
+                  )}
                 />
               </div>
             )}
@@ -166,6 +170,8 @@ export default function CardDetailPanel({
                 </p>
               )}
             </div>
+
+            <SuiviCarte cardId={carte.id} cote={carte.price_eur} initial={carte.suivi ?? null} />
 
             <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
               <dt className="text-parchment-100/60">Code</dt>

@@ -18,12 +18,14 @@ import ListingCard from "@/components/ListingCard";
 import StatStrip from "@/components/StatStrip";
 import FilterChips, { applyFilters, DEFAULT_FILTERS, type Filters } from "@/components/FilterChips";
 import { useModeEvaluation } from "@/lib/mode";
+import { useCartesSuivies } from "@/lib/suivi";
 
 const REFRESH_INTERVAL_MS = 60_000;
 const DEFAULT_DEAL_THRESHOLD = 70;
 
 export default function DashboardPage() {
   const mode = useModeEvaluation();
+  const { budgets } = useCartesSuivies();
   const [vinted, setVinted] = useState<Listing[]>([]);
   const [ebay, setEbay] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -157,8 +159,8 @@ export default function DashboardPage() {
   }, []);
 
   const all = useMemo(() => [...vinted, ...ebay], [vinted, ebay]);
-  const vintedShown = useMemo(() => applyFilters(vinted, filters), [vinted, filters]);
-  const ebayShown = useMemo(() => applyFilters(ebay, filters), [ebay, filters]);
+  const vintedShown = useMemo(() => applyFilters(vinted, filters, budgets), [vinted, filters, budgets]);
+  const ebayShown = useMemo(() => applyFilters(ebay, filters, budgets), [ebay, filters, budgets]);
   // Sans clé eBay configurée, la colonne eBay restait vide et prenait la
   // moitié de l'écran. Elle n'apparaît que si elle a quelque chose à
   // montrer — ou si on l'a demandée explicitement avec le filtre.
@@ -206,6 +208,13 @@ export default function DashboardPage() {
             >
               {checking ? "Collecte…" : "Collecter"}
             </button>
+            <Link
+              href="/suivi"
+              title="Les cartes que tu cherches, ton budget pour chacune, et ce qui est en vente"
+              className="rounded-md border border-ink-700 px-2.5 py-1.5 text-xs text-parchment-100 transition-colors hover:border-ember-500"
+            >
+              ★ Ma liste
+            </Link>
             <Link
               href="/explorer"
               title="Chercher dans le catalogue par thème, budget et tendance"

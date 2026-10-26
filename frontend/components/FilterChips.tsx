@@ -4,14 +4,17 @@ import type { ListingSource } from "@/lib/api";
 
 export type SourceFilter = "all" | ListingSource;
 export type ConfidenceFilter = "all" | "reliable" | "probable" | "uncertain";
+/** « liste » : seulement les cartes de « Ma liste ». */
+export type CartesFilter = "toutes" | "liste";
 
 export interface Filters {
   source: SourceFilter;
   confidence: ConfidenceFilter;
   minScore: number;
+  cartes: CartesFilter;
 }
 
-export const DEFAULT_FILTERS: Filters = { source: "all", confidence: "all", minScore: 0 };
+export const DEFAULT_FILTERS: Filters = { source: "all", confidence: "all", minScore: 0, cartes: "toutes" };
 
 interface FilterChipsProps {
   value: Filters;
@@ -96,18 +99,32 @@ export default function FilterChips({ value, onChange }: FilterChipsProps) {
           { value: 85, label: "≥ 85" },
         ]}
       />
+      <ChipGroup<CartesFilter>
+        label="Cartes"
+        selected={value.cartes}
+        onSelect={(cartes) => onChange({ ...value, cartes })}
+        options={[
+          { value: "toutes", label: "Toutes" },
+          { value: "liste", label: "★ Ma liste" },
+        ]}
+      />
     </div>
   );
 }
 
-/** Applique les filtres à une liste. Pure : aucune mutation. */
+/** Applique les filtres à une liste. Pure : aucune mutation. `suivies` : les
+ *  fiches de « Ma liste », pour le filtre du même nom. */
 export function applyFilters<T extends {
   source: ListingSource;
   deal_score: number | null;
   price_match_confidence: string | null;
-}>(items: T[], filters: Filters): T[] {
+  matched_card_id?: number | null;
+}>(items: T[], filters: Filters, suivies?: Map<number, unknown>): T[] {
   return items.filter((l) => {
     if (filters.source !== "all" && l.source !== filters.source) return false;
+    if (filters.cartes === "liste" && !(l.matched_card_id != null && suivies?.has(l.matched_card_id))) {
+      return false;
+    }
     if ((l.deal_score ?? 0) < filters.minScore) return false;
 
     const c = l.price_match_confidence;

@@ -30,7 +30,7 @@ def send_telegram_message(bot_token: str, chat_id: str, text: str) -> bool:
         return False
 
 
-def format_deal_alert(listing, mode: str = "collection") -> str:
+def format_deal_alert(listing, mode: str = "collection", budget: dict = None) -> str:
     """Construit le texte du message d'alerte à partir d'un objet Listing.
 
     Le titre est échappé : le message part en HTML, et un titre d'annonce
@@ -38,9 +38,13 @@ def format_deal_alert(listing, mode: str = "collection") -> str:
     from app.notifications.contenu import lignes_de_l_affaire
 
     corps = "\n".join(f"{intitule} : {html.escape(valeur)}"
-                      for intitule, valeur in lignes_de_l_affaire(listing, mode))
+                      for intitule, valeur in lignes_de_l_affaire(listing, mode, budget))
+    # Une annonce de « Ma liste » peut ne pas avoir de score (carte gradee,
+    # cote inconnue) : l'en-tete ne doit pas planter sur un score absent.
+    score = f" (score {listing.deal_score:.0f}/100)" if listing.deal_score is not None else ""
+    entete = "★ <b>Carte de ta liste dans ton budget</b>" if budget else "🔥 <b>Bonne affaire détectée</b>"
     return (
-        f"🔥 <b>Bonne affaire détectée</b> (score {listing.deal_score:.0f}/100)\n\n"
+        f"{entete}{score}\n\n"
         f"<b>{html.escape(listing.title)}</b>\n"
         f"{corps}\n\n"
         f"{listing.url}"

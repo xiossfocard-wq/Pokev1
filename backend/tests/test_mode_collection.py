@@ -98,14 +98,18 @@ class TestScoreSelonLeMode(BaseNotation):
     def test_la_moitie_de_la_cote_donne_tous_les_points_d_affaire(self):
         """Poids tout sur l'affaire : le score vaut la part d'affaire, plus
         le bonus d'attrait de la carte (Shanks, SEC), plafonne a 100."""
-        from app.scoring.card_appeal import detect_card_appeal
         self.regler(margin_weight=1.0, quality_weight=0.0, seller_weight=0.0)
-        bonus = detect_card_appeal("Shanks OP01-120", "")["appeal_bonus"]
         moitie = self.noter(prix=5.0, etat="Très bon état")   # 9,35 payes pour 24
         self.assertGreaterEqual(moitie.savings_ratio, 0.5)
         self.assertEqual(moitie.deal_score, 100.0)
-        sans_affaire = self.noter(prix=30.0, etat="Très bon état")
-        self.assertEqual(sans_affaire.deal_score, bonus)
+
+    def test_le_bonus_d_attrait_ne_repeche_pas_une_annonce_sans_affaire(self):
+        """Shanks SEC payee au-dessus de sa cote : le personnage et la rarete
+        ne font pas une affaire. Avant, le bonus seul lui laissait des points."""
+        self.regler(margin_weight=1.0, quality_weight=0.0, seller_weight=0.0)
+        trop_chere = self.noter(prix=30.0, etat="Très bon état")
+        self.assertLess(trop_chere.savings_eur, 0)
+        self.assertEqual(trop_chere.deal_score, 0.0)
 
 
 class TestPoidsReglables(BaseNotation):

@@ -17,10 +17,14 @@ def euros(valeur: Optional[float]) -> str:
     return f"{valeur:,.2f}".replace(",", " ").replace(".", ",") + " €"
 
 
-def lignes_de_l_affaire(listing, mode: str = "collection") -> List[Tuple[str, str]]:
-    """Les lignes (intitule, valeur) d'une alerte, dans l'ordre de lecture."""
+def lignes_de_l_affaire(listing, mode: str = "collection",
+                        budget: Optional[dict] = None) -> List[Tuple[str, str]]:
+    """Les lignes (intitule, valeur) d'une alerte, dans l'ordre de lecture.
+    `budget` : la carte est dans « Ma liste » et l'annonce tombe dans le budget."""
     detail = listing.price_detail or {}
     lignes = []
+    if budget and budget.get("prix_max") is not None:
+        lignes.append(("★ Ma liste", f"dans ton budget de {euros(budget['prix_max'])}"))
 
     prix = euros(listing.price)
     if listing.purchase_cost_eur is not None and abs(listing.purchase_cost_eur - listing.price) >= 0.01:

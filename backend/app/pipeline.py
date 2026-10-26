@@ -27,6 +27,7 @@ from app.scoring.pieges import detecter as detecter_pieges
 from app.scoring.quality_text import analyze_text_quality
 from app.scoring.card_appeal import detect_card_appeal
 from app.services.price_index import find_price_for_listing
+from app.services import suivi as suivi_service
 from app.scoring.deal_score import calculate_deal_score, DealScoreWeights, QualityBlend
 from app.scoring.seller_reliability import score_ebay_seller, score_vinted_seller
 from app.collectors.card_images import (
@@ -499,13 +500,18 @@ def calculer_deal_score(listing: Listing, reglages: dict) -> Optional[float]:
         text_score=listing.quality_text_score if listing.quality_text_score is not None else 50.0,
         vision_score=listing.quality_vision_score,
     )
+    # Le bonus d'attrait (personnage recherche, rarete) departage des
+    # affaires ; il ne fait pas une affaire d'une annonce qui n'en est pas
+    # une. Avant, une Nami payee au-dessus de sa cote gardait 50 points sur
+    # la seule foi de son personnage.
     appeal = detect_card_appeal(listing.title, listing.description)
+    bonus = appeal["appeal_bonus"] if part_affaire > 0 else 0
     score_brut = min(100.0, calculate_deal_score(
         margin_score_0_100=margin_score,
         quality_blend=quality_blend,
         seller_score_0_100=listing.seller_reliability_score or 50.0,
         weights=poids,
-    ) + appeal["appeal_bonus"])
+    ) + bonus)
     return round(score_brut * UNCERTAIN_SCORE_CAP / 100.0, 1) if prix_doute else score_brut
 
 
@@ -526,17 +532,38 @@ def recalculer_scores(db: Session) -> dict:
     return {"rescored": len(annonces)}
 
 
-def _maybe_notify(db: Session, listing: Listing, threshold: float):
-    if listing.deal_score is None or listing.deal_score < threshold:
+def _maybe_notify(db: Session, listing: Listing, threshold: Optional[float] = None):
+    """Alerte sur une annonce qui depasse le seuil — ou qui tombe dans le
+    budget d'une carte de « Ma liste », quel que soit son score : c'est
+    l'alerte qu'un collectionneur attend vraiment.
+
+    Le seuil est celui des Reglages. Avant, les appelants passaient la valeur
+    FIXE de la configuration : le seuil regle dans le tableau de bord etait
+    enregistre, affiche, et jamais lu.
+    """
+    if listing.status in (ListingStatus.NOTIFIED, ListingStatus.IGNORED):
         return
-    if listing.status == ListingStatus.NOTIFIED:
+    reglages = load_app_settings(db)
+    if threshold is None:
+        threshold = reglages.get("deal_score_threshold", settings.default_deal_score_threshold)
+    budget = suivi_service.budget_pour_annonce(db, listing)
+    pour_ma_liste = bool(budget and budget["dans_le_budget"])
+    if not pour_ma_liste and (listing.deal_score is None or listing.deal_score < threshold):
+        return
+    # Une annonce deja signalee ne l'est pas deux fois : le statut NOTIFIED
+    # est reecrit quand l'annonce est renotee, la trace d'envoi, elle, reste.
+    deja = (db.query(NotificationSent)
+            .filter(NotificationSent.listing_id == listing.id, NotificationSent.success.is_(True))
+            .first())
+    if deja:
         return
 
     sent_any = False
-    mode = load_app_settings(db).get("mode_evaluation", "collection")
+    mode = reglages.get("mode_evaluation", "collection")
+    budget_alerte = budget if pour_ma_liste else None
 
     if settings.telegram_bot_token and settings.telegram_chat_id:
-        text = format_deal_alert(listing, mode)
+        text = format_deal_alert(listing, mode, budget_alerte)
         ok = send_telegram_message(settings.telegram_bot_token, settings.telegram_chat_id, text)
         db.add(NotificationSent(listing_id=listing.id, channel="telegram", success=ok))
         sent_any = sent_any or ok
@@ -548,8 +575,9 @@ def _maybe_notify(db: Session, listing: Listing, threshold: float):
             smtp_user=settings.smtp_user,
             smtp_password=settings.smtp_password,
             to_address=settings.notification_email_to,
-            subject=f"🔥 Bonne affaire One Piece (score {listing.deal_score:.0f})",
-            body=format_deal_alert_html(listing, mode),
+            subject=(f"★ {listing.title[:60]} dans ton budget" if pour_ma_liste
+                     else f"🔥 Bonne affaire One Piece (score {listing.deal_score:.0f})"),
+            body=format_deal_alert_html(listing, mode, budget_alerte),
         )
         db.add(NotificationSent(listing_id=listing.id, channel="email", success=ok))
         sent_any = sent_any or ok
@@ -607,7 +635,7 @@ def run_ebay_check(db: Session):
         db.add(listing)
         db.commit()
         _score_listing(db, listing)
-        _maybe_notify(db, listing, threshold=settings.default_deal_score_threshold)
+        _maybe_notify(db, listing)
 
 
 def run_vinted_check(db: Session):
@@ -671,7 +699,7 @@ def run_vinted_check(db: Session):
         db.add(listing)
         db.commit()
         _score_listing(db, listing)
-        _maybe_notify(db, listing, threshold=settings.default_deal_score_threshold)
+        _maybe_notify(db, listing)
 
 
 def _existing_by_external_id(db: Session, source, external_ids: list) -> dict:
@@ -759,7 +787,7 @@ def run_targeted_search(db: Session, query: str, limit: int = 60, on_progress=No
             db.add(listing)
             db.commit()
             _score_listing(db, listing)
-            _maybe_notify(db, listing, threshold=settings.default_deal_score_threshold)
+            _maybe_notify(db, listing)
 
     if settings.ebay_client_id and settings.ebay_client_secret:
         progress("Recherche sur eBay…")
@@ -812,7 +840,7 @@ def run_targeted_search(db: Session, query: str, limit: int = 60, on_progress=No
             db.add(listing)
             db.commit()
             _score_listing(db, listing)
-            _maybe_notify(db, listing, threshold=settings.default_deal_score_threshold)
+            _maybe_notify(db, listing)
 
     if not matched_keys:
         return []

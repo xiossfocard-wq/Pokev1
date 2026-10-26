@@ -131,6 +131,12 @@ export default function ExplorerPage() {
             Bonnes affaires
           </Link>
           <Link
+            href="/suivi"
+            className="rounded-sm border border-ink-700 px-2.5 py-1.5 text-parchment-100/70 transition-colors hover:border-ember-500/50"
+          >
+            ★ Ma liste
+          </Link>
+          <Link
             href="/settings"
             className="rounded-sm border border-ink-700 px-2.5 py-1.5 text-parchment-100/70 transition-colors hover:border-ember-500/50"
           >

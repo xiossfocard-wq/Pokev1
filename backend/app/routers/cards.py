@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import MarketCardPrice
-from app.services import card_catalog, card_themes
+from app.services import card_catalog, card_themes, suivi
 from app.services.card_trends import projection, tendance_historique
 
 logger = logging.getLogger(__name__)
@@ -188,6 +188,8 @@ def detail_carte(card_id: int, horizon_jours: int = Query(30, ge=1, le=365),
     charge = card_catalog.carte_en_dict(
         ligne, card_catalog.compteurs_d_annonces(db, [ligne.id]).get(ligne.id)
     )
+    # Dans « Ma liste » ? La fiche le dit, pour suivre ou changer le budget.
+    charge["suivi"] = suivi.etat_de_la_carte(db, ligne)
     charge["themes_detail"] = [
         {
             "slug": theme.slug,

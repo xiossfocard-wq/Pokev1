@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ListingOut(BaseModel):
@@ -39,6 +39,8 @@ class ListingOut(BaseModel):
     purchase_cost_detail: Optional[dict] = None
     savings_eur: Optional[float] = None
     savings_ratio: Optional[float] = None
+    # La fiche reconnue : sert a reperer, sur le radar, les cartes de « Ma liste ».
+    matched_card_id: Optional[int] = None
     status: str
     first_seen_at: datetime
     last_seen_at: datetime
@@ -60,6 +62,12 @@ class ListingCorrection(BaseModel):
     """
     action: str
     price: Optional[float] = None
+
+
+class SuiviUpdate(BaseModel):
+    """Budget d'une carte suivie : cout reel maximum, protection acheteur et
+    port compris. Vide = suivre la carte sans budget (signalee, sans alerte)."""
+    prix_max: Optional[float] = Field(None, gt=0)
 
 
 class SettingsUpdate(BaseModel):

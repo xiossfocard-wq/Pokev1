@@ -5,6 +5,7 @@ import Image from "next/image";
 import type { Listing } from "@/lib/api";
 import { formatEur } from "@/lib/format";
 import { useModeEvaluation } from "@/lib/mode";
+import { dansLeBudget, useCartesSuivies } from "@/lib/suivi";
 import DealScoreBadge from "./DealScoreBadge";
 import CorrectionPanel from "./CorrectionPanel";
 
@@ -158,9 +159,19 @@ export default function ListingCard({
   const coutDiffere = cout !== null && cout !== undefined && Math.abs(cout - listing.price) >= 0.01;
   const nonComparable = detail?.non_comparable;
   const decote = detail?.etat_retenu;
+  // « Ma liste » : la carte est-elle suivie, et l'annonce dans le budget ?
+  const { budgets } = useCartesSuivies();
+  const suivie = listing.matched_card_id != null && budgets.has(listing.matched_card_id);
+  const budget = suivie ? budgets.get(listing.matched_card_id as number) : undefined;
+  const coutReel = cout ?? listing.price + (listing.shipping_price ?? 0);
+  const danslebudget = suivie && dansLeBudget(budget, coutReel, nonComparable);
 
   return (
-    <article className="group relative overflow-hidden rounded-lg border border-ink-700 bg-ink-800/70 transition-colors hover:border-ember-500/40 hover:bg-ink-800">
+    <article
+      className={`group relative overflow-hidden rounded-lg border bg-ink-800/70 transition-colors hover:border-ember-500/40 hover:bg-ink-800 ${
+        danslebudget ? "border-amber-300/60 ring-1 ring-amber-300/30" : "border-ink-700"
+      }`}
+    >
       <a
         href={safeUrl}
         target="_blank"
@@ -200,6 +211,22 @@ export default function ListingCard({
                 </span>
               );
             })()}
+            {suivie && (
+              <span
+                className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                  danslebudget ? "bg-amber-300/20 text-amber-200 ring-1 ring-amber-300/50" : "bg-amber-300/10 text-amber-200/80"
+                }`}
+                title={
+                  budget == null
+                    ? "Carte de ta liste (sans budget)"
+                    : danslebudget
+                    ? `Dans ton budget de ${formatEur(budget)} (coût réel, frais compris)`
+                    : `Carte de ta liste — au-dessus de ton budget de ${formatEur(budget)}`
+                }
+              >
+                {danslebudget ? "★ dans ton budget" : "★ Ma liste"}
+              </span>
+            )}
             {nonComparable && (
               <span
                 className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-sky-300"
