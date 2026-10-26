@@ -531,6 +531,8 @@ def annonces_de_la_carte(db: Session, card_id: int, limite: int = 20) -> List[di
             "quality_vision_score": ligne.quality_vision_score,
             "seller_username": ligne.seller_username,
             "seller_reliability_score": ligne.seller_reliability_score,
+            "vendeur_connu": ligne.vendeur_connu,
+            "texte_informatif": ligne.texte_informatif,
             # Les photos de l'exemplaire reellement en vente.
             "photo_urls": ligne.photo_urls or [],
             "price_match_confidence": ligne.price_match_confidence,

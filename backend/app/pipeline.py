@@ -221,6 +221,7 @@ def _score_listing(db: Session, listing: Listing, skip_vision: bool = False):
 
     text_quality = analyze_text_quality(listing.title, listing.description)
     listing.quality_text_score = text_quality.score
+    listing.quality_text_detail = text_quality.to_dict()
     listing.condition_tier = text_quality.condition_tier
 
     appeal = detect_card_appeal(listing.title, listing.description)
@@ -484,17 +485,23 @@ def calculer_deal_score(listing: Listing, reglages: dict) -> Optional[float]:
         part_affaire = normalize_margin_ratio(listing.savings_ratio, cap_ratio=PLAFOND_ECONOMIE)
     margin_score = 50.0 if prix_doute else part_affaire
 
+    # Un signal qu'on n'a pas mesure ne pese pas. Les avis vendeur Vinted ne
+    # sont pas releves, et un titre sans mot sur l'etat ne dit rien : leur
+    # note neutre (45, 50) etait comptee comme une mesure, la meme pour toutes
+    # les annonces, et tassait tous les scores vers le milieu. Leur poids
+    # revient a ce qui est connu.
+    qualite_connue = listing.quality_vision_score is not None or listing.texte_informatif
     poids = DealScoreWeights(
         margin=float(reglages.get("margin_weight", 0.5)),
-        quality=float(reglages.get("quality_weight", 0.3)),
-        seller=float(reglages.get("seller_weight", 0.2)),
+        quality=float(reglages.get("quality_weight", 0.3)) if qualite_connue else 0.0,
+        seller=float(reglages.get("seller_weight", 0.2)) if listing.vendeur_connu else 0.0,
     )
     try:
         poids.normalized()
     except ValueError:
-        # Trois poids a zero : on garde l'equilibre par defaut plutot que de
-        # faire echouer la notation de toutes les annonces.
-        poids = DealScoreWeights()
+        # Plus aucun poids sur ce qui est connu : l'affaire seule decide,
+        # plutot que de faire echouer la notation.
+        poids = DealScoreWeights(margin=1.0, quality=0.0, seller=0.0)
 
     quality_blend = QualityBlend(
         text_score=listing.quality_text_score if listing.quality_text_score is not None else 50.0,
@@ -502,10 +509,12 @@ def calculer_deal_score(listing: Listing, reglages: dict) -> Optional[float]:
     )
     # Le bonus d'attrait (personnage recherche, rarete) departage des
     # affaires ; il ne fait pas une affaire d'une annonce qui n'en est pas
-    # une. Avant, une Nami payee au-dessus de sa cote gardait 50 points sur
-    # la seule foi de son personnage.
+    # une. Il est donc PROPORTIONNEL a l'affaire : entier a la moitie de la
+    # cote, nul sans economie. Ajoute tel quel, ses 30 points depassaient
+    # une remise de 20 % — et il se lit dans le titre, si bien que la meme
+    # carte gagnait 26 points quand le vendeur ecrivait « SEC », zero sinon.
     appeal = detect_card_appeal(listing.title, listing.description)
-    bonus = appeal["appeal_bonus"] if part_affaire > 0 else 0
+    bonus = appeal["appeal_bonus"] * part_affaire / 100.0
     score_brut = min(100.0, calculate_deal_score(
         margin_score_0_100=margin_score,
         quality_blend=quality_blend,
@@ -988,6 +997,9 @@ def rescore_unpriced_listings(
     # restee. Une fois renotee, elle a une economie calculee et sort de la
     # file d'elle-meme.
     condition = condition | Listing.savings_eur.is_(None)
+    # Notees avant que le texte soit garde : on ne sait pas s'il disait
+    # quelque chose de l'etat, donc pas si sa note compte.
+    condition = condition | Listing.quality_text_detail.is_(None)
 
     listings = (
         db.query(Listing)

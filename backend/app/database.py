@@ -56,6 +56,8 @@ _COLONNES_AJOUTEES = {
         # Mode collection : economie par rapport a la cote (26/10/2026).
         ("savings_eur", "DOUBLE PRECISION"),
         ("savings_ratio", "DOUBLE PRECISION"),
+        # Ce que le texte a dit de l'etat (26/10/2026).
+        ("quality_text_detail", "JSON"),
     ],
     # « Ma liste » : date de la derniere recherche Vinted (26/10/2026).
     "cartes_suivies": [

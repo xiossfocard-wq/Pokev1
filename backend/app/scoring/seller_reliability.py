@@ -22,6 +22,15 @@ class SellerReliabilityResult:
 
 NEUTRAL_SCORE_NEW_SELLER = 45.0  # légèrement en dessous de neutre : prudence
 
+# Les libelles qui veulent dire « on ne sait pas ». La note neutre qui les
+# accompagne n'est pas une mesure : la page de recherche Vinted ne donne pas
+# les avis du vendeur, et TOUTES les annonces Vinted recevaient le meme 45,
+# affiche « fiabilite vendeur 45/100 » comme un constat, et pesant 20 % du
+# score. Ces libelles permettent de ne l'afficher ni de le compter.
+AVIS_VINTED_INCONNUS = "Profil Vinted sans avis exploitable"
+AVIS_EBAY_INCONNUS = "Données vendeur eBay indisponibles"
+AVIS_INCONNUS = frozenset({AVIS_VINTED_INCONNUS, AVIS_EBAY_INCONNUS})
+
 
 def score_ebay_seller(
     feedback_percentage: Optional[float],
@@ -35,7 +44,7 @@ def score_ebay_seller(
         return SellerReliabilityResult(
             score=NEUTRAL_SCORE_NEW_SELLER,
             is_estimated=True,
-            detail="Données vendeur eBay indisponibles",
+            detail=AVIS_EBAY_INCONNUS,
         )
 
     base = max(0.0, min(100.0, feedback_percentage))
@@ -66,7 +75,7 @@ def score_vinted_seller(
         return SellerReliabilityResult(
             score=NEUTRAL_SCORE_NEW_SELLER,
             is_estimated=True,
-            detail="Profil Vinted sans avis exploitable",
+            detail=AVIS_VINTED_INCONNUS,
         )
 
     base = max(0.0, min(100.0, (average_rating / 5.0) * 100.0))

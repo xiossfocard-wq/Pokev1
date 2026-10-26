@@ -151,7 +151,7 @@ function Annonce({ annonce }: { annonce: CardListing }) {
               </span>
             )}
             {annonce.condition_tier && <span>état {annonce.condition_tier}</span>}
-            {annonce.seller_reliability_score !== null && (
+            {annonce.seller_reliability_score !== null && annonce.vendeur_connu !== false && (
               <span title="Fiabilité du vendeur : nombre d'avis et note moyenne">fiabilité vendeur {annonce.seller_reliability_score.toFixed(0)}/100</span>
             )}
             {douteux && (

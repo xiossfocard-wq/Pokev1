@@ -116,6 +116,10 @@ export interface Listing {
   savings_ratio?: number | null;
   /** La fiche reconnue : repère les cartes de « Ma liste » sur le radar. */
   matched_card_id?: number | null;
+  /** Les avis du vendeur ont-ils été relevés ? (pas sur la recherche Vinted) */
+  vendeur_connu?: boolean;
+  /** Le texte de l'annonce dit-il quelque chose de l'état ? */
+  texte_informatif?: boolean;
 }
 
 /**
@@ -532,6 +536,8 @@ export interface CardListing {
   quality_vision_score: number | null;
   seller_username: string | null;
   seller_reliability_score: number | null;
+  vendeur_connu?: boolean;
+  texte_informatif?: boolean;
   // Photos du VENDEUR : l'exemplaire réellement en vente, avec son centrage,
   // ses bords et son état. C'est ce qu'on regarde avant d'acheter.
   photo_urls: string[];

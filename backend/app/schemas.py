@@ -41,6 +41,9 @@ class ListingOut(BaseModel):
     savings_ratio: Optional[float] = None
     # La fiche reconnue : sert a reperer, sur le radar, les cartes de « Ma liste ».
     matched_card_id: Optional[int] = None
+    # Signaux REELLEMENT mesures : sinon l'interface n'affiche pas de note.
+    vendeur_connu: bool = True
+    texte_informatif: bool = False
     status: str
     first_seen_at: datetime
     last_seen_at: datetime

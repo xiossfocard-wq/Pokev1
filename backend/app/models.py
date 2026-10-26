@@ -67,6 +67,20 @@ class Listing(Base):
     savings_eur = Column(Float, nullable=True)
     savings_ratio = Column(Float, nullable=True)
 
+    @property
+    def vendeur_connu(self) -> bool:
+        """Les avis du vendeur ont-ils ete releves ? La page de recherche
+        Vinted ne les donne pas : la note neutre n'est alors pas une mesure."""
+        from app.scoring.seller_reliability import AVIS_INCONNUS
+        return self.seller_reliability_detail not in AVIS_INCONNUS
+
+    @property
+    def texte_informatif(self) -> bool:
+        """Le texte de l'annonce dit-il quelque chose de l'etat de la carte ?"""
+        d = self.quality_text_detail or {}
+        return bool(d.get("matched_positive") or d.get("matched_negative")
+                    or d.get("negated_negative") or d.get("condition_tier"))
+
     photo_urls = Column(JSON, default=list)
 
     seller_username = Column(String(256), nullable=True)
@@ -82,6 +96,11 @@ class Listing(Base):
     margin_ratio = Column(Float, nullable=True)
 
     quality_text_score = Column(Float, nullable=True)
+    # Ce que le texte a reellement dit de l'etat (mots trouves, etat lu) :
+    # sans rien de tout cela, le score de 50 n'est pas une mesure.
+    # none_as_null : None s'ecrit comme un vrai NULL SQL, pas comme la valeur
+    # JSON « null » — que le repassage (« pas encore analyse ») ne verrait pas.
+    quality_text_detail = Column(JSON(none_as_null=True), nullable=True)
     quality_vision_score = Column(Float, nullable=True)
     quality_vision_detail = Column(JSON, nullable=True)  # explication du modèle vision
 

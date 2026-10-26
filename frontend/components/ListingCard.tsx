@@ -358,14 +358,20 @@ export default function ListingCard({
               <span title="Qualité estimée sur les photos de l'annonce — pas un grading professionnel">
                 qualité (photos) ~{Math.round(listing.quality_vision_score)}/100
               </span>
-            ) : listing.quality_text_score !== null ? (
-              <span title="Qualité estimée sur le texte de l'annonce seulement : précision de la description, état annoncé">
+            ) : listing.quality_text_score !== null && listing.texte_informatif ? (
+              // Seulement quand le texte dit quelque chose de l'état : sinon
+              // le 50 affiché n'était pas une mesure, juste l'absence d'info.
+              <span title="Qualité estimée sur le texte de l'annonce seulement : état annoncé, défauts signalés">
                 qualité (texte) ~{Math.round(listing.quality_text_score)}/100
               </span>
             ) : null}
-            {listing.seller_reliability_score !== null && (
+            {listing.seller_reliability_score !== null && listing.vendeur_connu !== false ? (
               <span title="Fiabilité du vendeur : nombre d'avis et note moyenne">
                 fiabilité vendeur {Math.round(listing.seller_reliability_score)}/100
+              </span>
+            ) : (
+              <span title="La page de recherche Vinted ne donne pas les avis du vendeur : ouvre l'annonce pour les voir. Ils ne comptent pas dans le score.">
+                avis vendeur : à voir sur l&apos;annonce
               </span>
             )}
             <span>{timeAgo(listing.first_seen_at)}</span>

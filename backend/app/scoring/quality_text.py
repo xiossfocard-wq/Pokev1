@@ -42,7 +42,8 @@ NEGATIVE_KEYWORDS = [
 
 # Négations fréquentes en français qui, précédant un mot-clé négatif de
 # près, inversent son sens ("sans rayure", "pas de défaut", ...).
-NEGATION_PATTERNS = ["sans ", "pas de ", "aucun ", "aucune ", "no "]
+# « jamais » : « jamais joué » est un gage d'état, pas l'aveu d'une carte jouée.
+NEGATION_PATTERNS = ["sans ", "pas de ", "aucun ", "aucune ", "no ", "jamais "]
 
 _NEGATION_WINDOW = 12  # nb de caractères avant le mot-clé où chercher une négation
 
@@ -61,6 +62,22 @@ _CONDITION_PATTERNS = [
     for tier, kws in _CONDITION_TIERS
 ]
 
+# « MP » est aussi le « message privé » de toutes les annonces Vinted
+# (« contactez-moi en MP », « envoyez un mp ») : lu comme « Moderately
+# Played », il decotait la carte de 30 % sans raison. Precede de en / par /
+# un / mon, c'est un message.
+_MP_MESSAGE = re.compile(r"\b(?:en|par|un|mon|ton|votre|en\s+priv[ée])\s+mp\b", re.IGNORECASE)
+
+
+def _mot(kw: str) -> re.Pattern:
+    """Le mot-cle comme mot ENTIER. Cherche en sous-chaine, « tache »
+    trouvait « détachée », « pli » « remplie », « joue » « jouet »."""
+    return re.compile(rf"(?<!\w){re.escape(kw)}(?!\w)")
+
+
+_POSITIFS = [(kw, _mot(kw)) for kw in POSITIVE_KEYWORDS]
+_NEGATIFS = [(kw, _mot(kw)) for kw in NEGATIVE_KEYWORDS]
+
 
 @dataclass
 class TextQualityResult:
@@ -69,6 +86,13 @@ class TextQualityResult:
     matched_negative: List[str] = field(default_factory=list)
     negated_negative: List[str] = field(default_factory=list)  # ex: "sans rayure"
     condition_tier: str = None  # "NM" | "LP" | "MP" | "HP" | "DMG" | None si indétecté
+
+    @property
+    def informatif(self) -> bool:
+        """Le texte dit-il quelque chose de l'etat ? Sinon le score reste a
+        50 — une absence d'information, pas une carte « moyenne »."""
+        return bool(self.matched_positive or self.matched_negative
+                    or self.negated_negative or self.condition_tier)
 
     def to_dict(self) -> dict:
         return {
@@ -97,12 +121,13 @@ def analyze_text_quality(title: str, description: str) -> TextQualityResult:
     matched_negative: List[str] = []
     negated_negative: List[str] = []
 
-    for kw in POSITIVE_KEYWORDS:
-        if re.search(re.escape(kw), full_text):
+    for kw, motif in _POSITIFS:
+        # « mint » dans « near mint » : un seul constat, pas deux points.
+        if motif.search(full_text) and not any(kw in deja for deja in matched_positive):
             matched_positive.append(kw)
 
-    for kw in NEGATIVE_KEYWORDS:
-        for m in re.finditer(re.escape(kw), full_text):
+    for kw, motif in _NEGATIFS:
+        for m in motif.finditer(full_text):
             if _is_negated(full_text, m.start()):
                 negated_negative.append(kw)
             else:
@@ -116,8 +141,9 @@ def analyze_text_quality(title: str, description: str) -> TextQualityResult:
     score = max(0.0, min(100.0, score))
 
     condition_tier = None
+    texte_sans_messages = _MP_MESSAGE.sub(" ", full_text)
     for tier, pattern in _CONDITION_PATTERNS:
-        if pattern.search(full_text):
+        if pattern.search(texte_sans_messages):
             condition_tier = tier
             break
 
