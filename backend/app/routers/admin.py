@@ -4,7 +4,7 @@ from typing import Optional
 
 from app.config import settings
 from app.database import SessionLocal
-from app.models import MarketCardPrice
+from app.models import Listing, MarketCardPrice, SourcePlatform
 from app.pipeline import (
     run_full_check, rescore_unpriced_listings, refilter_language,
     check_vinted_availability, enrich_card_images,
@@ -15,6 +15,7 @@ from app.collectors.zebradex_prices import ZebraDexClient
 from app.services.price_index import (
     sync_series_batch, refresh_series_catalog, index_stats, find_price_for_listing,
 )
+import re
 import requests
 
 from app.collectors.card_images import (
@@ -280,6 +281,30 @@ def debug_vinted(search_text: Optional[str] = None):
     """Diagnostic lecture seule du scraper Vinted."""
     scraper = VintedScraper(request_delay_seconds=settings.vinted_request_delay_seconds)
     return scraper.diagnostic_fetch(search_text=search_text)
+
+
+@router.get("/debug-vinted-annonce")
+def debug_vinted_annonce(url: Optional[str] = None):
+    """Diagnostic lecture seule de la page d'UNE annonce Vinted : ou se
+    trouvent les avis du vendeur et la description. Sans `url`, la derniere
+    annonce Vinted collectee. Une seule requete ; seuls de courts extraits
+    autour des reperes sont rendus."""
+    if url is None:
+        db = SessionLocal()
+        try:
+            derniere = (db.query(Listing).filter(Listing.source == SourcePlatform.VINTED)
+                        .order_by(Listing.first_seen_at.desc()).first())
+        finally:
+            db.close()
+        if derniere is None:
+            raise HTTPException(status_code=404, detail="Aucune annonce Vinted en base : lance d'abord une collecte.")
+        url = derniere.url
+    # Seulement une page d'annonce Vinted : la route ne sert pas a lire
+    # n'importe quelle adresse.
+    if not re.match(r"^https://www\.vinted\.fr/items/\d+", url or ""):
+        raise HTTPException(status_code=400, detail="Adresse attendue : https://www.vinted.fr/items/<numéro>…")
+    scraper = VintedScraper(request_delay_seconds=settings.vinted_request_delay_seconds)
+    return scraper.diagnostic_annonce(url)
 
 
 @router.get("/debug-zebradex")

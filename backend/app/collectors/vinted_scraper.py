@@ -495,6 +495,49 @@ class VintedScraper:
             return True
         return None
 
+    # Les reperes cherches dans la page d'une annonce : avis du vendeur et
+    # description, que la page de recherche ne donne pas.
+    _REPERES_ANNONCE = ("feedback_count", "feedback_reputation", "positive_feedback",
+                        "\"description\"", "itemprop=\"description\"", "__next_f",
+                        "__NEXT_DATA__", "application/ld+json", "og:description")
+
+    def diagnostic_annonce(self, item_url: str) -> dict:
+        """Ce que contient la page d'UNE annonce, pour savoir ou lire les avis
+        du vendeur et la description — sans le deviner.
+
+        La page de recherche ne contient ni l'un ni l'autre, et le format de
+        la page d'annonce n'a jamais pu etre verifie (fetch_item_detail le
+        suppose). Meme demarche que diagnostic_fetch : une seule requete, par
+        les memes garde-fous (robots.txt, delai), et seulement de courts
+        extraits autour des reperes, pas la page entiere.
+        """
+        resp = self._get(item_url)
+        if resp is None:
+            return {"url": item_url, "ok": False, "raison": self.derniere_erreur}
+        html = resp.text
+        extraits = {}
+        for repere in self._REPERES_ANNONCE:
+            positions = [m.start() for m in re.finditer(re.escape(repere), html)][:3]
+            extraits[repere] = {
+                "occurrences": html.count(repere),
+                "extraits": [html[max(0, i - 120): i + 280] for i in positions[:2]],
+            }
+        ld_json = []
+        for bloc in re.findall(r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>', html, re.S):
+            try:
+                ld_json.append(json.loads(bloc))
+            except json.JSONDecodeError:
+                ld_json.append({"illisible": bloc[:300]})
+        return {
+            "url": item_url,
+            "ok": True,
+            "statut_http": resp.status_code,
+            "taille_html": len(html),
+            "blob_json_reconnu": self._extract_json_blob(html) is not None,
+            "ld_json": ld_json[:3],
+            "reperes": extraits,
+        }
+
     def fetch_item_detail(self, item_url: str) -> Optional[VintedListing]:
         """
         Récupère la fiche détaillée d'une annonce (description complète,
