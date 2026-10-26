@@ -26,6 +26,10 @@ def lignes_de_l_affaire(listing, mode: str = "collection",
     if budget and budget.get("prix_max") is not None:
         lignes.append(("★ Ma liste", f"dans ton budget de {euros(budget['prix_max'])}"))
 
+    initial = getattr(listing, "price_initial", None)
+    if initial is not None and listing.price < initial - 0.01:
+        lignes.append(("↓ Baisse de prix", f"{euros(initial)} → {euros(listing.price)}"))
+
     prix = euros(listing.price)
     if listing.purchase_cost_eur is not None and abs(listing.purchase_cost_eur - listing.price) >= 0.01:
         prix += f" (≈ {euros(listing.purchase_cost_eur)} payé, protection et port compris)"

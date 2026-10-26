@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import type { Listing } from "@/lib/api";
-import { formatEur } from "@/lib/format";
+import { formatEur, ilYA } from "@/lib/format";
 import { useModeEvaluation } from "@/lib/mode";
 import { dansLeBudget, useCartesSuivies } from "@/lib/suivi";
 import DealScoreBadge from "./DealScoreBadge";
@@ -211,6 +211,15 @@ export default function ListingCard({
                 </span>
               );
             })()}
+            {listing.price_initial != null && listing.price < listing.price_initial - 0.009 && (
+              // Une baisse est un signal en soi : le vendeur veut vendre.
+              <span
+                className="rounded bg-moss-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-moss-400"
+                title={`Le vendeur a baissé son prix ${ilYA(listing.price_changed_at)} : ${formatEur(listing.price_initial)} → ${formatEur(listing.price)}`}
+              >
+                ↓ était {formatEur(listing.price_initial)}
+              </span>
+            )}
             {suivie && (
               <span
                 className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${

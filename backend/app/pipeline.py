@@ -552,6 +552,9 @@ def _maybe_notify(db: Session, listing: Listing, threshold: Optional[float] = No
     """
     if listing.status in (ListingStatus.NOTIFIED, ListingStatus.IGNORED):
         return
+    # Masquee a la main : l'utilisateur a deja dit qu'elle ne l'interessait pas.
+    if listing.manual_status == "hidden":
+        return
     reglages = load_app_settings(db)
     if threshold is None:
         threshold = reglages.get("deal_score_threshold", settings.default_deal_score_threshold)
@@ -561,10 +564,12 @@ def _maybe_notify(db: Session, listing: Listing, threshold: Optional[float] = No
         return
     # Une annonce deja signalee ne l'est pas deux fois : le statut NOTIFIED
     # est reecrit quand l'annonce est renotee, la trace d'envoi, elle, reste.
+    # Sauf si son prix a BAISSE depuis l'alerte : c'est une nouvelle occasion.
     deja = (db.query(NotificationSent)
             .filter(NotificationSent.listing_id == listing.id, NotificationSent.success.is_(True))
+            .order_by(NotificationSent.sent_at.desc())
             .first())
-    if deja:
+    if deja and not (deja.price_at_send is not None and listing.price < deja.price_at_send - 0.01):
         return
 
     sent_any = False
@@ -574,7 +579,8 @@ def _maybe_notify(db: Session, listing: Listing, threshold: Optional[float] = No
     if settings.telegram_bot_token and settings.telegram_chat_id:
         text = format_deal_alert(listing, mode, budget_alerte)
         ok = send_telegram_message(settings.telegram_bot_token, settings.telegram_chat_id, text)
-        db.add(NotificationSent(listing_id=listing.id, channel="telegram", success=ok))
+        db.add(NotificationSent(listing_id=listing.id, channel="telegram", success=ok,
+                                price_at_send=listing.price))
         sent_any = sent_any or ok
 
     if settings.smtp_host and settings.notification_email_to:
@@ -588,7 +594,8 @@ def _maybe_notify(db: Session, listing: Listing, threshold: Optional[float] = No
                      else f"🔥 Bonne affaire One Piece (score {listing.deal_score:.0f})"),
             body=format_deal_alert_html(listing, mode, budget_alerte),
         )
-        db.add(NotificationSent(listing_id=listing.id, channel="email", success=ok))
+        db.add(NotificationSent(listing_id=listing.id, channel="email", success=ok,
+                                price_at_send=listing.price))
         sent_any = sent_any or ok
 
     if sent_any:
@@ -618,8 +625,7 @@ def run_ebay_check(db: Session):
             source=SourcePlatform.EBAY, external_id=item.item_id
         ).first()
         if existing:
-            existing.last_seen_at = datetime.utcnow()
-            db.commit()
+            _revoir_annonce(db, existing, item.price, port=item.shipping_cost or 0.0)
             continue
 
         seller_result = score_ebay_seller(
@@ -678,8 +684,8 @@ def run_vinted_check(db: Session):
             source=SourcePlatform.VINTED, external_id=item.item_id
         ).first()
         if existing:
-            existing.last_seen_at = datetime.utcnow()
-            db.commit()
+            _revoir_annonce(db, existing, item.price,
+                            prix_avec_protection=(item.raw or {}).get("price_incl_protection_acheteur"))
             continue
 
         listing = _nouvelle_annonce_vinted(item)
@@ -701,6 +707,40 @@ def _existing_by_external_id(db: Session, source, external_ids: list) -> dict:
         .all()
     )
     return {row.external_id: row for row in rows}
+
+
+def _revoir_annonce(db: Session, annonce: Listing, prix: Optional[float], port: Optional[float] = None,
+                    prix_avec_protection: Optional[float] = None,
+                    vu_le: Optional[datetime] = None) -> bool:
+    """Une annonce deja connue, revue dans une collecte.
+
+    Avant, seule la date de derniere vue etait mise a jour : un vendeur qui
+    baissait sa carte de 40 a 25 EUR restait affiche a 40, sans nouveau
+    calcul ni alerte. Le prix est maintenant repris ; s'il a change,
+    l'annonce est renotee et peut alerter (voir _maybe_notify). Une annonce
+    marquee indisponible qui reapparait dans les resultats est bel et bien
+    en vente : elle est renotee, ce qui la remet sur le radar.
+
+    Rend True si l'annonce a ete renotee.
+    """
+    annonce.last_seen_at = vu_le or datetime.utcnow()
+    reapparue = annonce.status == ListingStatus.UNAVAILABLE
+    change = prix is not None and abs(prix - (annonce.price or 0.0)) >= 0.01
+    if not (change or reapparue):
+        db.commit()
+        return False
+    if change:
+        if annonce.price_initial is None:
+            annonce.price_initial = annonce.price
+        annonce.price = prix
+        if port is not None:
+            annonce.shipping_price = port
+        annonce.price_incl_protection = prix_avec_protection
+        annonce.price_changed_at = datetime.utcnow()
+    db.commit()
+    _score_listing(db, annonce, skip_vision=True)
+    _maybe_notify(db, annonce)
+    return True
 
 
 def _nouvelle_annonce_vinted(item) -> Listing:
@@ -794,7 +834,8 @@ def chasser_ma_liste(db: Session, par_cycle: int = CARTES_CHASSEES_PAR_CYCLE,
         for item in resultats:
             existante = connues.get(item.item_id)
             if existante:
-                existante.last_seen_at = datetime.utcnow()
+                _revoir_annonce(db, existante, item.price,
+                                prix_avec_protection=(item.raw or {}).get("price_incl_protection_acheteur"))
                 continue
             annonce = _nouvelle_annonce_vinted(item)
             db.add(annonce)
@@ -875,7 +916,8 @@ def run_targeted_search(db: Session, query: str, limit: int = 60, on_progress=No
             matched_keys.add((SourcePlatform.VINTED, item.item_id))
             existing = known.get(item.item_id)
             if existing:
-                existing.last_seen_at = seen_at
+                _revoir_annonce(db, existing, item.price, vu_le=seen_at,
+                                prix_avec_protection=(item.raw or {}).get("price_incl_protection_acheteur"))
             else:
                 new_items.append(item)
         db.commit()  # un seul commit pour tous les "deja vus"
@@ -911,7 +953,7 @@ def run_targeted_search(db: Session, query: str, limit: int = 60, on_progress=No
             matched_keys.add((SourcePlatform.EBAY, item.item_id))
             existing = known.get(item.item_id)
             if existing:
-                existing.last_seen_at = seen_at
+                _revoir_annonce(db, existing, item.price, port=item.shipping_cost or 0.0, vu_le=seen_at)
             else:
                 new_items.append(item)
         db.commit()

@@ -66,6 +66,11 @@ class Listing(Base):
     # pour qui garde la carte, elle sous-estimait toutes les affaires.
     savings_eur = Column(Float, nullable=True)
     savings_ratio = Column(Float, nullable=True)
+    # Le prix a la premiere collecte, garde quand le vendeur le change : une
+    # baisse de prix est un signal en soi (« il veut vendre »), et le radar
+    # affichait l'ancien prix jusqu'a ce que l'annonce disparaisse.
+    price_initial = Column(Float, nullable=True)
+    price_changed_at = Column(DateTime, nullable=True)
 
     @property
     def vendeur_connu(self) -> bool:
@@ -177,6 +182,9 @@ class NotificationSent(Base):
     sent_at = Column(DateTime, default=datetime.utcnow)
     success = Column(Boolean, default=True)
     error_detail = Column(String(512), nullable=True)
+    # Le prix au moment de l'alerte : une baisse ulterieure en justifie une
+    # nouvelle, une simple renotation au meme prix non.
+    price_at_send = Column(Float, nullable=True)
 
     listing = relationship("Listing", back_populates="notifications")
 

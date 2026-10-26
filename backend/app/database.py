@@ -58,6 +58,12 @@ _COLONNES_AJOUTEES = {
         ("savings_ratio", "DOUBLE PRECISION"),
         # Ce que le texte a dit de l'etat (26/10/2026).
         ("quality_text_detail", "JSON"),
+        # Baisses de prix (26/10/2026).
+        ("price_initial", "DOUBLE PRECISION"),
+        ("price_changed_at", "TIMESTAMP"),
+    ],
+    "notifications_sent": [
+        ("price_at_send", "DOUBLE PRECISION"),
     ],
     # « Ma liste » : date de la derniere recherche Vinted (26/10/2026).
     "cartes_suivies": [

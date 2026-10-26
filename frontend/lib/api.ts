@@ -120,6 +120,9 @@ export interface Listing {
   vendeur_connu?: boolean;
   /** Le texte de l'annonce dit-il quelque chose de l'état ? */
   texte_informatif?: boolean;
+  /** Le prix à la première collecte, quand le vendeur l'a changé depuis. */
+  price_initial?: number | null;
+  price_changed_at?: string | null;
 }
 
 /**

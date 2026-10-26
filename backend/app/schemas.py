@@ -44,6 +44,8 @@ class ListingOut(BaseModel):
     # Signaux REELLEMENT mesures : sinon l'interface n'affiche pas de note.
     vendeur_connu: bool = True
     texte_informatif: bool = False
+    price_initial: Optional[float] = None
+    price_changed_at: Optional[datetime] = None
     status: str
     first_seen_at: datetime
     last_seen_at: datetime
