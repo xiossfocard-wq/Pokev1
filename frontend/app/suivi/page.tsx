@@ -101,12 +101,20 @@ export default function MaListePage() {
           </Link>
           <span className="text-ink-400">/</span>
           <span className="text-sm text-parchment-100">Ma liste</span>
-          <Link
-            href="/explorer"
-            className="ml-auto rounded-md border border-ink-700 px-2.5 py-1.5 text-xs text-parchment-100 transition-colors hover:border-ember-500"
-          >
-            Catalogue
-          </Link>
+          <div className="ml-auto flex gap-1.5">
+            <Link
+              href="/collection"
+              className="rounded-md border border-ink-700 px-2.5 py-1.5 text-xs text-parchment-100 transition-colors hover:border-ember-500"
+            >
+              Collection
+            </Link>
+            <Link
+              href="/explorer"
+              className="rounded-md border border-ink-700 px-2.5 py-1.5 text-xs text-parchment-100 transition-colors hover:border-ember-500"
+            >
+              Catalogue
+            </Link>
+          </div>
         </div>
       </header>
 

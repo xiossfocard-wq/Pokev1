@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { correctListing, type CorrectionAction, type Listing } from "@/lib/api";
+import { ajouterExemplaire, correctListing, type CorrectionAction, type Etat, type Listing } from "@/lib/api";
+import FormulaireExemplaire from "./FormulaireExemplaire";
 import { formatEur } from "@/lib/format";
 
 interface CorrectionPanelProps {
@@ -36,6 +37,7 @@ export default function CorrectionPanel({
   const [editingPrice, setEditingPrice] = useState(false);
   const [priceInput, setPriceInput] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [achat, setAchat] = useState(false);
 
   const detail = listing.price_detail;
   const reviewed = listing.manual_reviewed_at !== null;
@@ -141,7 +143,19 @@ export default function CorrectionPanel({
       </div>
 
       <div className="mt-2.5 border-t border-ink-800 pt-2.5">
-        {reviewed ? (
+        {achat ? (
+          <FormulaireExemplaire
+            libelle="Ranger dans ma collection"
+            prixInitial={listing.purchase_cost_eur ?? listing.price}
+            etatInitial={(listing.condition_tier as Etat | null) ?? null}
+            onAnnuler={() => setAchat(false)}
+            onValider={async (prix, etat) => {
+              await ajouterExemplaire({ listing_id: listing.id, prix_paye: prix, etat });
+              setAchat(false);
+              onChanged?.({ ...listing, manual_status: "hidden", manual_reviewed_at: new Date().toISOString() });
+            }}
+          />
+        ) : reviewed ? (
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[11px] text-ember-400">
               {listing.manual_status === "wrong_card"
@@ -186,6 +200,18 @@ export default function CorrectionPanel({
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">
+            {listing.matched_card_id != null && (
+              // Achetée : elle rejoint la collection avec ce qu'elle a coûté,
+              // quitte le radar, et sa carte quitte « Ma liste ».
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setAchat(true)}
+                className="rounded-md border border-moss-500/50 bg-moss-500/10 px-2.5 py-1.5 text-[11px] font-medium text-moss-400 transition-colors hover:bg-moss-500/20 disabled:opacity-40"
+              >
+                ✓ Je l&apos;ai achetée
+              </button>
+            )}
             <button type="button" disabled={busy} onClick={() => apply("wrong_card")} className={BTN_DANGER}>
               Ce n&apos;est pas la bonne carte
             </button>

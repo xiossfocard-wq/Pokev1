@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import VisuelCarte from "./VisuelCarte";
 import CardListings from "@/components/CardListings";
 import SuiviCarte from "@/components/SuiviCarte";
+import CollectionCarte from "@/components/CollectionCarte";
 import { CatalogCardDetail, fetchCardDetail } from "@/lib/api";
 import { formatEur, formatFourchette, formatNombre } from "@/lib/format";
 
@@ -172,6 +173,7 @@ export default function CardDetailPanel({
             </div>
 
             <SuiviCarte cardId={carte.id} cote={carte.price_eur} initial={carte.suivi ?? null} />
+            <CollectionCarte key={carte.id} cardId={carte.id} initial={carte.collection?.exemplaires ?? 0} />
 
             <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
               <dt className="text-parchment-100/60">Code</dt>

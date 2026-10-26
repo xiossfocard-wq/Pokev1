@@ -225,6 +225,27 @@ class CarteSuivie(Base):
     derniere_recherche_at = Column(DateTime, nullable=True)
 
 
+class CartePossedee(Base):
+    """Un exemplaire d'une carte que l'utilisateur possede : ce qu'il l'a
+    paye, dans quel etat, et quand.
+
+    Un exemplaire par ligne, pas une quantite : deux Shanks achetes 9 et
+    25 EUR, l'un MP, l'autre NM, n'ont ni le meme cout ni la meme valeur.
+    Comme « Ma liste », la carte est designee par son code et sa fiche, qui
+    survivent a une base reconstruite.
+    """
+    __tablename__ = "cartes_possedees"
+
+    id = Column(Integer, primary_key=True)
+    card_code = Column(String(32), nullable=True, index=True)
+    name_slug = Column(String(256), nullable=False, index=True)
+    prix_paye = Column(Float, nullable=True)          # cout reel, frais compris
+    etat = Column(String(8), nullable=True)           # NM | LP | MP | HP | DMG
+    achetee_le = Column(DateTime, default=datetime.utcnow)
+    # L'annonce d'ou vient l'exemplaire, quand il a ete achete depuis le radar.
+    listing_id = Column(Integer, nullable=True)
+
+
 class ZebraDexSeriesState(Base):
     """
     Suivi de synchronisation des series ZebraDex (158 series FR au

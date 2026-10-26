@@ -483,6 +483,8 @@ export interface CatalogCardDetail extends CatalogCard {
   projection: CardProjection;
   /** Dans « Ma liste » : le budget, ou null si la carte n'est pas suivie. */
   suivi: { prix_max: number | null } | null;
+  /** Dans « Ma collection » : combien d'exemplaires. */
+  collection?: { exemplaires: number };
 }
 
 export function fetchCardDetail(
@@ -624,4 +626,62 @@ export function chercherMaListe(): Promise<{ status: string; cartes: number }> {
 
 export function nePlusSuivreCarte(cardId: number): Promise<{ status: string }> {
   return apiFetch<{ status: string }>(`/api/suivi/${cardId}`, { method: "DELETE" });
+}
+
+// ---------------------------------------------------------------------------
+// « Ma collection » : les cartes possédées, leur coût et leur valeur.
+// ---------------------------------------------------------------------------
+
+export type Etat = "NM" | "LP" | "MP" | "HP" | "DMG";
+
+export interface ExemplaireCollection {
+  id: number;
+  prix_paye: number | null;
+  etat: Etat | null;
+  achetee_le: string | null;
+  /** La cote ramenée à l'état ; null si la carte n'a pas de cote. */
+  valeur: number | null;
+  plus_value: number | null;
+}
+
+export interface CarteCollection extends Partial<Omit<CatalogCard, "id">> {
+  id: number | null;
+  card_code: string | null;
+  name_slug: string;
+  introuvable: boolean;
+  exemplaires: ExemplaireCollection[];
+  valeur: number;
+}
+
+export interface Collection {
+  cartes: CarteCollection[];
+  totaux: {
+    exemplaires: number;
+    valeur: number;
+    paye: number;
+    plus_value: number;
+    sans_cote: number;
+    sans_prix_paye: number;
+  };
+}
+
+export function fetchCollection(): Promise<Collection> {
+  return apiFetch<Collection>("/api/collection");
+}
+
+/** Range un exemplaire. Avec `listing_id`, carte, prix et état viennent de l'annonce. */
+export function ajouterExemplaire(ajout: {
+  card_id?: number;
+  listing_id?: number;
+  prix_paye?: number | null;
+  etat?: Etat | null;
+}): Promise<{ exemplaires: number }> {
+  return apiFetch<{ exemplaires: number }>("/api/collection", {
+    method: "POST",
+    body: JSON.stringify(ajout),
+  });
+}
+
+export function retirerExemplaire(id: number): Promise<{ status: string }> {
+  return apiFetch<{ status: string }>(`/api/collection/${id}`, { method: "DELETE" });
 }

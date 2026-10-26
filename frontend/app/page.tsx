@@ -216,6 +216,13 @@ export default function DashboardPage() {
               ★ Ma liste
             </Link>
             <Link
+              href="/collection"
+              title="Les cartes que tu possèdes, ce que tu les as payées et ce qu'elles valent"
+              className="rounded-md border border-ink-700 px-2.5 py-1.5 text-xs text-parchment-100 transition-colors hover:border-ember-500"
+            >
+              Collection
+            </Link>
+            <Link
               href="/explorer"
               title="Chercher dans le catalogue par thème, budget et tendance"
               className="rounded-md border border-ink-700 px-2.5 py-1.5 text-xs text-parchment-100 transition-colors hover:border-ember-500"
@@ -224,9 +231,13 @@ export default function DashboardPage() {
             </Link>
             <Link
               href="/settings"
+              aria-label="Réglages"
+              title="Réglages"
               className="rounded-md border border-ink-700 px-2.5 py-1.5 text-xs text-parchment-100 transition-colors hover:border-ember-500"
             >
-              Réglages
+              {/* Sur téléphone, l'icône seule : cinq boutons ne tiennent pas sur une ligne. */}
+              <span aria-hidden="true" className="sm:hidden">⚙</span>
+              <span className="hidden sm:inline">Réglages</span>
             </Link>
           </div>
         </div>

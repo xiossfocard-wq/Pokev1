@@ -123,7 +123,7 @@ export default function ExplorerPage() {
             lesquelles bougent.
           </p>
         </div>
-        <nav className="flex gap-2 text-xs">
+        <nav className="flex flex-wrap gap-2 text-xs">
           <Link
             href="/"
             className="rounded-sm border border-ink-700 px-2.5 py-1.5 text-parchment-100/70 transition-colors hover:border-ember-500/50"
@@ -135,6 +135,12 @@ export default function ExplorerPage() {
             className="rounded-sm border border-ink-700 px-2.5 py-1.5 text-parchment-100/70 transition-colors hover:border-ember-500/50"
           >
             ★ Ma liste
+          </Link>
+          <Link
+            href="/collection"
+            className="rounded-sm border border-ink-700 px-2.5 py-1.5 text-parchment-100/70 transition-colors hover:border-ember-500/50"
+          >
+            Collection
           </Link>
           <Link
             href="/settings"

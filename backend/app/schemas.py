@@ -75,6 +75,15 @@ class SuiviUpdate(BaseModel):
     prix_max: Optional[float] = Field(None, gt=0)
 
 
+class ExemplaireAjout(BaseModel):
+    """Un exemplaire a ranger dans la collection. Depuis une annonce
+    (`listing_id`), la carte, le prix paye et l'etat en sont repris."""
+    card_id: Optional[int] = None
+    listing_id: Optional[int] = None
+    prix_paye: Optional[float] = Field(None, ge=0)
+    etat: Optional[Literal["NM", "LP", "MP", "HP", "DMG"]] = None
+
+
 class SettingsUpdate(BaseModel):
     deal_score_threshold: Optional[float] = None
     margin_weight: Optional[float] = None
