@@ -685,3 +685,61 @@ export function ajouterExemplaire(ajout: {
 export function retirerExemplaire(id: number): Promise<{ status: string }> {
   return apiFetch<{ status: string }>(`/api/collection/${id}`, { method: "DELETE" });
 }
+
+// ---------------------------------------------------------------------------
+// Idées de collection : ce qu'un connaisseur conseillerait, et pourquoi.
+// ---------------------------------------------------------------------------
+
+export interface RaisonIdee {
+  type: "visuel" | "personnage" | "tendance" | "sous-cotee" | "vinted" | "collection";
+  texte: string;
+}
+
+export interface CarteIdee extends CatalogCard {
+  raisons: RaisonIdee[];
+  avis: string;
+  suivie: boolean;
+  variation_7j: number | null;
+  variation_30j: number | null;
+}
+
+export interface RubriqueIdees {
+  cle: string;
+  titre: string;
+  explication: string;
+  cartes: CarteIdee[];
+}
+
+export interface IdeeDeCollection {
+  slug: string;
+  label: string;
+  description: string;
+  nombre: number;
+  deja: number;
+  total_eur: number;
+  apercu: CatalogCard[];
+}
+
+export interface Idees {
+  budget_max: number;
+  toutes_langues: boolean;
+  cartes_examinees: number;
+  rubriques: RubriqueIdees[];
+  themes: IdeeDeCollection[];
+}
+
+export function fetchIdees(budgetMax: number, toutesLangues = false): Promise<Idees> {
+  return apiFetch<Idees>(
+    `/api/recommandations?budget_max=${budgetMax}&toutes_langues=${toutesLangues ? "true" : "false"}`
+  );
+}
+
+export function ecarterIdee(cardId: number): Promise<{ status: string }> {
+  return apiFetch<{ status: string }>(`/api/recommandations/ecarter/${cardId}`, { method: "POST" });
+}
+
+export function revoirIdeesEcartees(): Promise<{ status: string; remises: number }> {
+  return apiFetch<{ status: string; remises: number }>("/api/recommandations/ecartees", {
+    method: "DELETE",
+  });
+}

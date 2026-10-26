@@ -199,7 +199,9 @@ export default function DashboardPage() {
             </button>
           </form>
 
-          <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:ml-0">
+          {/* Sur téléphone, la rangée défile horizontalement plutôt que de
+              déborder : six boutons ne tiennent pas sur 390 pixels. */}
+          <nav className="-mr-4 ml-auto flex min-w-0 items-center gap-1.5 overflow-x-auto pr-4 sm:ml-0 sm:mr-0 sm:pr-0 [&>*]:shrink-0">
             <button
               onClick={handleCheckNow}
               disabled={checking}
@@ -208,6 +210,13 @@ export default function DashboardPage() {
             >
               {checking ? "Collecte…" : "Collecter"}
             </button>
+            <Link
+              href="/idees"
+              title="Des cartes qu'un connaisseur conseillerait : beaux visuels, personnages qui comptent, encore accessibles"
+              className="rounded-md border border-amber-300/40 bg-amber-300/5 px-2.5 py-1.5 text-xs text-amber-200 transition-colors hover:border-amber-300"
+            >
+              ✦ Idées
+            </Link>
             <Link
               href="/suivi"
               title="Les cartes que tu cherches, ton budget pour chacune, et ce qui est en vente"
@@ -239,7 +248,7 @@ export default function DashboardPage() {
               <span aria-hidden="true" className="sm:hidden">⚙</span>
               <span className="hidden sm:inline">Réglages</span>
             </Link>
-          </div>
+          </nav>
         </div>
       </header>
 

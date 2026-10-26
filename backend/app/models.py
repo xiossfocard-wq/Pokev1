@@ -246,6 +246,18 @@ class CartePossedee(Base):
     listing_id = Column(Integer, nullable=True)
 
 
+class RecommandationEcartee(Base):
+    """Une carte que l'utilisateur ne veut plus voir dans ses idees de
+    collection (« pas pour moi ») : une suggestion refusee ne revient pas."""
+    __tablename__ = "recommandations_ecartees"
+    __table_args__ = (UniqueConstraint("card_code", "name_slug", name="uq_reco_ecartee"),)
+
+    id = Column(Integer, primary_key=True)
+    card_code = Column(String(32), nullable=True)
+    name_slug = Column(String(256), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class ZebraDexSeriesState(Base):
     """
     Suivi de synchronisation des series ZebraDex (158 series FR au

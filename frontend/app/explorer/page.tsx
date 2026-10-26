@@ -41,6 +41,19 @@ export default function ExplorerPage() {
   const [vogue, setVogue] = useState<CatalogCard[]>([]);
   const [carteOuverte, setCarteOuverte] = useState<number | null>(null);
 
+  // Un lien peut ouvrir le catalogue deja filtre (?theme=…&prix_max=…) :
+  // les idees de collection menent ainsi aux cartes d'un equipage, dans le
+  // budget. Lu au montage plutot qu'avec useSearchParams, qui obligerait a
+  // envelopper la page dans un Suspense pour la generation statique.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const theme = params.get("theme") ?? "";
+    const prixMax = params.get("prix_max") ?? "";
+    if (theme || prixMax) {
+      setFiltres((f) => ({ ...f, theme, priceMax: prixMax }));
+    }
+  }, []);
+
   // La frappe dans le champ de recherche ne doit pas declencher une requete
   // par caractere : on attend que ca se stabilise.
   useEffect(() => {
@@ -129,6 +142,12 @@ export default function ExplorerPage() {
             className="rounded-sm border border-ink-700 px-2.5 py-1.5 text-parchment-100/70 transition-colors hover:border-ember-500/50"
           >
             Bonnes affaires
+          </Link>
+          <Link
+            href="/idees"
+            className="rounded-sm border border-amber-300/40 px-2.5 py-1.5 text-amber-200 transition-colors hover:border-amber-300"
+          >
+            ✦ Idées
           </Link>
           <Link
             href="/suivi"

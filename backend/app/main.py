@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import init_db
 from app.scheduler import start_scheduler
-from app.routers import listings, settings_router, admin, cards, suivi, collection
+from app.routers import listings, settings_router, admin, cards, suivi, collection, recommandations
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -41,6 +41,7 @@ app.include_router(admin.router)
 app.include_router(cards.router)
 app.include_router(suivi.router)
 app.include_router(collection.router)
+app.include_router(recommandations.router)
 
 
 @app.get("/api/health")
