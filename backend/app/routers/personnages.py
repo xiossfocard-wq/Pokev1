@@ -11,8 +11,10 @@ router = APIRouter(prefix="/api/personnages", tags=["personnages"])
 @router.get("")
 def les_personnages(toutes_langues: bool = Query(False), db: Session = Depends(get_db)):
     """Les personnages appréciés — icônes de la série et personnages très
-    recherchés — qui ont des cartes au catalogue."""
-    return personnages.liste_des_personnages(db, toutes_langues=toutes_langues)
+    recherchés — qui ont des cartes au catalogue, et par qui commencer une
+    collection sympa sans se ruiner."""
+    liste = personnages.liste_des_personnages(db, toutes_langues=toutes_langues)
+    return {"personnages": liste, "par_qui_commencer": personnages.par_qui_commencer(liste)}
 
 
 @router.get("/{slug}")

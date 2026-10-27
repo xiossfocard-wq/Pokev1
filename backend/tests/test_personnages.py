@@ -15,10 +15,10 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base
 from app.models import CarteSuivie, Listing, ListingStatus, MarketCardPrice, SourcePlatform
-from app.routers.personnages import Chasse, chasser, un_personnage
+from app.routers.personnages import Chasse, chasser, les_personnages, un_personnage
 from app.services import collection, suivi
 from app.services.personnages import (chasser_les_belles_versions, liste_des_personnages,
-                                     page_du_personnage, slug_de)
+                                     page_du_personnage, par_qui_commencer, slug_de)
 from app.services.recommandations import analyse_de_la_carte, enregistrer_gouts, recommander
 
 
@@ -75,10 +75,67 @@ class TestListe(BasePersonnages):
                          {"slug": "shanks", "calibre": "icone", "cartes": 5, "belles": 4, "prix_min": 0.3,
                           "prix_max": 300.0, "possedees": 1, "belles_possedees": 1})
 
+    def test_ce_qui_manque_a_petit_prix(self):
+        cartes = self.shanks()
+        self.carte("Shanks", 12.0, parallele=True)
+        collection.ajouter(self.db, card_id=cartes["parallele"].id)
+        p = liste_des_personnages(self.db)[0]
+        # Belles versions : 8 (possedee), 12, 45, 300 et une sans cote. A
+        # moins de 20 EUR et qui manque : seulement celle a 12 EUR.
+        self.assertEqual((p["belles_des"], p["belles_a_petit_prix"], p["cout_belles_a_petit_prix"]),
+                         (8.0, 1, 12.0))
+
+    def test_tes_personnages_et_ce_qui_est_en_vente(self):
+        c = self.carte("Shanks", 8.0, parallele=True)
+        self.db.add(Listing(source=SourcePlatform.VINTED, external_id="1", title="Shanks", description="",
+                            url="https://vinted.test/1", price=6.0, currency="EUR", photo_urls=[],
+                            matched_card_id=c.id, deal_score=70.0))
+        self.db.commit()
+        enregistrer_gouts(self.db, ["Shanks"], [], [])
+        p = liste_des_personnages(self.db)[0]
+        self.assertEqual((p["aime"], p["en_vente"]), (True, 1))
+
     def test_les_cartes_francaises_par_defaut(self):
         self.carte("Zoro", 6.0, parallele=True, langue="en")
         self.assertEqual(liste_des_personnages(self.db), [])
         self.assertEqual(len(liste_des_personnages(self.db, toutes_langues=True)), 1)
+
+
+class TestParQuiCommencer(BasePersonnages):
+    def test_le_plus_de_belles_versions_a_petit_prix(self):
+        for prix in (4.0, 6.0, 9.0):
+            self.carte("Perona", prix, parallele=True)
+        for prix in (5.0, 7.0):
+            self.carte("Nami", prix, parallele=True)
+        for prix in (3.0, 4.0):
+            self.carte("Zoro", prix, parallele=True)
+        self.carte("Sanji", 5.0, parallele=True)          # une seule : pas un projet
+        self.carte("Sabo", 60.0, parallele=True)          # trop chere
+        conseils = par_qui_commencer(liste_des_personnages(self.db))
+        # Perona d'abord (3 cartes) ; puis, a nombre egal, Zoro (7 EUR) avant Nami (12 EUR).
+        self.assertEqual([c["slug"] for c in conseils], ["perona", "zoro", "nami"])
+        self.assertEqual(conseils[0]["raison"], "3 belles versions à moins de 20\u00a0€ : 19,00\u00a0€ pour les\u00a03.")
+
+    def test_ce_qu_on_a_deja_ne_compte_pas(self):
+        a = self.carte("Perona", 4.0, parallele=True)
+        for prix in (6.0, 9.0):
+            self.carte("Perona", prix, parallele=True)
+        collection.ajouter(self.db, card_id=a.id)
+        conseil = par_qui_commencer(liste_des_personnages(self.db))[0]
+        self.assertEqual(conseil["raison"], "2 belles versions à moins de 20\u00a0€ qui te manquent : 15,00\u00a0€ pour les\u00a02.")
+
+    def test_pas_ceux_qu_on_aime_deja(self):
+        for nom in ("Perona", "Nami"):
+            for prix in (4.0, 6.0):
+                self.carte(nom, prix, parallele=True)
+        enregistrer_gouts(self.db, ["Nami"], [], [])
+        self.assertEqual([c["slug"] for c in par_qui_commencer(liste_des_personnages(self.db))], ["perona"])
+
+    def test_la_reponse_de_l_api(self):
+        self.carte("Shanks", 8.0, parallele=True)
+        reponse = les_personnages(False, self.db)
+        self.assertEqual(set(reponse), {"personnages", "par_qui_commencer"})
+        self.assertEqual(reponse["personnages"][0]["slug"], "shanks")
 
 
 class TestPage(BasePersonnages):

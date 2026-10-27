@@ -22,6 +22,11 @@ from app.services import card_catalog, card_themes, recommandations as reco, sui
 
 # Combien d'annonces montrer en tete de page : les meilleures affaires.
 ANNONCES_EN_TETE = 8
+# Une belle version « a petit prix » : jusqu'au haut du palier « belles et
+# abordables ».
+PETIT_PRIX = 20.0
+# Combien de personnages conseiller pour commencer une collection.
+PAR_QUI_COMMENCER = 3
 
 # Les paliers de prix, du plus accessible au plus rare.
 PALIERS = [
@@ -69,9 +74,13 @@ def _cle(p: dict) -> tuple:
 
 def liste_des_personnages(db: Session, toutes_langues: bool = False) -> List[dict]:
     """Chaque personnage apprecie qui a au moins une carte : combien de
-    cartes, de belles versions, a partir de quel prix, et ce qu'on en a."""
+    cartes, de belles versions, a partir de quel prix, ce qu'on en a, ce
+    qu'il manque a petit prix, et combien de ses cartes sont en vente."""
     groupes = _cartes_par_personnage(db, toutes_langues)
     possedees = _possedees(db)
+    aimes = set(reco.lire_gouts(db)["personnages"])
+    en_vente = card_catalog.compteurs_d_annonces(
+        db, [p["ligne"].id for cartes in groupes.values() for p in cartes])
     resultat = []
     for perso in _apprecies():
         cartes = groupes.get(perso["nom"], [])
@@ -79,6 +88,10 @@ def liste_des_personnages(db: Session, toutes_langues: bool = False) -> List[dic
             continue
         belles = [p for p in cartes if p["poids_visuel"] >= 3]
         prix = [p["ligne"].price_eur for p in cartes if p["ligne"].price_eur]
+        prix_belles = [p["ligne"].price_eur for p in belles if p["ligne"].price_eur]
+        # Les belles versions qui manquent et qui restent a petit prix.
+        a_petit_prix = [p["ligne"].price_eur for p in belles if _cle(p) not in possedees
+                        and p["ligne"].price_eur and p["ligne"].price_eur <= PETIT_PRIX]
         # L'apercu : sa plus belle carte qui a un visuel (la plus rare d'abord).
         avec_visuel = [p for p in cartes if p["ligne"].image_url]
         apercu = max(avec_visuel, key=lambda p: (p["poids_visuel"], p["ligne"].price_eur or 0), default=None)
@@ -90,9 +103,33 @@ def liste_des_personnages(db: Session, toutes_langues: bool = False) -> List[dic
             "prix_max": max(prix) if prix else None,
             "possedees": sum(1 for p in cartes if _cle(p) in possedees),
             "belles_possedees": sum(1 for p in belles if _cle(p) in possedees),
+            "belles_des": min(prix_belles) if prix_belles else None,
+            "belles_a_petit_prix": len(a_petit_prix),
+            "cout_belles_a_petit_prix": round(sum(a_petit_prix), 2),
+            "en_vente": sum(en_vente.get(p["ligne"].id, {}).get("listings_count", 0) for p in cartes),
+            "aime": perso["nom"] in aimes,
             "image_url": apercu["ligne"].image_url if apercu else None,
         })
     return resultat
+
+
+def par_qui_commencer(personnages: List[dict]) -> List[dict]:
+    """Ce qu'un connaisseur conseillerait pour une collection sympa sans se
+    ruiner : les personnages qui ont le plus de belles versions a petit prix
+    (qu'on n'a pas encore), les moins chers d'abord a nombre egal. Ceux
+    qu'on a deja dans ses gouts sont en tete de la liste : le conseil sert a
+    en decouvrir d'autres."""
+    candidats = sorted((p for p in personnages if p["belles_a_petit_prix"] >= 2 and not p["aime"]),
+                       key=lambda p: (-p["belles_a_petit_prix"], p["cout_belles_a_petit_prix"]))
+    conseils = []
+    for p in candidats[:PAR_QUI_COMMENCER]:
+        n, cout = p["belles_a_petit_prix"], reco._euros(p["cout_belles_a_petit_prix"])
+        raison = f"{n} belles versions à moins de {PETIT_PRIX:.0f}\u00a0€"
+        raison += (f" qui te manquent : {cout} pour les\u00a0{n}." if p["belles_possedees"]
+                   else f" : {cout} pour les\u00a0{n}.")
+        conseils.append({"slug": p["slug"], "nom": p["nom"], "calibre": p["calibre"],
+                         "image_url": p["image_url"], "raison": raison})
+    return conseils
 
 
 def _medianes_des_semblables(db: Session, langue: Optional[str]) -> Dict[tuple, float]:

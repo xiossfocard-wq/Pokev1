@@ -800,7 +800,7 @@ export function revoirIdeesEcartees(): Promise<{ status: string; remises: number
 // Une page par personnage apprécié.
 // ---------------------------------------------------------------------------
 
-export interface PersonnageResume {
+interface PersonnageBase {
   nom: string;
   slug: string;
   calibre: "icone" | "recherche";
@@ -810,7 +810,25 @@ export interface PersonnageResume {
   prix_max: number | null;
   possedees: number;
   belles_possedees: number;
+}
+
+export interface PersonnageResume extends PersonnageBase {
+  // Le prix de sa belle version la moins chère.
+  belles_des: number | null;
+  // Ses belles versions qui manquent et restent à moins de 20 €, et leur coût.
+  belles_a_petit_prix: number;
+  cout_belles_a_petit_prix: number;
+  en_vente: number;
+  aime: boolean;
   image_url: string | null;
+}
+
+export interface ConseilPersonnage {
+  slug: string;
+  nom: string;
+  calibre: "icone" | "recherche";
+  image_url: string | null;
+  raison: string;
 }
 
 export interface CartePersonnage extends CatalogCard {
@@ -835,15 +853,17 @@ export interface AnnoncePersonnage extends CardListing {
   >;
 }
 
-export interface PagePersonnage extends Omit<PersonnageResume, "image_url"> {
+export interface PagePersonnage extends PersonnageBase {
   aime: boolean;
   conseils: { cle: string; titre: string; texte: string; carte: CartePersonnage }[];
   annonces: AnnoncePersonnage[];
   paliers: { cle: string; titre: string; explication: string; cartes: CartePersonnage[] }[];
 }
 
-export function fetchPersonnages(toutesLangues = false): Promise<PersonnageResume[]> {
-  return apiFetch<PersonnageResume[]>(`/api/personnages?toutes_langues=${toutesLangues ? "true" : "false"}`);
+export function fetchPersonnages(
+  toutesLangues = false
+): Promise<{ personnages: PersonnageResume[]; par_qui_commencer: ConseilPersonnage[] }> {
+  return apiFetch(`/api/personnages?toutes_langues=${toutesLangues ? "true" : "false"}`);
 }
 
 export function fetchPersonnage(slug: string, toutesLangues = false): Promise<PagePersonnage> {
