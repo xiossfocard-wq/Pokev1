@@ -6,9 +6,11 @@ import VisuelCarte from "./VisuelCarte";
 import CardListings from "@/components/CardListings";
 import SuiviCarte from "@/components/SuiviCarte";
 import CollectionCarte from "@/components/CollectionCarte";
+import LiensVerification from "@/components/LiensVerification";
 import Raisons from "@/components/Raisons";
 import { CatalogCardDetail, fetchCardDetail } from "@/lib/api";
 import { formatEur, formatFourchette, formatNombre } from "@/lib/format";
+import { verification } from "@/lib/verifier";
 
 /**
  * Fiche d'une carte : visuel, prix, themes, annonces en vente, tendance 7
@@ -176,6 +178,18 @@ export default function CardDetailPanel({
                   donnée.
                 </p>
               )}
+              {/* Deux avis extérieurs, pour se faire le sien. */}
+              <div className="mt-2 flex flex-wrap gap-2">
+                <LiensVerification
+                  verification={verification({
+                    code: carte.card_code,
+                    nom: carte.display_name,
+                    indices: carte.series_name,
+                    nameSlug: carte.name_slug,
+                  })}
+                  classeBouton="rounded-md border border-ink-700 px-2.5 py-1 text-[11px] font-medium text-parchment-100 transition-colors hover:border-ember-500 hover:text-ember-400"
+                />
+              </div>
             </div>
 
             {carte.analyse?.avis && (

@@ -3,13 +3,14 @@
 import { useState } from "react";
 import { ajouterExemplaire, correctListing, type CorrectionAction, type Etat, type Listing } from "@/lib/api";
 import FormulaireExemplaire from "./FormulaireExemplaire";
+import LiensVerification from "./LiensVerification";
 import { formatEur } from "@/lib/format";
+import type { Verification } from "@/lib/verifier";
 
 interface CorrectionPanelProps {
   listing: Listing;
-  cardmarketUrl: string;
-  /** La fiche à choisir parmi les résultats Cardmarket : « V.2 »… */
-  cardmarketVersion?: string | null;
+  /** Où vérifier la carte : Cardmarket (et la fiche à y choisir), CardNexus. */
+  verification: Verification;
   searchUrl: string;
   onChanged?: (updated: Listing) => void;
 }
@@ -28,8 +29,7 @@ const BTN_PRIMARY = `${BTN} border-ember-500/50 bg-ember-500/10 text-ember-400 h
  */
 export default function CorrectionPanel({
   listing,
-  cardmarketUrl,
-  cardmarketVersion,
+  verification,
   searchUrl,
   onChanged,
 }: CorrectionPanelProps) {
@@ -122,21 +122,7 @@ export default function CorrectionPanel({
       )}
 
       <div className="mt-2.5 flex flex-wrap gap-2 border-t border-ink-800 pt-2.5">
-        <a
-          href={cardmarketUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={BTN_NEUTRAL}
-          title={
-            cardmarketVersion
-              ? `Cardmarket liste toutes les versions et rééditions de ce code : choisis « (${cardmarketVersion}) » dans l'édition d'origine.${
-                  cardmarketVersion === "V.1" ? " Une carte sans illustration alternative n'a pas de mention de version." : ""
-                }`
-              : undefined
-          }
-        >
-          Vérifier sur Cardmarket{cardmarketVersion ? ` (${cardmarketVersion})` : ""} ↗
-        </a>
+        <LiensVerification verification={verification} classeBouton={BTN_NEUTRAL} />
         <a href={searchUrl} target="_blank" rel="noopener noreferrer" className={BTN_QUIET}>
           Recherche Google ↗
         </a>

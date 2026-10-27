@@ -6,6 +6,7 @@ import type { Listing } from "@/lib/api";
 import { formatEur, ilYA } from "@/lib/format";
 import { useModeEvaluation } from "@/lib/mode";
 import { dansLeBudget, useCartesSuivies } from "@/lib/suivi";
+import { verification } from "@/lib/verifier";
 import DealScoreBadge from "./DealScoreBadge";
 import CorrectionPanel from "./CorrectionPanel";
 
@@ -54,39 +55,6 @@ const ETATS: Record<string, string> = {
   HP: "Heavily Played : très abîmée",
   DMG: "Damaged : endommagée",
 };
-
-/**
- * Ce qu'on cherche sur Cardmarket, et quelle fiche y choisir.
- *
- * Cardmarket nomme ses cartes One Piece « Shanks (OP01-120) (V.2) » : nom
- * anglais, CODE, puis version. Chercher le code trouve toutes les versions
- * et rééditions d'une carte (vérifié : « OP01-120 » renvoie ses 15 fiches,
- * Romance Dawn, The Best, japonaises, promos), là où le nom seul renvoie
- * tous les Shanks du jeu, et où un nom français peut ne rien trouver.
- *
- * La version se lit au rang de la fiche, comme rang_de_parallele côté
- * serveur : l'impression ordinaire est la V.1, la première illustration
- * alternative la V.2, la seconde (le manga) la V.3 — l'ordre vérifié sur
- * OP01-120, où les prix le confirment (3,99 €, 78,90 €, 2 130 €).
- */
-function rechercheCardmarket(listing: Listing): { texte: string; version: string | null } {
-  const d = listing.price_detail;
-  const identifiee = d && d.confidence !== "manual";
-  if (identifiee && d.matched_code) {
-    const rang = d.matched_name_slug?.match(/-(?:parallele|alternative|alt)(?:-(\d+))?$/);
-    const version = rang ? `V.${(rang[1] ? Number(rang[1]) : 1) + 1}` : "V.1";
-    return { texte: d.matched_code, version };
-  }
-  const code = listing.title.match(/\b(?:OP|ST|EB|PRB)\d{2}-\d{3}\b/i);
-  if (code) return { texte: code[0].toUpperCase(), version: null };
-  // Ni code ni identification : le nom reconnu, sans la mention de version
-  // (« Shanks (Parallèle 1) » ne trouve rien), sinon le titre de l'annonce.
-  if (identifiee && d.matched_card) {
-    const nom = d.matched_card.replace(/\s*\((?:parall[eè]le|manga|alternative|alt)[^)]*\)\s*$/i, "").trim();
-    if (nom) return { texte: nom, version: null };
-  }
-  return { texte: listing.title, version: null };
-}
 
 /** Le détail du coût, lisible au survol : d'où vient chaque euro. */
 function detailDuCout(listing: Listing): string | undefined {
@@ -147,11 +115,19 @@ export default function ListingCard({
     listing.title + " one piece carte prix"
   )}`;
   // Cardmarket exige l'extension exacte dans l'URL d'une fiche produit,
-  // indevinable depuis un titre Vinted : on pointe vers leur recherche.
-  const cardmarket = rechercheCardmarket(listing);
-  const cardmarketUrl = `https://www.cardmarket.com/fr/OnePiece/Products/Search?searchString=${encodeURIComponent(
-    cardmarket.texte
-  )}`;
+  // indevinable depuis un titre Vinted : on pointe vers leur recherche, par
+  // le code de la carte identifiée, sinon son nom et son extension.
+  const identifiee = detail && detail.confidence !== "manual";
+  const verif = verification(
+    identifiee
+      ? {
+          code: detail.matched_code,
+          nom: detail.matched_card,
+          indices: `${detail.series_name ?? ""} ${listing.title}`,
+          nameSlug: detail.matched_name_slug,
+        }
+      : { nom: listing.title }
+  );
   const mode = useModeEvaluation();
   const economie = listing.savings_eur;
   const montrerEconomie = mode === "collection" && economie !== null && economie !== undefined;
@@ -405,8 +381,7 @@ export default function ListingCard({
       <div className={panelOpen ? "block" : "hidden md:group-focus-within:block md:group-hover:block"}>
         <CorrectionPanel
           listing={listing}
-          cardmarketUrl={cardmarketUrl}
-          cardmarketVersion={cardmarket.version}
+          verification={verif}
           searchUrl={searchUrl}
           onChanged={onChanged}
         />
