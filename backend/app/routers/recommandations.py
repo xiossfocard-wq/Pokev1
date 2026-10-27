@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import MarketCardPrice, RecommandationEcartee
+from app.schemas import GoutsUpdate
 from app.services import recommandations
 
 router = APIRouter(prefix="/api/recommandations", tags=["recommandations"])
@@ -20,6 +21,19 @@ def idees_de_collection(
     beau visuel, personnage qui compte, marché favorable, dans le budget —
     chacune avec ses raisons. Des repères, pas des conseils d'investissement."""
     return recommandations.recommander(db, budget_max=budget_max, toutes_langues=toutes_langues)
+
+
+@router.get("/gouts")
+def mes_gouts(db: Session = Depends(get_db)):
+    """Les goûts enregistrés, et ce qu'on peut choisir."""
+    return {"gouts": recommandations.lire_gouts(db), "options": recommandations.options_de_gouts()}
+
+
+@router.put("/gouts")
+def enregistrer_mes_gouts(corps: GoutsUpdate, db: Session = Depends(get_db)):
+    """Personnages, groupes et styles préférés : les idées s'y adaptent, et
+    chacun devient un projet de collection suivi."""
+    return recommandations.enregistrer_gouts(db, corps.personnages, corps.themes, corps.styles)
 
 
 @router.post("/ecarter/{card_id}")

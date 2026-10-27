@@ -5,6 +5,7 @@ import VisuelCarte from "./VisuelCarte";
 import CardListings from "@/components/CardListings";
 import SuiviCarte from "@/components/SuiviCarte";
 import CollectionCarte from "@/components/CollectionCarte";
+import Raisons from "@/components/Raisons";
 import { CatalogCardDetail, fetchCardDetail } from "@/lib/api";
 import { formatEur, formatFourchette, formatNombre } from "@/lib/format";
 
@@ -82,18 +83,22 @@ export default function CardDetailPanel({
 }) {
   const [carte, setCarte] = useState<CatalogCardDetail | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
+  // La fiche affichée : celle demandée, ou une autre de ses versions choisie
+  // dans le panneau même.
+  const [idAffiche, setIdAffiche] = useState(cardId);
+  useEffect(() => setIdAffiche(cardId), [cardId]);
 
   useEffect(() => {
     let annule = false;
     setCarte(null);
     setErreur(null);
-    fetchCardDetail(cardId)
+    fetchCardDetail(idAffiche)
       .then((d) => !annule && setCarte(d))
       .catch((e) => !annule && setErreur(e instanceof Error ? e.message : String(e)));
     return () => {
       annule = true;
     };
-  }, [cardId]);
+  }, [idAffiche]);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-ink-950/70" onClick={onClose}>
@@ -172,7 +177,53 @@ export default function CardDetailPanel({
               )}
             </div>
 
-            <SuiviCarte cardId={carte.id} cote={carte.price_eur} initial={carte.suivi ?? null} />
+            {carte.analyse?.avis && (
+              // Ce qu'un connaisseur en dirait : les mêmes règles que les idées de collection.
+              <div className="rounded-md border border-ink-700 bg-ink-800/60 p-3">
+                <p className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-400">
+                  L&apos;avis de l&apos;expert
+                </p>
+                <Raisons raisons={carte.analyse.raisons} />
+                <p className="mt-1.5 text-xs italic leading-snug text-parchment-100/80">« {carte.analyse.avis} »</p>
+              </div>
+            )}
+
+            {carte.versions && carte.versions.length > 1 && (
+              <div>
+                <p className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-400">
+                  Les versions de cette carte
+                </p>
+                <ul className="flex list-none flex-col gap-1 p-0">
+                  {carte.versions.map((v) => (
+                    <li key={v.id}>
+                      <button
+                        type="button"
+                        onClick={() => setIdAffiche(v.id)}
+                        disabled={v.actuelle}
+                        aria-current={v.actuelle ? "true" : undefined}
+                        className={`flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition-colors ${
+                          v.actuelle
+                            ? "border-ember-500/50 bg-ember-500/10"
+                            : "border-ink-700 hover:border-ember-500/40"
+                        }`}
+                      >
+                        <span className="relative h-10 w-7 shrink-0 overflow-hidden rounded-sm bg-ink-950">
+                          <VisuelCarte src={v.image_url} alt={v.display_name} sizes="28px" repli={() => null} />
+                        </span>
+                        <span className="flex-1 capitalize text-parchment-100">{v.nature}</span>
+                        {v.exemplaires > 0 && <span className="text-moss-400">✓ {v.exemplaires}</span>}
+                        {v.suivie && <span className="text-amber-200">★</span>}
+                        <span className="tabular font-mono text-parchment-100">
+                          {v.price_eur !== null ? formatEur(v.price_eur) : "—"}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <SuiviCarte key={carte.id} cardId={carte.id} cote={carte.price_eur} initial={carte.suivi ?? null} />
             <CollectionCarte key={carte.id} cardId={carte.id} initial={carte.collection?.exemplaires ?? 0} />
 
             <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">

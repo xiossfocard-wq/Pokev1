@@ -3,15 +3,20 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import CardDetailPanel from "@/components/CardDetailPanel";
+import Raisons from "@/components/Raisons";
 import VisuelCarte from "@/components/VisuelCarte";
 import {
   ecarterIdee,
+  enregistrerGouts,
+  fetchGouts,
   fetchIdees,
   revoirIdeesEcartees,
   type CarteIdee,
+  type Gouts,
   type IdeeDeCollection,
   type Idees,
-  type RaisonIdee,
+  type OptionsGouts,
+  type ProjetCollection,
 } from "@/lib/api";
 import { formatEur } from "@/lib/format";
 import { suivre, useCartesSuivies } from "@/lib/suivi";
@@ -26,15 +31,6 @@ import { suivre, useCartesSuivies } from "@/lib/suivi";
 
 const BUDGETS = [5, 10, 20, 50, 100];
 const CLE_BUDGET = "idees-budget";
-
-const STYLE_RAISON: Record<RaisonIdee["type"], string> = {
-  visuel: "bg-gradient-to-r from-fuchsia-500/20 to-amber-400/20 text-amber-200 ring-1 ring-amber-400/30",
-  personnage: "bg-sky-500/15 text-sky-300",
-  tendance: "bg-moss-500/20 text-moss-400",
-  "sous-cotee": "bg-ember-500/15 text-ember-400",
-  vinted: "bg-ink-700 text-parchment-100",
-  collection: "bg-amber-300/15 text-amber-200",
-};
 
 function lireBudget(): number {
   try {
@@ -152,10 +148,29 @@ export default function IdeesPage() {
           </label>
         </div>
 
+        <MesGouts onEnregistre={charger} />
+
         {erreur && (
           <div className="mt-4 rounded-md border border-rust-500/40 bg-rust-500/10 px-3 py-2 text-xs text-rust-400">
             Impossible de charger les idées. [{erreur}]
           </div>
+        )}
+
+        {idees && idees.projets.length > 0 && (
+          <section className="mt-8" aria-labelledby="tes-projets">
+            <h2 id="tes-projets" className="font-display text-xl text-parchment-100">
+              Tes projets
+            </h2>
+            <p className="mt-0.5 text-xs text-ink-400">
+              Les belles versions de tes préférés — illustrations alternatives, SP, Manga, Leaders parallèles : où tu
+              en es, et par quoi continuer.
+            </p>
+            <ul className="mt-3 grid list-none gap-3 p-0 sm:grid-cols-2 lg:grid-cols-3">
+              {idees.projets.map((projet) => (
+                <Projet key={`${projet.nature}-${projet.nom}`} projet={projet} budget={budget} onOuvrir={setCarteOuverte} />
+              ))}
+            </ul>
+          </section>
         )}
 
         {!idees && !erreur && (
@@ -294,15 +309,7 @@ function TuileIdee({
           {carte.card_code}
           {carte.series_name ? ` · ${carte.series_name}` : ""}
         </p>
-        <div className="flex flex-wrap gap-1">
-          {carte.raisons
-            .filter((r) => r.type !== "vinted")
-            .map((r) => (
-              <span key={r.texte} className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${STYLE_RAISON[r.type]}`}>
-                {r.texte}
-              </span>
-            ))}
-        </div>
+        <Raisons raisons={carte.raisons} sans={["vinted"]} />
         <p className="text-[11px] italic leading-snug text-parchment-100/80">« {carte.avis} »</p>
         <div className="mt-auto flex items-center gap-1.5 pt-1">
           <button
@@ -364,6 +371,236 @@ function ProjetTheme({ idee, budget }: { idee: IdeeDeCollection; budget: number 
       >
         Voir les cartes
       </Link>
+    </li>
+  );
+}
+
+/**
+ * Mes goûts : personnages, groupes et styles préférés. Les idées s'y
+ * adaptent (« Selon tes goûts » en tête), et chaque préféré devient un projet
+ * de collection suivi.
+ */
+function MesGouts({ onEnregistre }: { onEnregistre: () => void }) {
+  const [ouvert, setOuvert] = useState(false);
+  const [options, setOptions] = useState<OptionsGouts | null>(null);
+  const [gouts, setGouts] = useState<Gouts>({ personnages: [], themes: [], styles: [] });
+  const [occupe, setOccupe] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchGouts()
+      .then((r) => {
+        setOptions(r.options);
+        setGouts(r.gouts);
+      })
+      .catch((e) => setErreur(e instanceof Error ? e.message : String(e)));
+  }, []);
+
+  function basculer(cle: keyof Gouts, valeur: string) {
+    setGouts((g) => ({
+      ...g,
+      [cle]: g[cle].includes(valeur) ? g[cle].filter((v) => v !== valeur) : [...g[cle], valeur],
+    }));
+  }
+
+  async function enregistrer() {
+    setOccupe(true);
+    setErreur(null);
+    try {
+      setGouts(await enregistrerGouts(gouts));
+      setOuvert(false);
+      onEnregistre();
+    } catch (e) {
+      setErreur(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOccupe(false);
+    }
+  }
+
+  const resume = [...gouts.personnages, ...gouts.themes.map((t) => options?.themes.find((o) => o.slug === t)?.label ?? t)];
+  const puce = (actif: boolean) =>
+    `rounded-full border px-2.5 py-1 text-xs transition-colors ${
+      actif
+        ? "border-amber-300/70 bg-amber-300/15 text-amber-100"
+        : "border-ink-700 text-ink-400 hover:border-ink-600 hover:text-parchment-100"
+    }`;
+
+  return (
+    <div className="mt-4 rounded-lg border border-amber-300/30 bg-amber-300/5 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="flex-1 text-xs text-parchment-100/80">
+          <span className="font-medium text-amber-200">Mes goûts</span>
+          {" · "}
+          {resume.length > 0
+            ? resume.join(", ")
+            : "dis-moi qui tu aimes : les idées s'y adapteront, et chaque préféré deviendra un projet de collection."}
+        </p>
+        <button
+          type="button"
+          onClick={() => setOuvert((o) => !o)}
+          aria-expanded={ouvert}
+          className="rounded-md border border-amber-300/50 px-2.5 py-1 text-xs font-medium text-amber-200 hover:bg-amber-300/10"
+        >
+          {ouvert ? "Fermer" : resume.length > 0 ? "Modifier" : "Choisir"}
+        </button>
+      </div>
+
+      {ouvert && options && (
+        <div className="mt-3 flex flex-col gap-3">
+          <fieldset>
+            <legend className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-400">
+              Personnages
+            </legend>
+            <div className="flex flex-wrap gap-1.5">
+              {options.personnages.map((o) => (
+                <button
+                  key={o.nom}
+                  type="button"
+                  aria-pressed={gouts.personnages.includes(o.nom)}
+                  onClick={() => basculer("personnages", o.nom)}
+                  className={puce(gouts.personnages.includes(o.nom))}
+                  title={o.calibre === "icone" ? "Icône de la série" : "Personnage très recherché"}
+                >
+                  {o.nom}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-400">
+              Équipages et groupes
+            </legend>
+            <div className="flex flex-wrap gap-1.5">
+              {options.themes.map((o) => (
+                <button
+                  key={o.slug}
+                  type="button"
+                  aria-pressed={gouts.themes.includes(o.slug)}
+                  onClick={() => basculer("themes", o.slug)}
+                  className={puce(gouts.themes.includes(o.slug))}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-400">
+              Styles de cartes
+            </legend>
+            <div className="flex flex-wrap gap-1.5">
+              {options.styles.map((o) => (
+                <button
+                  key={o.cle}
+                  type="button"
+                  aria-pressed={gouts.styles.includes(o.cle)}
+                  onClick={() => basculer("styles", o.cle)}
+                  className={puce(gouts.styles.includes(o.cle))}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          <div>
+            <button
+              type="button"
+              onClick={enregistrer}
+              disabled={occupe}
+              className="rounded-md bg-amber-300/90 px-3 py-1.5 text-xs font-medium text-ink-950 hover:opacity-90 disabled:opacity-40"
+            >
+              {occupe ? "…" : "Enregistrer mes goûts"}
+            </button>
+          </div>
+        </div>
+      )}
+      {erreur && <p className="mt-2 text-[11px] text-rust-400">{erreur}</p>}
+    </div>
+  );
+}
+
+/** Un préféré vu comme une collection à compléter : où tu en es, et la suite. */
+function Projet({
+  projet,
+  budget,
+  onOuvrir,
+}: {
+  projet: ProjetCollection;
+  budget: number;
+  onOuvrir: (id: number) => void;
+}) {
+  const { budgets } = useCartesSuivies();
+  const [occupe, setOccupe] = useState(false);
+  const part = projet.total > 0 ? Math.round((projet.possedees / projet.total) * 100) : 0;
+  const prochaine = projet.prochaine;
+  const suivie = prochaine ? prochaine.suivie || budgets.has(prochaine.id) : false;
+
+  return (
+    <li className="flex flex-col gap-2 rounded-lg border border-ink-700 bg-ink-800/60 p-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="font-display text-base text-parchment-100">
+          {projet.nature === "personnage" ? "★ " : ""}
+          {projet.nom}
+        </p>
+        <p className="tabular font-mono text-xs text-ink-400">
+          {projet.possedees} / {projet.total}
+        </p>
+      </div>
+      <div
+        className="h-1.5 overflow-hidden rounded-full bg-ink-700"
+        role="progressbar"
+        aria-valuenow={projet.possedees}
+        aria-valuemin={0}
+        aria-valuemax={projet.total}
+        aria-label={`${projet.possedees} sur ${projet.total} belles versions`}
+      >
+        <div className="h-full rounded-full bg-amber-300/80" style={{ width: `${part}%` }} />
+      </div>
+      <p className="text-[11px] leading-relaxed text-ink-400">
+        {projet.possedees === projet.total
+          ? "Complet : tu as toutes ses belles versions. Bravo !"
+          : projet.manquantes_budget > 0
+          ? `Il t'en manque ${projet.manquantes_budget} à moins de ${formatEur(budget, 0)} (${formatEur(projet.cout_budget)} en tout)`
+          : `Aucune belle version manquante à moins de ${formatEur(budget, 0)}`}
+        {projet.hors_budget > 0 &&
+          ` · ${projet.hors_budget} au-delà, dès ${formatEur(projet.hors_budget_des ?? 0)}`}
+        .
+      </p>
+      {prochaine && (
+        <div className="flex items-center gap-2 rounded-md border border-ink-700 bg-ink-900/60 p-2">
+          <button
+            type="button"
+            onClick={() => onOuvrir(prochaine.id)}
+            className="relative h-14 w-10 shrink-0 overflow-hidden rounded-sm bg-ink-950"
+            aria-label={`Ouvrir la fiche de ${prochaine.display_name}`}
+          >
+            <VisuelCarte src={prochaine.image_url} alt={prochaine.display_name} sizes="40px" repli={() => null} />
+          </button>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] uppercase tracking-wide text-ink-400">Pour continuer</p>
+            <p className="truncate text-xs text-parchment-100">{prochaine.display_name}</p>
+            <p className="tabular font-mono text-[11px] text-parchment-100/80">
+              {prochaine.price_eur !== null ? formatEur(prochaine.price_eur) : "—"}
+              {prochaine.visuel ? <span className="font-sans text-ink-400"> · {prochaine.visuel}</span> : null}
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={suivie || occupe}
+            onClick={async () => {
+              setOccupe(true);
+              try {
+                await suivre(prochaine.id, prochaine.price_eur !== null ? Math.ceil(prochaine.price_eur) : null);
+              } finally {
+                setOccupe(false);
+              }
+            }}
+            className="shrink-0 rounded-md border border-amber-300/50 px-2 py-1 text-[11px] text-amber-200 hover:bg-amber-300/10 disabled:opacity-60"
+          >
+            {suivie ? "★ Suivie" : "☆ Suivre"}
+          </button>
+        </div>
+      )}
     </li>
   );
 }

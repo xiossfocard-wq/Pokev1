@@ -31,7 +31,8 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy.orm import Session
 
 from app.collectors.cardlist_fr import rang_de_parallele
-from app.models import CardPriceSnapshot, CartePossedee, CarteSuivie, MarketCardPrice, RecommandationEcartee
+from app.models import (AppSettings, CardPriceSnapshot, CartePossedee, CarteSuivie, MarketCardPrice,
+                        RecommandationEcartee)
 from app.services import card_catalog, card_themes
 from app.services.catalog_prices import code_rarete
 
@@ -154,6 +155,63 @@ def _euros(valeur: float) -> str:
     return f"{valeur:,.2f}".replace(",", " ").replace(".", ",") + " €"
 
 
+# --- les gouts declares ---------------------------------------------------
+
+# Les styles qu'on peut preferer, et ce qui les reconnait.
+STYLES = {
+    "alternatives": "Illustrations alternatives",
+    "leaders": "Leaders",
+    "speciales": "SP, Treasure Rare et Manga",
+    "secretes": "Secret Rare",
+}
+GOUTS_VIDES = {"personnages": [], "themes": [], "styles": []}
+
+
+def style_de(p: dict) -> Optional[str]:
+    """Le style de la carte, au sens de STYLES."""
+    if p["rarete"] == "L":
+        return "leaders"
+    if p["rang"] >= 2 or p["rarete"] in ("TR",) or p["rarete"].startswith("SP"):
+        return "speciales"
+    if p["rang"] == 1:
+        return "alternatives"
+    if p["rarete"] == "SEC":
+        return "secretes"
+    return None
+
+
+def options_de_gouts() -> dict:
+    """Ce qu'on peut choisir : personnages (icones d'abord), groupes, styles."""
+    return {
+        "personnages": ([{"nom": nom, "calibre": "icone"} for _, nom in _ICONES]
+                        + [{"nom": nom, "calibre": "recherche"} for _, nom in _RECHERCHES]),
+        "themes": [{"slug": t.slug, "label": t.label} for t in card_themes.THEMES_SUJET],
+        "styles": [{"cle": cle, "label": label} for cle, label in STYLES.items()],
+    }
+
+
+def lire_gouts(db: Session) -> dict:
+    ligne = db.query(AppSettings).filter(AppSettings.key == "gouts").first()
+    valeur = ligne.value if ligne is not None and isinstance(ligne.value, dict) else {}
+    return {cle: list(valeur.get(cle) or []) for cle in GOUTS_VIDES}
+
+
+def enregistrer_gouts(db: Session, personnages: List[str], themes: List[str], styles: List[str]) -> dict:
+    """N'enregistre que des valeurs connues : un nom mal orthographie ne
+    correspondrait a aucune carte, en silence."""
+    options = options_de_gouts()
+    noms = {o["nom"] for o in options["personnages"]}
+    slugs = {o["slug"] for o in options["themes"]}
+    gouts = {
+        "personnages": [n for n in dict.fromkeys(personnages) if n in noms],
+        "themes": [t for t in dict.fromkeys(themes) if t in slugs],
+        "styles": [st for st in dict.fromkeys(styles) if st in STYLES],
+    }
+    db.merge(AppSettings(key="gouts", value=gouts))
+    db.commit()
+    return gouts
+
+
 # --- la recommandation ----------------------------------------------------
 
 def _profil(ligne: MarketCardPrice) -> dict:
@@ -182,6 +240,8 @@ def _avis(p: dict, raisons: List[dict]) -> str:
     nom = p["perso"] or ligne.display_name
     types = {r["type"] for r in raisons}
     belle = p["poids_visuel"] >= 3
+    if "gout" in types and p["perso"] and belle:
+        return f"Pour ta collection de {p['perso']} : une belle version, à {prix}."
     if "collection" in types and p["perso"]:
         return f"Elle prolongerait bien tes cartes de {p['perso']}, pour {prix}."
     if "sous-cotee" in types:
@@ -210,6 +270,9 @@ def recommander(db: Session, budget_max: float = 20.0, toutes_langues: bool = Fa
 
     possedees = {(c.card_code, c.name_slug) for c in db.query(CartePossedee).all()}
     suivies = {(c.card_code, c.name_slug) for c in db.query(CarteSuivie).all()}
+    gouts = lire_gouts(db)
+    persos_aimes, themes_aimes, styles_aimes = (set(gouts["personnages"]), set(gouts["themes"]),
+                                                 set(gouts["styles"]))
     ecartees = {(c.card_code, c.name_slug) for c in db.query(RecommandationEcartee).all()}
 
     profils = [_profil(l) for l in lignes]
@@ -298,13 +361,24 @@ def recommander(db: Session, budget_max: float = 20.0, toutes_langues: bool = Fa
             raisons.append({"type": "collection", "texte": (
                 f"dans la lignée de ta collection : {card_themes.theme_par_slug(theme).label}")})
 
+        # Ce que l'utilisateur a DIT aimer pese plus que ce qu'on devine.
+        perso_aime = p["perso"] in persos_aimes
+        themes_communs = [t for t in p["themes"] if t in themes_aimes]
+        style_aime = style_de(p) in styles_aimes
+        if perso_aime:
+            raisons.insert(0, {"type": "gout", "texte": f"{p['perso']} : un de tes personnages préférés"})
+        elif themes_communs:
+            raisons.insert(0, {"type": "gout", "texte": (
+                f"{card_themes.theme_par_slug(themes_communs[0]).label} : un de tes groupes préférés")})
+        gout = (4 if perso_aime else 0) + (3 if themes_communs else 0) + (2 if style_aime else 0)
+
         candidats.append({
             "p": p, "raisons": raisons, "en_hausse": en_hausse, "h7": h7, "h30": h30,
             "ratio": ratio, "annonces": annonces, "affinite": affinite,
-            "suivie": cle in suivies,
+            "suivie": cle in suivies, "gout": gout, "aime": perso_aime or bool(themes_communs),
             # L'attrait : ce qui fait qu'un connaisseur s'y arrete.
             "attrait": p["poids_visuel"] * 2 + p["poids_perso"] * 2 + min(affinite, 3) * 2
-                       + (2 if en_hausse else 0) + (1 if annonces else 0),
+                       + (2 if en_hausse else 0) + (1 if annonces else 0) + gout,
         })
 
     def sortie(c: dict) -> dict:
@@ -358,7 +432,16 @@ def recommander(db: Session, budget_max: float = 20.0, toutes_langues: bool = Fa
         return rubrique("pour-ta-collection", "Pour ta collection",
                         "Dans la lignée de ce que tu possèdes et suis déjà.", pour_toi)
 
-    rubriques = [personnelle()] if (gouts_perso or gouts_theme) else []
+    selon_gouts = [c for c in candidats if c["aime"] and c["p"]["poids_visuel"] >= 2]
+    selon_gouts.sort(key=lambda c: (-c["gout"], -c["attrait"], c["p"]["ligne"].price_eur))
+
+    rubriques = []
+    if persos_aimes or themes_aimes:
+        rubriques.append(rubrique("selon-tes-gouts", "Selon tes goûts",
+                                  "Les plus belles versions de tes personnages et groupes préférés.",
+                                  selon_gouts))
+    if gouts_perso or gouts_theme:
+        rubriques.append(personnelle())
     rubriques += [
         rubrique("coups-de-coeur", "Coups de cœur accessibles",
                  f"Les plus belles cartes des personnages qui comptent, à moins de {_euros(budget_max)}.", beaux),
@@ -372,8 +455,48 @@ def recommander(db: Session, budget_max: float = 20.0, toutes_langues: bool = Fa
     rubriques = [r for r in rubriques if r]
 
     return {"budget_max": budget_max, "toutes_langues": toutes_langues,
-            "cartes_examinees": len(dans_budget), "rubriques": rubriques,
+            "cartes_examinees": len(dans_budget), "rubriques": rubriques, "gouts": gouts,
+            "projets": projets(profils, gouts, budget_max, possedees, suivies),
             "themes": idees_de_collection(profils, budget_max, possedees)}
+
+
+def projets(profils: List[dict], gouts: dict, budget_max: float, possedees: set, suivies: set) -> List[dict]:
+    """Pour chaque personnage et groupe prefere : ou en est la collection de
+    ses belles versions, ce qu'il manque dans le budget, et par quoi
+    continuer — la moins chere des belles versions manquantes."""
+    def projet(nature: str, nom: str, cartes: List[dict]) -> Optional[dict]:
+        if not cartes:
+            return None
+        cle = lambda p: (p["ligne"].card_code, p["ligne"].name_slug)
+        possedees_ici = [p for p in cartes if cle(p) in possedees]
+        manquantes = sorted((p for p in cartes if cle(p) not in possedees), key=lambda p: p["ligne"].price_eur)
+        dans_budget = [p for p in manquantes if p["ligne"].price_eur <= budget_max]
+        hors_budget = [p for p in manquantes if p["ligne"].price_eur > budget_max]
+        prochaine = dans_budget[0] if dans_budget else None
+        return {
+            "nature": nature, "nom": nom,
+            "total": len(cartes), "possedees": len(possedees_ici),
+            "manquantes_budget": len(dans_budget),
+            "cout_budget": round(sum(p["ligne"].price_eur for p in dans_budget), 2),
+            "hors_budget": len(hors_budget),
+            "hors_budget_des": hors_budget[0]["ligne"].price_eur if hors_budget else None,
+            "prochaine": None if prochaine is None else {
+                **card_catalog.carte_en_dict(prochaine["ligne"]),
+                "suivie": cle(prochaine) in suivies,
+                "visuel": prochaine["visuel"],
+            },
+        }
+
+    # Les belles versions : illustrations alternatives, SP, TR, Manga,
+    # Leaders paralleles — ce qui fait une collection qu'on montre.
+    belles = [p for p in profils if p["poids_visuel"] >= 3]
+    resultat = [projet("personnage", nom, [p for p in belles if p["perso"] == nom])
+                for nom in gouts["personnages"]]
+    for slug in gouts["themes"]:
+        theme = card_themes.theme_par_slug(slug)
+        if theme is not None:
+            resultat.append(projet("theme", theme.label, [p for p in belles if slug in p["themes"]]))
+    return [p for p in resultat if p]
 
 
 def idees_de_collection(profils: List[dict], budget_max: float, possedees: set) -> List[dict]:
@@ -395,3 +518,76 @@ def idees_de_collection(profils: List[dict], budget_max: float, possedees: set) 
         })
     idees.sort(key=lambda i: (-i["nombre"], i["total_eur"]))
     return idees[:6]
+
+
+# --- une carte, vue par l'expert -------------------------------------------
+
+_NATURE_DE_VERSION = {0: "ordinaire", 1: "parallèle", 2: "manga"}
+
+
+def versions_de_la_carte(db: Session, ligne: MarketCardPrice) -> List[dict]:
+    """Toutes les versions d'un meme code — ordinaire, paralleles, manga —
+    avec leur cote, et ce que l'utilisateur en possede ou suit : de quoi
+    choisir laquelle viser."""
+    possedees = {}
+    for c in db.query(CartePossedee).filter(CartePossedee.card_code == ligne.card_code).all():
+        possedees[c.name_slug] = possedees.get(c.name_slug, 0) + 1
+    suivies = {c.name_slug for c in db.query(CarteSuivie).filter(CarteSuivie.card_code == ligne.card_code).all()}
+    lignes = db.query(MarketCardPrice).filter(MarketCardPrice.card_code == ligne.card_code).all()
+    versions = []
+    for v in sorted(lignes, key=lambda v: (rang_de_parallele(v.name_slug), v.name_slug)):
+        rang = rang_de_parallele(v.name_slug)
+        versions.append({
+            "id": v.id, "display_name": v.display_name, "rang": rang,
+            "nature": _NATURE_DE_VERSION.get(rang, "variante"),
+            "price_eur": v.price_eur, "image_url": v.image_url,
+            "exemplaires": possedees.get(v.name_slug, 0), "suivie": v.name_slug in suivies,
+            "actuelle": v.id == ligne.id,
+        })
+    return versions
+
+
+def analyse_de_la_carte(db: Session, ligne: MarketCardPrice) -> dict:
+    """Ce qu'un connaisseur dirait de cette carte : ses atouts et un verdict,
+    avec les memes regles que les idees de collection."""
+    p = _profil(ligne)
+    raisons = []
+    gouts = lire_gouts(db)
+    if p["perso"] in gouts["personnages"]:
+        raisons.append({"type": "gout", "texte": f"{p['perso']} : un de tes personnages préférés"})
+    else:
+        communs = [t for t in p["themes"] if t in gouts["themes"]]
+        if communs:
+            raisons.append({"type": "gout", "texte": (
+                f"{card_themes.theme_par_slug(communs[0]).label} : un de tes groupes préférés")})
+    if p["visuel"]:
+        raisons.append({"type": "visuel", "texte": p["visuel"]})
+    if p["perso"]:
+        raisons.append({"type": "personnage", "texte": (
+            f"{p['perso']} : une icône de la série" if p["poids_perso"] == 3
+            else f"{p['perso']} : personnage très recherché")})
+    if ligne.price_eur is None:
+        return {"raisons": raisons, "avis": None}
+
+    h7 = variation_7j(ligne)
+    h30 = variations_30j(db, [ligne]).get((ligne.card_code, ligne.name_slug))
+    if h7 is not None and h7 >= HAUSSE_7J:
+        raisons.append({"type": "tendance", "texte": f"en hausse de {round(h7 * 100)} % ces derniers jours"})
+    elif h30 is not None and h30 >= HAUSSE_30J:
+        raisons.append({"type": "tendance", "texte": f"en hausse de {round(h30 * 100)} % sur un mois"})
+
+    if p["poids_visuel"] >= 1:
+        groupe = _groupe_comparable(p)
+        semblables = [_profil(l) for l in db.query(MarketCardPrice).filter(
+            MarketCardPrice.price_eur.isnot(None), MarketCardPrice.price_eur > 0,
+            MarketCardPrice.language == ligne.language).all()]
+        prix = [q["ligne"].price_eur for q in semblables
+                if q["poids_visuel"] >= 1 and _groupe_comparable(q) == groupe]
+        if len(prix) >= COMPARABLES_MINIMUM:
+            mediane = statistics.median(prix)
+            ratio = ligne.price_eur / mediane
+            if ratio <= PART_SOUS_COTEE and p["poids_perso"] >= 2:
+                raisons.append({"type": "sous-cotee", "texte": (
+                    f"{round((1 - ratio) * 100)} % moins chère que les cartes comparables "
+                    f"(médiane {_euros(mediane)})")})
+    return {"raisons": raisons, "avis": _avis(p, raisons)}

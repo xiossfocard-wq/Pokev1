@@ -222,5 +222,125 @@ class TestIdeesDeCollection(BaseReco):
         self.assertEqual((paille["nombre"], paille["total_eur"]), (3, 28.0))
 
 
+
+class TestGoutsDeclares(BaseReco):
+    def test_seules_les_valeurs_connues_sont_enregistrees(self):
+        from app.services.recommandations import enregistrer_gouts, lire_gouts
+        enregistrer_gouts(self.db, ["Shanks", "Shankss", "Shanks"], ["chapeau-de-paille", "inconnu"],
+                          ["leaders", "brillantes"])
+        self.assertEqual(lire_gouts(self.db), {"personnages": ["Shanks"], "themes": ["chapeau-de-paille"],
+                                               "styles": ["leaders"]})
+
+    def test_sans_gouts_pas_de_rubrique_selon_tes_gouts(self):
+        self.carte("Shanks", 8.5, parallele=True)
+        self.assertNotIn("selon-tes-gouts", [r["cle"] for r in recommander(self.db)["rubriques"]])
+
+    def test_un_personnage_prefere_passe_en_tete(self):
+        from app.services.recommandations import enregistrer_gouts
+        self.carte("Monkey.D.Luffy", 5.0, parallele=True, code="OP10-001")
+        self.carte("Shanks", 12.0, parallele=True, code="OP10-002")
+        enregistrer_gouts(self.db, ["Shanks"], [], [])
+        r = recommander(self.db)
+        self.assertEqual(r["rubriques"][0]["cle"], "selon-tes-gouts")
+        self.assertEqual(self.codes(r, "selon-tes-gouts"), ["OP10-002"])
+        self.assertEqual(self.raisons(r, "OP10-002", "gout"), ["Shanks : un de tes personnages préférés"])
+        self.assertIn("Pour ta collection de Shanks", self.carte_proposee(r, "OP10-002")["avis"])
+
+    def test_un_groupe_prefere(self):
+        from app.services.recommandations import enregistrer_gouts
+        self.carte("Roronoa Zoro", 9.0, parallele=True, code="OP10-050")
+        enregistrer_gouts(self.db, [], ["chapeau-de-paille"], [])
+        r = recommander(self.db)
+        self.assertEqual(self.raisons(r, "OP10-050", "gout"),
+                         ["Équipage du Chapeau de Paille : un de tes groupes préférés"])
+
+    def test_le_style_prefere_departage(self):
+        from app.services.recommandations import enregistrer_gouts
+        self.carte("Shanks", 9.0, parallele=True, code="OP10-001")                       # alternative
+        self.carte("Shanks", 9.0, rarete="L (Leader)", parallele=True, code="OP10-002")  # leader
+        enregistrer_gouts(self.db, ["Shanks"], [], ["leaders"])
+        self.assertEqual(self.codes(recommander(self.db), "selon-tes-gouts")[0], "OP10-002")
+
+
+class TestProjets(BaseReco):
+    def test_la_progression_d_un_personnage_prefere(self):
+        """Trois belles versions de Shanks : une possedee, une dans le budget,
+        une au-dela."""
+        from app.services.recommandations import enregistrer_gouts
+        a = self.carte("Shanks", 6.0, parallele=True, code="OP10-001")
+        self.carte("Shanks", 15.0, parallele=True, code="OP10-002")
+        self.carte("Shanks", 60.0, rarete="SP CARD (Special)", code="OP10-003")
+        self.carte("Shanks", 0.3, rarete="C (Common)", code="OP10-004")   # pas une belle version
+        collection.ajouter(self.db, card_id=a.id)
+        enregistrer_gouts(self.db, ["Shanks"], [], [])
+        projet = recommander(self.db, budget_max=20)["projets"][0]
+        self.assertEqual({k: projet[k] for k in ("nom", "total", "possedees", "manquantes_budget",
+                                                  "cout_budget", "hors_budget", "hors_budget_des")},
+                         {"nom": "Shanks", "total": 3, "possedees": 1, "manquantes_budget": 1,
+                          "cout_budget": 15.0, "hors_budget": 1, "hors_budget_des": 60.0})
+        self.assertEqual(projet["prochaine"]["card_code"], "OP10-002")
+
+    def test_le_projet_d_un_equipage(self):
+        from app.services.recommandations import enregistrer_gouts
+        for nom, prix in (("Monkey.D.Luffy", 12.0), ("Nami", 7.0)):
+            self.carte(nom, prix, parallele=True)
+        enregistrer_gouts(self.db, [], ["chapeau-de-paille"], [])
+        projet = recommander(self.db)["projets"][0]
+        self.assertEqual((projet["nature"], projet["nom"], projet["total"]),
+                         ("theme", "Équipage du Chapeau de Paille", 2))
+        self.assertEqual(projet["prochaine"]["display_name"], "Nami (Parallèle 1)")
+
+    def test_un_projet_complet_n_a_pas_de_prochaine_carte(self):
+        from app.services.recommandations import enregistrer_gouts
+        a = self.carte("Shanks", 6.0, parallele=True)
+        collection.ajouter(self.db, card_id=a.id)
+        enregistrer_gouts(self.db, ["Shanks"], [], [])
+        projet = recommander(self.db)["projets"][0]
+        self.assertEqual((projet["possedees"], projet["total"], projet["prochaine"]), (1, 1, None))
+
+
+
+class TestFiche(BaseReco):
+    def versions_de_shanks(self):
+        def fiche(slug, nom, prix):
+            c = MarketCardPrice(card_code="OP17-022", name_slug=slug, display_name=nom,
+                                rarity="SR (Super Rare)", price_eur=prix, language="fr")
+            self.db.add(c)
+            self.db.commit()
+            return c
+        return (fiche("shanks", "Shanks", 0.75), fiche("shanks-parallele-1", "Shanks (Parallèle 1)", 13.0),
+                fiche("shanks-parallele-2", "Shanks (Parallèle 2)", 850.0))
+
+    def test_les_versions_d_une_carte_cote_a_cote(self):
+        from app.services.recommandations import versions_de_la_carte
+        ordinaire, parallele, manga = self.versions_de_shanks()
+        collection.ajouter(self.db, card_id=ordinaire.id)
+        suivi.suivre(self.db, parallele.id, 12.0)
+        versions = versions_de_la_carte(self.db, parallele)
+        self.assertEqual([(v["nature"], v["price_eur"]) for v in versions],
+                         [("ordinaire", 0.75), ("parallèle", 13.0), ("manga", 850.0)])
+        self.assertEqual([v["actuelle"] for v in versions], [False, True, False])
+        self.assertEqual((versions[0]["exemplaires"], versions[1]["suivie"]), (1, True))
+
+    def test_l_avis_de_l_expert_sur_une_fiche(self):
+        from app.services.recommandations import analyse_de_la_carte
+        _, parallele, _ = self.versions_de_shanks()
+        analyse = analyse_de_la_carte(self.db, parallele)
+        self.assertEqual({r["type"] for r in analyse["raisons"]}, {"visuel", "personnage"})
+        self.assertEqual(analyse["avis"], "Une des plus belles versions de Shanks, à 13,00 €.")
+
+    def test_une_carte_sans_cote_n_a_pas_de_verdict(self):
+        from app.services.recommandations import analyse_de_la_carte
+        c = self.carte("Shanks", None, parallele=True)
+        self.assertIsNone(analyse_de_la_carte(self.db, c)["avis"])
+
+    def test_la_fiche_porte_les_versions_et_l_avis(self):
+        from app.routers.cards import detail_carte
+        _, parallele, _ = self.versions_de_shanks()
+        fiche = detail_carte(parallele.id, 30, self.db)
+        self.assertEqual(len(fiche["versions"]), 3)
+        self.assertIsNotNone(fiche["analyse"]["avis"])
+
+
 if __name__ == "__main__":
     unittest.main()

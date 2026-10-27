@@ -485,6 +485,22 @@ export interface CatalogCardDetail extends CatalogCard {
   suivi: { prix_max: number | null } | null;
   /** Dans « Ma collection » : combien d'exemplaires. */
   collection?: { exemplaires: number };
+  /** Toutes les versions du même code : ordinaire, parallèles, manga. */
+  versions?: VersionDeCarte[];
+  /** Ce qu'un connaisseur dirait de la carte. */
+  analyse?: { raisons: RaisonIdee[]; avis: string | null };
+}
+
+export interface VersionDeCarte {
+  id: number;
+  display_name: string;
+  rang: number;
+  nature: string;
+  price_eur: number | null;
+  image_url: string | null;
+  exemplaires: number;
+  suivie: boolean;
+  actuelle: boolean;
 }
 
 export function fetchCardDetail(
@@ -691,7 +707,7 @@ export function retirerExemplaire(id: number): Promise<{ status: string }> {
 // ---------------------------------------------------------------------------
 
 export interface RaisonIdee {
-  type: "visuel" | "personnage" | "tendance" | "sous-cotee" | "vinted" | "collection";
+  type: "gout" | "visuel" | "personnage" | "tendance" | "sous-cotee" | "vinted" | "collection";
   texte: string;
 }
 
@@ -720,12 +736,47 @@ export interface IdeeDeCollection {
   apercu: CatalogCard[];
 }
 
+export interface Gouts {
+  personnages: string[];
+  themes: string[];
+  styles: string[];
+}
+
+export interface OptionsGouts {
+  personnages: { nom: string; calibre: "icone" | "recherche" }[];
+  themes: { slug: string; label: string }[];
+  styles: { cle: string; label: string }[];
+}
+
+/** Un personnage ou un groupe préféré, vu comme une collection à compléter. */
+export interface ProjetCollection {
+  nature: "personnage" | "theme";
+  nom: string;
+  total: number;
+  possedees: number;
+  manquantes_budget: number;
+  cout_budget: number;
+  hors_budget: number;
+  hors_budget_des: number | null;
+  prochaine: (CatalogCard & { suivie: boolean; visuel: string | null }) | null;
+}
+
 export interface Idees {
   budget_max: number;
   toutes_langues: boolean;
   cartes_examinees: number;
   rubriques: RubriqueIdees[];
+  gouts: Gouts;
+  projets: ProjetCollection[];
   themes: IdeeDeCollection[];
+}
+
+export function fetchGouts(): Promise<{ gouts: Gouts; options: OptionsGouts }> {
+  return apiFetch<{ gouts: Gouts; options: OptionsGouts }>("/api/recommandations/gouts");
+}
+
+export function enregistrerGouts(gouts: Gouts): Promise<Gouts> {
+  return apiFetch<Gouts>("/api/recommandations/gouts", { method: "PUT", body: JSON.stringify(gouts) });
 }
 
 export function fetchIdees(budgetMax: number, toutesLangues = false): Promise<Idees> {

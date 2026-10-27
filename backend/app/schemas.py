@@ -84,6 +84,14 @@ class ExemplaireAjout(BaseModel):
     etat: Optional[Literal["NM", "LP", "MP", "HP", "DMG"]] = None
 
 
+class GoutsUpdate(BaseModel):
+    """Ce que l'utilisateur aime : personnages, groupes (slugs de theme) et
+    styles de cartes (voir services/recommandations.STYLES)."""
+    personnages: list[str] = []
+    themes: list[str] = []
+    styles: list[str] = []
+
+
 class SettingsUpdate(BaseModel):
     deal_score_threshold: Optional[float] = None
     margin_weight: Optional[float] = None
