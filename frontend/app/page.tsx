@@ -218,6 +218,13 @@ export default function DashboardPage() {
               ✦ Idées
             </Link>
             <Link
+              href="/personnages"
+              title="Les icônes et les personnages recherchés : toutes leurs cartes, de la plus accessible à la plus rare"
+              className="rounded-md border border-ink-700 px-2.5 py-1.5 text-xs text-parchment-100 transition-colors hover:border-ember-500"
+            >
+              Personnages
+            </Link>
+            <Link
               href="/suivi"
               title="Les cartes que tu cherches, ton budget pour chacune, et ce qui est en vente"
               className="rounded-md border border-ink-700 px-2.5 py-1.5 text-xs text-parchment-100 transition-colors hover:border-ember-500"

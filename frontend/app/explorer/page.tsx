@@ -150,6 +150,12 @@ export default function ExplorerPage() {
             ✦ Idées
           </Link>
           <Link
+            href="/personnages"
+            className="rounded-sm border border-ink-700 px-2.5 py-1.5 text-parchment-100/70 transition-colors hover:border-ember-500/50"
+          >
+            Personnages
+          </Link>
+          <Link
             href="/suivi"
             className="rounded-sm border border-ink-700 px-2.5 py-1.5 text-parchment-100/70 transition-colors hover:border-ember-500/50"
           >

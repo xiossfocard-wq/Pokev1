@@ -487,8 +487,8 @@ export interface CatalogCardDetail extends CatalogCard {
   collection?: { exemplaires: number };
   /** Toutes les versions du même code : ordinaire, parallèles, manga. */
   versions?: VersionDeCarte[];
-  /** Ce qu'un connaisseur dirait de la carte. */
-  analyse?: { raisons: RaisonIdee[]; avis: string | null };
+  /** Ce qu'un connaisseur dirait de la carte, et la page de son personnage s'il en a une. */
+  analyse?: { raisons: RaisonIdee[]; avis: string | null; personnage?: { nom: string; slug: string } | null };
 }
 
 export interface VersionDeCarte {
@@ -752,6 +752,7 @@ export interface OptionsGouts {
 export interface ProjetCollection {
   nature: "personnage" | "theme";
   nom: string;
+  slug: string;
   total: number;
   possedees: number;
   manquantes_budget: number;
@@ -793,4 +794,48 @@ export function revoirIdeesEcartees(): Promise<{ status: string; remises: number
   return apiFetch<{ status: string; remises: number }>("/api/recommandations/ecartees", {
     method: "DELETE",
   });
+}
+
+// ---------------------------------------------------------------------------
+// Une page par personnage apprécié.
+// ---------------------------------------------------------------------------
+
+export interface PersonnageResume {
+  nom: string;
+  slug: string;
+  calibre: "icone" | "recherche";
+  cartes: number;
+  belles: number;
+  prix_min: number | null;
+  prix_max: number | null;
+  possedees: number;
+  belles_possedees: number;
+  image_url: string | null;
+}
+
+export interface CartePersonnage extends CatalogCard {
+  version: string;
+  visuel: string | null;
+  belle: boolean;
+  exemplaires: number;
+  suivie: boolean;
+  variation_7j: number | null;
+  variation_30j: number | null;
+  ratio_semblables: number | null;
+}
+
+export interface PagePersonnage extends Omit<PersonnageResume, "image_url"> {
+  aime: boolean;
+  conseils: { cle: string; titre: string; texte: string; carte: CartePersonnage }[];
+  paliers: { cle: string; titre: string; explication: string; cartes: CartePersonnage[] }[];
+}
+
+export function fetchPersonnages(toutesLangues = false): Promise<PersonnageResume[]> {
+  return apiFetch<PersonnageResume[]>(`/api/personnages?toutes_langues=${toutesLangues ? "true" : "false"}`);
+}
+
+export function fetchPersonnage(slug: string, toutesLangues = false): Promise<PagePersonnage> {
+  return apiFetch<PagePersonnage>(
+    `/api/personnages/${encodeURIComponent(slug)}?toutes_langues=${toutesLangues ? "true" : "false"}`
+  );
 }

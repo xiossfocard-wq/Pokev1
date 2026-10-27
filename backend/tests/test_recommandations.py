@@ -86,7 +86,7 @@ class TestCoupsDeCoeur(BaseReco):
         types = {x["type"] for x in cartes[0]["raisons"]}
         self.assertTrue({"visuel", "personnage"} <= types)
         self.assertIn("Shanks", cartes[0]["avis"])
-        self.assertIn("8,50 €", cartes[0]["avis"])
+        self.assertIn("8,50\u00a0€", cartes[0]["avis"])
 
     def test_pas_plus_de_deux_cartes_d_un_meme_personnage(self):
         for i in range(4):
@@ -327,7 +327,7 @@ class TestFiche(BaseReco):
         _, parallele, _ = self.versions_de_shanks()
         analyse = analyse_de_la_carte(self.db, parallele)
         self.assertEqual({r["type"] for r in analyse["raisons"]}, {"visuel", "personnage"})
-        self.assertEqual(analyse["avis"], "Une des plus belles versions de Shanks, à 13,00 €.")
+        self.assertEqual(analyse["avis"], "Une des plus belles versions de Shanks, à 13,00\u00a0€.")
 
     def test_une_carte_sans_cote_n_a_pas_de_verdict(self):
         from app.services.recommandations import analyse_de_la_carte

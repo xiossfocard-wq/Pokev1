@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import VisuelCarte from "./VisuelCarte";
 import CardListings from "@/components/CardListings";
 import SuiviCarte from "@/components/SuiviCarte";
@@ -186,6 +187,16 @@ export default function CardDetailPanel({
                 <Raisons raisons={carte.analyse.raisons} />
                 <p className="mt-1.5 text-xs italic leading-snug text-parchment-100/80">« {carte.analyse.avis} »</p>
               </div>
+            )}
+
+            {carte.analyse?.personnage && (
+              <Link
+                href={`/personnages/${carte.analyse.personnage.slug}`}
+                onClick={onClose}
+                className="block rounded-md border border-ink-700 px-3 py-2 text-xs text-ember-400 transition-colors hover:border-ember-500/60"
+              >
+                Toutes les cartes de {carte.analyse.personnage.nom}, de la plus accessible à la plus rare →
+              </Link>
             )}
 
             {carte.versions && carte.versions.length > 1 && (

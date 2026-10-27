@@ -95,6 +95,12 @@ export default function IdeesPage() {
           <span className="text-sm text-parchment-100">Idées</span>
           <div className="ml-auto flex gap-1.5">
             <Link
+              href="/personnages"
+              className="rounded-md border border-ink-700 px-2.5 py-1.5 text-xs text-parchment-100 transition-colors hover:border-ember-500"
+            >
+              Personnages
+            </Link>
+            <Link
               href="/suivi"
               className="rounded-md border border-ink-700 px-2.5 py-1.5 text-xs text-parchment-100 transition-colors hover:border-ember-500"
             >
@@ -538,10 +544,17 @@ function Projet({
   return (
     <li className="flex flex-col gap-2 rounded-lg border border-ink-700 bg-ink-800/60 p-3">
       <div className="flex items-baseline justify-between gap-2">
-        <p className="font-display text-base text-parchment-100">
-          {projet.nature === "personnage" ? "★ " : ""}
-          {projet.nom}
-        </p>
+        {projet.nature === "personnage" ? (
+          <Link
+            href={`/personnages/${projet.slug}`}
+            className="font-display text-base text-parchment-100 hover:text-ember-400"
+            title={`Toutes les cartes de ${projet.nom}`}
+          >
+            ★ {projet.nom} →
+          </Link>
+        ) : (
+          <p className="font-display text-base text-parchment-100">{projet.nom}</p>
+        )}
         <p className="tabular font-mono text-xs text-ink-400">
           {projet.possedees} / {projet.total}
         </p>

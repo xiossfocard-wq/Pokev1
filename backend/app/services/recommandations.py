@@ -152,7 +152,9 @@ def variations_30j(db: Session, lignes: List[MarketCardPrice]) -> Dict[Tuple, fl
 
 
 def _euros(valeur: float) -> str:
-    return f"{valeur:,.2f}".replace(",", " ").replace(".", ",") + " €"
+    """« 1 234,50 € », avec des espaces insecables : le prix ne se coupe
+    jamais en fin de ligne."""
+    return f"{valeur:,.2f}".replace(",", "\u00a0").replace(".", ",") + "\u00a0€"
 
 
 # --- les gouts declares ---------------------------------------------------
@@ -464,7 +466,7 @@ def projets(profils: List[dict], gouts: dict, budget_max: float, possedees: set,
     """Pour chaque personnage et groupe prefere : ou en est la collection de
     ses belles versions, ce qu'il manque dans le budget, et par quoi
     continuer — la moins chere des belles versions manquantes."""
-    def projet(nature: str, nom: str, cartes: List[dict]) -> Optional[dict]:
+    def projet(nature: str, nom: str, slug: str, cartes: List[dict]) -> Optional[dict]:
         if not cartes:
             return None
         cle = lambda p: (p["ligne"].card_code, p["ligne"].name_slug)
@@ -474,7 +476,7 @@ def projets(profils: List[dict], gouts: dict, budget_max: float, possedees: set,
         hors_budget = [p for p in manquantes if p["ligne"].price_eur > budget_max]
         prochaine = dans_budget[0] if dans_budget else None
         return {
-            "nature": nature, "nom": nom,
+            "nature": nature, "nom": nom, "slug": slug,
             "total": len(cartes), "possedees": len(possedees_ici),
             "manquantes_budget": len(dans_budget),
             "cout_budget": round(sum(p["ligne"].price_eur for p in dans_budget), 2),
@@ -490,12 +492,13 @@ def projets(profils: List[dict], gouts: dict, budget_max: float, possedees: set,
     # Les belles versions : illustrations alternatives, SP, TR, Manga,
     # Leaders paralleles — ce qui fait une collection qu'on montre.
     belles = [p for p in profils if p["poids_visuel"] >= 3]
-    resultat = [projet("personnage", nom, [p for p in belles if p["perso"] == nom])
+    from app.services.personnages import slug_de
+    resultat = [projet("personnage", nom, slug_de(nom), [p for p in belles if p["perso"] == nom])
                 for nom in gouts["personnages"]]
     for slug in gouts["themes"]:
         theme = card_themes.theme_par_slug(slug)
         if theme is not None:
-            resultat.append(projet("theme", theme.label, [p for p in belles if slug in p["themes"]]))
+            resultat.append(projet("theme", theme.label, slug, [p for p in belles if slug in p["themes"]]))
     return [p for p in resultat if p]
 
 
@@ -566,8 +569,13 @@ def analyse_de_la_carte(db: Session, ligne: MarketCardPrice) -> dict:
         raisons.append({"type": "personnage", "texte": (
             f"{p['perso']} : une icône de la série" if p["poids_perso"] == 3
             else f"{p['perso']} : personnage très recherché")})
+    # Le lien vers la page du personnage, quand il en a une.
+    lien = None
+    if p["perso"]:
+        from app.services.personnages import slug_de
+        lien = {"nom": p["perso"], "slug": slug_de(p["perso"])}
     if ligne.price_eur is None:
-        return {"raisons": raisons, "avis": None}
+        return {"raisons": raisons, "avis": None, "personnage": lien}
 
     h7 = variation_7j(ligne)
     h30 = variations_30j(db, [ligne]).get((ligne.card_code, ligne.name_slug))
@@ -590,4 +598,4 @@ def analyse_de_la_carte(db: Session, ligne: MarketCardPrice) -> dict:
                 raisons.append({"type": "sous-cotee", "texte": (
                     f"{round((1 - ratio) * 100)} % moins chère que les cartes comparables "
                     f"(médiane {_euros(mediane)})")})
-    return {"raisons": raisons, "avis": _avis(p, raisons)}
+    return {"raisons": raisons, "avis": _avis(p, raisons), "personnage": lien}
