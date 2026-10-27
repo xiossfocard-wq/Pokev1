@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
+  fetchCartesDeMesPersonnages,
   fetchListings,
   fetchPriceIndexStatus,
   fetchSettings,
@@ -26,6 +27,8 @@ const DEFAULT_DEAL_THRESHOLD = 70;
 export default function DashboardPage() {
   const mode = useModeEvaluation();
   const { budgets } = useCartesSuivies();
+  // Les personnages de mes goûts et leurs fiches, pour le filtre « ♥ Mes personnages ».
+  const [mesPersonnages, setMesPersonnages] = useState<{ noms: string[]; ids: Set<number> } | null>(null);
   const [vinted, setVinted] = useState<Listing[]>([]);
   const [ebay, setEbay] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -159,8 +162,22 @@ export default function DashboardPage() {
   }, []);
 
   const all = useMemo(() => [...vinted, ...ebay], [vinted, ebay]);
-  const vintedShown = useMemo(() => applyFilters(vinted, filters, budgets), [vinted, filters, budgets]);
-  const ebayShown = useMemo(() => applyFilters(ebay, filters, budgets), [ebay, filters, budgets]);
+  // Chargés quand on choisit le filtre : les goûts ont pu changer depuis.
+  useEffect(() => {
+    if (filters.cartes !== "personnages") return;
+    fetchCartesDeMesPersonnages()
+      .then((r) => setMesPersonnages({ noms: r.personnages, ids: new Set(r.card_ids) }))
+      .catch(() => setMesPersonnages({ noms: [], ids: new Set() }));
+  }, [filters.cartes]);
+
+  const vintedShown = useMemo(
+    () => applyFilters(vinted, filters, budgets, mesPersonnages?.ids),
+    [vinted, filters, budgets, mesPersonnages]
+  );
+  const ebayShown = useMemo(
+    () => applyFilters(ebay, filters, budgets, mesPersonnages?.ids),
+    [ebay, filters, budgets, mesPersonnages]
+  );
   // Sans clé eBay configurée, la colonne eBay restait vide et prenait la
   // moitié de l'écran. Elle n'apparaît que si elle a quelque chose à
   // montrer — ou si on l'a demandée explicitement avec le filtre.
@@ -322,6 +339,22 @@ export default function DashboardPage() {
             <div className="mt-4 mb-4">
               <FilterChips value={filters} onChange={setFilters} />
             </div>
+
+            {filters.cartes === "personnages" && mesPersonnages && (
+              <p className="mb-3 text-[11px] text-ink-400">
+                {mesPersonnages.noms.length > 0 ? (
+                  <>Seulement les annonces des cartes de {mesPersonnages.noms.join(", ")}.</>
+                ) : (
+                  <>
+                    Aucun personnage dans tes goûts : ajoute-les avec ♡ sur leur page (
+                    <Link href="/personnages" className="text-ember-400 underline underline-offset-2">
+                      Personnages
+                    </Link>
+                    ).
+                  </>
+                )}
+              </p>
+            )}
 
             {ebayVide && filters.source === "all" && (
               <p className="mb-3 text-[11px] text-ink-400">

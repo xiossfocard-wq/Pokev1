@@ -4,8 +4,9 @@ import type { ListingSource } from "@/lib/api";
 
 export type SourceFilter = "all" | ListingSource;
 export type ConfidenceFilter = "all" | "reliable" | "probable" | "uncertain";
-/** « liste » : seulement les cartes de « Ma liste ». */
-export type CartesFilter = "toutes" | "liste";
+/** « liste » : seulement les cartes de « Ma liste » ; « personnages » :
+ *  seulement celles des personnages de mes goûts. */
+export type CartesFilter = "toutes" | "liste" | "personnages";
 
 export interface Filters {
   source: SourceFilter;
@@ -106,6 +107,7 @@ export default function FilterChips({ value, onChange }: FilterChipsProps) {
         options={[
           { value: "toutes", label: "Toutes" },
           { value: "liste", label: "★ Ma liste" },
+          { value: "personnages", label: "♥ Mes personnages" },
         ]}
       />
     </div>
@@ -113,16 +115,23 @@ export default function FilterChips({ value, onChange }: FilterChipsProps) {
 }
 
 /** Applique les filtres à une liste. Pure : aucune mutation. `suivies` : les
- *  fiches de « Ma liste », pour le filtre du même nom. */
+ *  fiches de « Ma liste », pour le filtre du même nom ; `mesPersonnages` :
+ *  les fiches des personnages de mes goûts. */
 export function applyFilters<T extends {
   source: ListingSource;
   deal_score: number | null;
   price_match_confidence: string | null;
   matched_card_id?: number | null;
-}>(items: T[], filters: Filters, suivies?: Map<number, unknown>): T[] {
+}>(items: T[], filters: Filters, suivies?: Map<number, unknown>, mesPersonnages?: Set<number>): T[] {
   return items.filter((l) => {
     if (filters.source !== "all" && l.source !== filters.source) return false;
     if (filters.cartes === "liste" && !(l.matched_card_id != null && suivies?.has(l.matched_card_id))) {
+      return false;
+    }
+    if (
+      filters.cartes === "personnages" &&
+      !(l.matched_card_id != null && mesPersonnages?.has(l.matched_card_id))
+    ) {
       return false;
     }
     if ((l.deal_score ?? 0) < filters.minScore) return false;

@@ -17,8 +17,9 @@ from app.database import Base
 from app.models import CarteSuivie, Listing, ListingStatus, MarketCardPrice, SourcePlatform
 from app.routers.personnages import Chasse, chasser, les_personnages, un_personnage
 from app.services import collection, suivi
-from app.services.personnages import (chasser_les_belles_versions, liste_des_personnages,
-                                     page_du_personnage, par_qui_commencer, slug_de)
+from app.services.personnages import (cartes_de_mes_personnages, chasser_les_belles_versions,
+                                     liste_des_personnages, page_du_personnage, par_qui_commencer,
+                                     slug_de)
 from app.services.recommandations import analyse_de_la_carte, enregistrer_gouts, recommander
 
 
@@ -282,6 +283,34 @@ class TestChasse(BasePersonnages):
         with self.assertRaises(HTTPException) as e:
             chasser("soldat", Chasse(budget_max=10), self.db)
         self.assertEqual(e.exception.status_code, 404)
+
+
+class TestMesPersonnages(BasePersonnages):
+    def test_le_radar_filtre_sur_les_fiches_de_mes_personnages(self):
+        fr = self.carte("Shanks", 8.0, parallele=True)
+        en = self.carte("Shanks", 6.0, langue="en")   # une annonce peut viser la fiche anglaise
+        self.carte("Nami", 6.0, parallele=True)
+        self.assertEqual(cartes_de_mes_personnages(self.db), {"personnages": [], "card_ids": []})
+        enregistrer_gouts(self.db, ["Shanks"], [], [])
+        self.assertEqual(cartes_de_mes_personnages(self.db),
+                         {"personnages": ["Shanks"], "card_ids": [fr.id, en.id]})
+
+
+class TestCollectionParPersonnage(BasePersonnages):
+    def test_ce_que_la_collection_compte_de_chaque_personnage(self):
+        cartes = self.shanks()
+        nami = self.carte("Nami", 6.0, parallele=True)
+        soldat = self.carte("Soldat de la Marine", 0.5)
+        for c in (cartes["parallele"], cartes["parallele"], cartes["leader"], nami, soldat):
+            collection.ajouter(self.db, card_id=c.id)
+        resultat = collection.lister(self.db)
+        self.assertEqual(resultat["par_personnage"], [
+            {"nom": "Shanks", "slug": "shanks", "cartes": 2, "exemplaires": 3, "valeur": 61.0},
+            {"nom": "Nami", "slug": "nami", "cartes": 1, "exemplaires": 1, "valeur": 6.0},
+        ])
+        par_id = {c["id"]: c for c in resultat["cartes"]}
+        self.assertEqual(par_id[nami.id]["personnage"], {"nom": "Nami", "slug": "nami"})
+        self.assertIsNone(par_id[soldat.id]["personnage"])
 
 
 class TestSlug(unittest.TestCase):

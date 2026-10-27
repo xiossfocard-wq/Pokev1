@@ -665,12 +665,15 @@ export interface CarteCollection extends Partial<Omit<CatalogCard, "id">> {
   card_code: string | null;
   name_slug: string;
   introuvable: boolean;
+  personnage: { nom: string; slug: string } | null;
   exemplaires: ExemplaireCollection[];
   valeur: number;
 }
 
 export interface Collection {
   cartes: CarteCollection[];
+  // Ce qu'elle compte de chaque personnage apprécié, les plus précieux d'abord.
+  par_personnage: { nom: string; slug: string; cartes: number; exemplaires: number; valeur: number }[];
   totaux: {
     exemplaires: number;
     valeur: number;
@@ -870,6 +873,11 @@ export function fetchPersonnage(slug: string, toutesLangues = false): Promise<Pa
   return apiFetch<PagePersonnage>(
     `/api/personnages/${encodeURIComponent(slug)}?toutes_langues=${toutesLangues ? "true" : "false"}`
   );
+}
+
+// Les personnages de mes goûts et les fiches de toutes leurs cartes (filtre du radar).
+export function fetchCartesDeMesPersonnages(): Promise<{ personnages: string[]; card_ids: number[] }> {
+  return apiFetch("/api/personnages/mes-cartes");
 }
 
 // Suit d'un coup ses belles versions manquantes dans le budget.

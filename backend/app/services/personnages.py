@@ -132,6 +132,17 @@ def par_qui_commencer(personnages: List[dict]) -> List[dict]:
     return conseils
 
 
+def cartes_de_mes_personnages(db: Session) -> dict:
+    """Les personnages de mes gouts et toutes leurs fiches, toutes langues
+    confondues : une annonce peut avoir ete rapprochee d'une fiche anglaise.
+    Sert au filtre « Mes personnages » du radar."""
+    noms = reco.lire_gouts(db)["personnages"]
+    voulus = set(noms)
+    ids = ([id_ for id_, nom in db.query(MarketCardPrice.id, MarketCardPrice.display_name).all()
+            if reco.personnage(nom)[0] in voulus] if voulus else [])
+    return {"personnages": noms, "card_ids": ids}
+
+
 def _medianes_des_semblables(db: Session, langue: Optional[str]) -> Dict[tuple, float]:
     """La mediane de chaque groupe de cartes comparables, sur tout le
     catalogue chiffre — le meme repere que les idees de collection."""

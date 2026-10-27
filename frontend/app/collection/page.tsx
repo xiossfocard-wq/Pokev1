@@ -115,6 +115,33 @@ export default function MaCollectionPage() {
               </p>
             )}
 
+            {donnees.par_personnage.length > 0 && (
+              <section className="mt-5" aria-label="Par personnage">
+                <p className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-400">
+                  Par personnage
+                </p>
+                <ul className="flex list-none flex-wrap gap-2 p-0">
+                  {donnees.par_personnage.map((p) => (
+                    <li key={p.slug}>
+                      <Link
+                        href={`/personnages/${p.slug}`}
+                        title={`Toutes les cartes de ${p.nom}, et celles qui manquent à ta collection`}
+                        className="flex items-baseline gap-2 rounded-md border border-ink-700 bg-ink-800/60 px-2.5 py-1.5 text-xs transition-colors hover:border-ember-500/60"
+                      >
+                        <span className="font-display text-sm text-parchment-100">{p.nom}</span>
+                        <span className="text-ink-400">
+                          {p.cartes} carte{p.cartes > 1 ? "s" : ""}
+                          {p.exemplaires > p.cartes ? ` · ${p.exemplaires} ex.` : ""}
+                        </span>
+                        <span className="tabular font-mono text-parchment-100">{formatEur(p.valeur)}</span>
+                        <span className="text-ember-400">→</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
             <ul className="mt-4 flex list-none flex-col gap-2 p-0">
               {donnees.cartes.map((carte) => (
                 <Ligne

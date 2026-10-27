@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.models import CartePossedee, Listing, MarketCardPrice
 from app.scoring.margin import DECOTE_PAR_ETAT
-from app.services import card_catalog
+from app.services import card_catalog, recommandations as reco
 
 
 def _carte(db: Session, card_id: int) -> Optional[MarketCardPrice]:
@@ -88,8 +88,11 @@ def etat_de_la_carte(db: Session, carte: MarketCardPrice) -> dict:
 
 
 def lister(db: Session) -> dict:
-    """La collection, carte par carte, la plus precieuse d'abord, et ses
-    totaux : valeur estimee, montant paye, plus-value."""
+    """La collection, carte par carte, la plus precieuse d'abord, ses
+    totaux — valeur estimee, montant paye, plus-value — et ce qu'elle
+    compte de chaque personnage apprecie."""
+    from app.services.personnages import slug_de  # local : evite un cycle
+
     groupes = {}
     for ex in db.query(CartePossedee).order_by(CartePossedee.achetee_le).all():
         groupes.setdefault((ex.card_code, ex.name_slug), []).append(ex)
@@ -126,13 +129,31 @@ def lister(db: Session) -> dict:
                 totaux["plus_value"] += lignes[-1]["plus_value"]
         base = (card_catalog.carte_en_dict(carte) if carte is not None
                 else {"id": None, "card_code": code, "name_slug": slug, "display_name": slug})
+        perso = reco.personnage(carte.display_name)[0] if carte is not None else None
         cartes.append({
             **base,
             "introuvable": carte is None,
+            "personnage": {"nom": perso, "slug": slug_de(perso)} if perso else None,
             "exemplaires": lignes,
             "valeur": round(sum(l["valeur"] for l in lignes if l["valeur"] is not None), 2),
         })
     cartes.sort(key=lambda c: (-c["valeur"], c.get("display_name") or ""))
     for cle in ("valeur", "paye", "plus_value"):
         totaux[cle] = round(totaux[cle], 2)
-    return {"cartes": cartes, "totaux": totaux}
+    return {"cartes": cartes, "totaux": totaux, "par_personnage": _par_personnage(cartes)}
+
+
+def _par_personnage(cartes: List[dict]) -> List[dict]:
+    """Combien de cartes et d'exemplaires de chaque personnage apprecie, et
+    ce qu'ils valent : les plus precieux d'abord."""
+    groupes = {}
+    for c in cartes:
+        if c["personnage"]:
+            g = groupes.setdefault(c["personnage"]["slug"], {**c["personnage"], "cartes": 0,
+                                                             "exemplaires": 0, "valeur": 0.0})
+            g["cartes"] += 1
+            g["exemplaires"] += len(c["exemplaires"])
+            g["valeur"] += c["valeur"]
+    for g in groupes.values():
+        g["valeur"] = round(g["valeur"], 2)
+    return sorted(groupes.values(), key=lambda g: (-g["valeur"], g["nom"]))

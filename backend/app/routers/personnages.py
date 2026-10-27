@@ -17,6 +17,13 @@ def les_personnages(toutes_langues: bool = Query(False), db: Session = Depends(g
     return {"personnages": liste, "par_qui_commencer": personnages.par_qui_commencer(liste)}
 
 
+@router.get("/mes-cartes")
+def les_cartes_de_mes_personnages(db: Session = Depends(get_db)):
+    """Les personnages de tes goûts et les fiches de toutes leurs cartes :
+    le radar s'en sert pour ne montrer que leurs annonces."""
+    return personnages.cartes_de_mes_personnages(db)
+
+
 @router.get("/{slug}")
 def un_personnage(slug: str, toutes_langues: bool = Query(False), db: Session = Depends(get_db)):
     """Toutes les cartes d'un personnage, de la plus accessible à la plus rare,
