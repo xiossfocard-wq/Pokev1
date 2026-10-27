@@ -4,10 +4,19 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import CardDetailPanel from "@/components/CardDetailPanel";
+import { Annonce } from "@/components/CardListings";
 import TuileCarte from "@/components/TuileCarte";
 import VisuelCarte from "@/components/VisuelCarte";
-import { enregistrerGouts, fetchGouts, fetchPersonnage, type PagePersonnage } from "@/lib/api";
+import {
+  chasserPersonnage,
+  enregistrerGouts,
+  fetchGouts,
+  fetchPersonnage,
+  type AnnoncePersonnage,
+  type PagePersonnage,
+} from "@/lib/api";
 import { formatEur } from "@/lib/format";
+import { rechargerListe, useCartesSuivies } from "@/lib/suivi";
 
 /**
  * La page d'un personnage apprécié : toutes ses cartes, de la plus
@@ -112,7 +121,7 @@ export default function PagePersonnageRoute() {
 
         {page && !introuvable && (
           <>
-            <EnTete page={page} onGoutsChanges={charger} />
+            <EnTete page={page} toutesLangues={toutesLangues} onChange={charger} />
 
             <label className="mt-4 flex items-center gap-2 text-xs text-ink-400">
               <input
@@ -159,6 +168,8 @@ export default function PagePersonnageRoute() {
               </section>
             )}
 
+            {page.cartes > 0 && <EnVente annonces={page.annonces} onOuvrir={setCarteOuverte} />}
+
             {page.paliers.map((palier) => (
               <section key={palier.cle} className="mt-10">
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
@@ -188,7 +199,15 @@ export default function PagePersonnageRoute() {
  * quel prix, où en est sa collection — et le cœur pour l'ajouter à ses goûts
  * (les idées de collection s'y adaptent).
  */
-function EnTete({ page, onGoutsChanges }: { page: PagePersonnage; onGoutsChanges: () => void }) {
+function EnTete({
+  page,
+  toutesLangues,
+  onChange,
+}: {
+  page: PagePersonnage;
+  toutesLangues: boolean;
+  onChange: () => void;
+}) {
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const part = page.belles > 0 ? Math.round((page.belles_possedees / page.belles) * 100) : 0;
@@ -202,7 +221,7 @@ function EnTete({ page, onGoutsChanges }: { page: PagePersonnage; onGoutsChanges
         ? gouts.personnages.filter((n) => n !== page.nom)
         : [...gouts.personnages.filter((n) => n !== page.nom), page.nom];
       await enregistrerGouts({ ...gouts, personnages });
-      onGoutsChanges();
+      onChange();
     } catch (e) {
       setErreur(e instanceof Error ? e.message : String(e));
     } finally {
@@ -277,6 +296,179 @@ function EnTete({ page, onGoutsChanges }: { page: PagePersonnage; onGoutsChanges
         </div>
       )}
       {erreur && <p className="mt-2 text-xs text-rust-400">Goûts non enregistrés. [{erreur}]</p>}
+      {page.belles > page.belles_possedees && (
+        <Chasse page={page} toutesLangues={toutesLangues} onChassees={onChange} />
+      )}
+    </section>
+  );
+}
+
+const BUDGETS_CHASSE = [10, 20, 50, 100];
+
+/**
+ * Chasser ses belles versions : toutes celles qui manquent, dans un budget,
+ * ajoutées d'un coup à Ma liste avec leur cote comme budget. La chasse
+ * Vinted les cherche ensuite et prévient quand une annonce passe dessous.
+ */
+function Chasse({
+  page,
+  toutesLangues,
+  onChassees,
+}: {
+  page: PagePersonnage;
+  toutesLangues: boolean;
+  onChassees: () => void;
+}) {
+  const { budgets } = useCartesSuivies();
+  const [budget, setBudget] = useState(20);
+  const [occupe, setOccupe] = useState(false);
+  const [resultat, setResultat] = useState<{ ajoutees: number; cout: number } | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  const manquantes = page.paliers
+    .flatMap((p) => p.cartes)
+    .filter((c) => c.belle && c.exemplaires === 0 && c.price_eur);
+  const aSuivre = manquantes.filter((c) => !c.suivie && !budgets.has(c.id) && (c.price_eur ?? 0) <= budget);
+  const dejaSuivies = manquantes.filter((c) => c.suivie || budgets.has(c.id)).length;
+  const auDela = manquantes.filter((c) => !c.suivie && !budgets.has(c.id) && (c.price_eur ?? 0) > budget);
+  const cout = aSuivre.reduce((t, c) => t + (c.price_eur ?? 0), 0);
+
+  async function chasser() {
+    setOccupe(true);
+    setErreur(null);
+    try {
+      setResultat(await chasserPersonnage(page.slug, budget, toutesLangues));
+      await rechargerListe();
+      onChassees();
+    } catch (e) {
+      setErreur(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOccupe(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-md border border-amber-300/25 bg-ink-800/50 p-3">
+      <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-amber-200">Chasser ses belles versions</p>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5" role="group" aria-label="Budget par carte">
+        <span className="mr-0.5 text-[11px] text-ink-400">Jusqu&apos;à</span>
+        {BUDGETS_CHASSE.map((b) => (
+          <button
+            key={b}
+            type="button"
+            aria-pressed={b === budget}
+            onClick={() => {
+              setBudget(b);
+              setResultat(null);
+            }}
+            className={`rounded-full border px-2.5 py-0.5 text-xs transition-colors ${
+              b === budget
+                ? "border-ember-500/60 bg-ember-500/15 text-ember-400"
+                : "border-ink-700 text-ink-400 hover:border-ink-600 hover:text-parchment-100"
+            }`}
+          >
+            {formatEur(b, 0)}
+          </button>
+        ))}
+        <span className="text-[11px] text-ink-400">par carte</span>
+      </div>
+
+      {resultat ? (
+        <p className="mt-2 text-xs text-moss-400">
+          ✓ {resultat.ajoutees} carte{resultat.ajoutees > 1 ? "s" : ""} ajoutée{resultat.ajoutees > 1 ? "s" : ""} à{" "}
+          <Link href="/suivi" className="underline underline-offset-2">
+            Ma liste
+          </Link>
+          {resultat.ajoutees > 1
+            ? ", chacune avec sa cote comme budget. La chasse Vinted les cherchera"
+            : ", avec sa cote comme budget. La chasse Vinted la cherchera"}{" "}
+          ; Ma liste te montre les annonces qui passent sous ton budget.
+        </p>
+      ) : (
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <p className="text-xs text-parchment-100/85">
+            {aSuivre.length > 0 ? (
+              <>
+                {aSuivre.length} belle{aSuivre.length > 1 ? "s" : ""} version{aSuivre.length > 1 ? "s" : ""} te manque
+                {aSuivre.length > 1 ? "nt" : ""} à moins de {formatEur(budget, 0)} —{" "}
+                <span className="tabular font-mono">{formatEur(cout)}</span> en tout.
+              </>
+            ) : (
+              <>Aucune belle version à suivre à moins de {formatEur(budget, 0)}.</>
+            )}
+            {dejaSuivies > 0 && (
+              <span className="text-ink-400">
+                {" "}
+                {dejaSuivies} déjà dans Ma liste.
+              </span>
+            )}
+            {auDela.length > 0 && (
+              <span className="text-ink-400">
+                {" "}
+                {auDela.length} au-delà, dès {formatEur(Math.min(...auDela.map((c) => c.price_eur ?? 0)))}.
+              </span>
+            )}
+          </p>
+          {aSuivre.length > 0 && (
+            <button
+              type="button"
+              onClick={chasser}
+              disabled={occupe}
+              className="rounded-md border border-amber-300/50 bg-amber-300/10 px-2.5 py-1 text-xs font-medium text-amber-200 transition-colors hover:bg-amber-300/20 disabled:opacity-60"
+            >
+              {occupe ? "…" : aSuivre.length > 1 ? "☆ Les suivre toutes" : "☆ La suivre"}
+            </button>
+          )}
+        </div>
+      )}
+      {erreur && <p className="mt-2 text-xs text-rust-400">Rien n&apos;a été ajouté. [{erreur}]</p>}
+    </div>
+  );
+}
+
+/**
+ * Ses cartes en vente en ce moment, les meilleures affaires d'abord, chacune
+ * avec la carte qu'elle vend. Les photos sont celles du vendeur.
+ */
+function EnVente({ annonces, onOuvrir }: { annonces: AnnoncePersonnage[]; onOuvrir: (id: number) => void }) {
+  return (
+    <section className="mt-10">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+        <h2 className="font-display text-xl text-parchment-100">En vente en ce moment</h2>
+        <p className="text-xs text-ink-400">Vinted et eBay, les meilleures affaires d&apos;abord · photos du vendeur</p>
+      </div>
+      {annonces.length === 0 ? (
+        <p className="mt-2 text-xs text-ink-400">
+          Aucune de ses cartes dans les annonces collectées en ce moment. Suis ses belles versions : Ma liste les
+          cherchera sur Vinted.
+        </p>
+      ) : (
+        <ul className="mt-3 grid list-none grid-cols-1 gap-2 p-0 md:grid-cols-2">
+          {annonces.map((a) => (
+            <Annonce
+              key={a.id}
+              annonce={a}
+              entete={
+                <button
+                  type="button"
+                  onClick={() => onOuvrir(a.carte.id)}
+                  className="mb-1.5 flex w-full items-baseline justify-between gap-2 border-b border-ink-800 pb-1.5 text-left text-[11px] hover:text-ember-400"
+                  title="Ouvrir la fiche de la carte"
+                >
+                  <span className="min-w-0 truncate text-parchment-100">
+                    <span className="capitalize">{a.carte.version}</span> · {a.carte.card_code}
+                    {a.carte.visuel ? <span className="text-ink-400"> · {a.carte.visuel}</span> : null}
+                  </span>
+                  <span className="shrink-0 text-ink-400">
+                    {a.carte.exemplaires > 0 ? <span className="text-moss-400">✓ tu l&apos;as · </span> : null}
+                    cote {a.carte.price_eur ? formatEur(a.carte.price_eur) : "—"}
+                  </span>
+                </button>
+              }
+            />
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -22,3 +23,19 @@ def un_personnage(slug: str, toutes_langues: bool = Query(False), db: Session = 
     if page is None:
         raise HTTPException(status_code=404, detail="Pas de page pour ce personnage.")
     return page
+
+
+class Chasse(BaseModel):
+    budget_max: float = Field(gt=0, le=100000)
+    toutes_langues: bool = False
+
+
+@router.post("/{slug}/chasse")
+def chasser(slug: str, chasse: Chasse, db: Session = Depends(get_db)):
+    """Ajoute à Ma liste toutes ses belles versions manquantes dans le budget,
+    chacune avec sa cote comme budget : la chasse Vinted les cherchera."""
+    resultat = personnages.chasser_les_belles_versions(db, slug, chasse.budget_max,
+                                                      toutes_langues=chasse.toutes_langues)
+    if resultat is None:
+        raise HTTPException(status_code=404, detail="Pas de page pour ce personnage.")
+    return resultat

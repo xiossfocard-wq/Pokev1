@@ -10,6 +10,7 @@ Une page par figurant n'aiderait personne a construire une belle collection.
 Une carte appartient au personnage reconnu dans son nom, selon les memes
 regles que les idees de collection (graphies francaises et anglaises).
 """
+import math
 import re
 import statistics
 from typing import Dict, List, Optional
@@ -17,7 +18,10 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from app.models import CartePossedee, CarteSuivie, MarketCardPrice
-from app.services import card_catalog, card_themes, recommandations as reco
+from app.services import card_catalog, card_themes, recommandations as reco, suivi
+
+# Combien d'annonces montrer en tete de page : les meilleures affaires.
+ANNONCES_EN_TETE = 8
 
 # Les paliers de prix, du plus accessible au plus rare.
 PALIERS = [
@@ -117,6 +121,7 @@ def page_du_personnage(db: Session, slug: str, toutes_langues: bool = False) -> 
     suivies = {(c.card_code, c.name_slug) for c in db.query(CarteSuivie).all()}
     v30 = reco.variations_30j(db, [p["ligne"] for p in cartes])
     medianes = _medianes_des_semblables(db, None if toutes_langues else "fr")
+    en_vente = card_catalog.compteurs_d_annonces(db, [p["ligne"].id for p in cartes])
 
     def entree(p: dict) -> dict:
         ligne = p["ligne"]
@@ -133,6 +138,7 @@ def page_du_personnage(db: Session, slug: str, toutes_langues: bool = False) -> 
             "variation_30j": h30,
             "ratio_semblables": (ligne.price_eur / mediane
                                  if mediane and ligne.price_eur and p["poids_visuel"] >= 1 else None),
+            "en_vente": en_vente.get(ligne.id, {}).get("listings_count", 0),
         }
 
     entrees = [entree(p) for p in cartes]
@@ -159,8 +165,44 @@ def page_du_personnage(db: Session, slug: str, toutes_langues: bool = False) -> 
         "prix_min": chiffrees[0]["price_eur"] if chiffrees else None,
         "prix_max": chiffrees[-1]["price_eur"] if chiffrees else None,
         "conseils": _conseils(perso["nom"], chiffrees),
+        "annonces": _annonces(db, entrees),
         "paliers": paliers,
     }
+
+
+def _annonces(db: Session, entrees: List[dict]) -> List[dict]:
+    """Ses cartes en vente en ce moment (Vinted, eBay), les meilleures
+    affaires d'abord, chacune avec la carte qu'elle vend."""
+    par_id = {e["id"]: e for e in entrees}
+    annonces = card_catalog.annonces_des_cartes(db, list(par_id), limite=ANNONCES_EN_TETE)
+    for a in annonces:
+        e = par_id[a["card_id"]]
+        a["carte"] = {k: e[k] for k in ("id", "display_name", "card_code", "version", "visuel",
+                                        "price_eur", "image_url", "exemplaires", "suivie")}
+    return annonces
+
+
+def belles_versions_a_chasser(page: dict, budget_max: float) -> List[dict]:
+    """Les belles versions qu'on n'a pas, qu'on ne suit pas encore, et dont
+    la cote tient dans le budget — de la moins chere a la plus chere."""
+    return [c for palier in page["paliers"] for c in palier["cartes"]
+            if c["belle"] and not c["exemplaires"] and not c["suivie"]
+            and c["price_eur"] and c["price_eur"] <= budget_max]
+
+
+def chasser_les_belles_versions(db: Session, slug: str, budget_max: float,
+                                toutes_langues: bool = False) -> Optional[dict]:
+    """Ajoute a Ma liste toutes les belles versions manquantes du personnage
+    dans le budget, chacune avec sa cote (arrondie a l'euro superieur) comme
+    budget : la chasse Vinted les cherchera. None si le personnage n'a pas
+    de page."""
+    page = page_du_personnage(db, slug, toutes_langues)
+    if page is None:
+        return None
+    cartes = belles_versions_a_chasser(page, budget_max)
+    for c in cartes:
+        suivi.suivre(db, c["id"], float(math.ceil(c["price_eur"])))
+    return {"ajoutees": len(cartes), "cout": round(sum(c["price_eur"] for c in cartes), 2)}
 
 
 def _euros(valeur: float) -> str:

@@ -14,10 +14,11 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.database import Base
-from app.models import MarketCardPrice
-from app.routers.personnages import un_personnage
+from app.models import CarteSuivie, Listing, ListingStatus, MarketCardPrice, SourcePlatform
+from app.routers.personnages import Chasse, chasser, un_personnage
 from app.services import collection, suivi
-from app.services.personnages import liste_des_personnages, page_du_personnage, slug_de
+from app.services.personnages import (chasser_les_belles_versions, liste_des_personnages,
+                                     page_du_personnage, slug_de)
 from app.services.recommandations import analyse_de_la_carte, enregistrer_gouts, recommander
 
 
@@ -160,6 +161,70 @@ class TestConseils(BasePersonnages):
         self.assertEqual((projet["nature"], projet["slug"]), ("personnage", "boa-hancock"))
         self.assertIsNotNone(page_du_personnage(self.db, projet["slug"]))
 
+
+
+class TestEnVente(BasePersonnages):
+    def annonce(self, carte, prix, score, **champs):
+        self.n += 1
+        a = Listing(source=SourcePlatform.VINTED, external_id=str(self.n), title=f"annonce {self.n}",
+                    description="", url=f"https://vinted.test/{self.n}", price=prix, shipping_price=0.0,
+                    currency="EUR", photo_urls=[], matched_card_id=carte.id, deal_score=score, **champs)
+        self.db.add(a)
+        self.db.commit()
+        return a
+
+    def test_ses_cartes_en_vente_les_meilleures_affaires_d_abord(self):
+        cartes = self.shanks()
+        moyenne = self.annonce(cartes["parallele"], 7.0, 55.0)
+        bonne = self.annonce(cartes["leader"], 30.0, 82.0)
+        self.annonce(self.carte("Nami", 6.0, parallele=True), 4.0, 95.0)  # un autre personnage
+        page = page_du_personnage(self.db, "shanks")
+        self.assertEqual([a["id"] for a in page["annonces"]], [bonne.id, moyenne.id])
+        self.assertEqual(page["annonces"][0]["carte"]["id"], cartes["leader"].id)
+        self.assertEqual(page["annonces"][0]["carte"]["version"], "parallèle")
+
+    def test_les_annonces_cachees_ne_reviennent_pas(self):
+        cartes = self.shanks()
+        self.annonce(cartes["parallele"], 7.0, 90.0, manual_status="hidden")
+        self.annonce(cartes["parallele"], 7.0, 90.0, status=ListingStatus.UNAVAILABLE)
+        visible = self.annonce(cartes["parallele"], 7.0, 60.0)
+        page = page_du_personnage(self.db, "shanks")
+        self.assertEqual([a["id"] for a in page["annonces"]], [visible.id])
+        toutes = {c["id"]: c for p in page["paliers"] for c in p["cartes"]}
+        self.assertEqual(toutes[cartes["parallele"].id]["en_vente"], 1)
+        self.assertEqual(toutes[cartes["sp"].id]["en_vente"], 0)
+
+
+class TestChasse(BasePersonnages):
+    def suivies(self):
+        return {(s.card_code, s.name_slug): s.prix_max for s in self.db.query(CarteSuivie).all()}
+
+    def test_suivre_ses_belles_versions_manquantes_dans_le_budget(self):
+        cartes = self.shanks()
+        # 8 EUR (parallele) et 45 EUR (leader) : seule la premiere tient dans 20 EUR.
+        # La commune n'est pas une belle version ; la SP depasse le budget.
+        resultat = chasser_les_belles_versions(self.db, "shanks", 20.0)
+        self.assertEqual(resultat, {"ajoutees": 1, "cout": 8.0})
+        p = cartes["parallele"]
+        self.assertEqual(self.suivies(), {(p.card_code, p.name_slug): 8.0})
+
+    def test_ni_ce_qu_on_a_ni_ce_qu_on_suit_deja(self):
+        cartes = self.shanks()
+        collection.ajouter(self.db, card_id=cartes["parallele"].id)
+        suivi.suivre(self.db, cartes["leader"].id, 40.0)
+        self.assertEqual(chasser_les_belles_versions(self.db, "shanks", 100.0)["ajoutees"], 0)
+        l = cartes["leader"]
+        self.assertEqual(self.suivies()[(l.card_code, l.name_slug)], 40.0)  # budget choisi conserve
+
+    def test_la_cote_arrondie_devient_le_budget(self):
+        c = self.carte("Shanks", 6.18, parallele=True)
+        chasser("shanks", Chasse(budget_max=10), self.db)
+        self.assertEqual(self.suivies(), {(c.card_code, c.name_slug): 7.0})
+
+    def test_un_personnage_sans_page(self):
+        with self.assertRaises(HTTPException) as e:
+            chasser("soldat", Chasse(budget_max=10), self.db)
+        self.assertEqual(e.exception.status_code, 404)
 
 
 class TestSlug(unittest.TestCase):

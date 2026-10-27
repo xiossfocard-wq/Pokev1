@@ -68,6 +68,14 @@ export default function TuileCarte({ carte, onOuvrir }: { carte: CartePersonnage
               {carte.visuel}
             </span>
           )}
+          {carte.en_vente > 0 && (
+            <span
+              className="rounded bg-ember-500/15 px-1.5 py-0.5 text-[10px] font-medium text-ember-400"
+              title="Annonces en vente en ce moment : ouvre la fiche pour les voir"
+            >
+              {carte.en_vente} en vente
+            </span>
+          )}
           {hausse >= 0.1 && (
             <span className="rounded bg-moss-500/20 px-1.5 py-0.5 text-[10px] font-medium text-moss-400">
               ▲ {Math.round(hausse * 100)} %

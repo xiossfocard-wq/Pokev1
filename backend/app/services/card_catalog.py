@@ -495,11 +495,20 @@ def annonces_de_la_carte(db: Session, card_id: int, limite: int = 20) -> List[di
     l'exemplaire reel qui est en vente, avec son centrage, ses bords et son
     etat.
     """
+    return annonces_des_cartes(db, [card_id], limite)
+
+
+def annonces_des_cartes(db: Session, card_ids: List[int], limite: int = 20) -> List[dict]:
+    """Les annonces en vente pour l'une de ces cartes, les meilleures
+    affaires d'abord — toutes les cartes d'un personnage, par exemple.
+    Chaque annonce dit pour quelle carte (card_id)."""
     from app.models import Listing  # local : evite un cycle
 
+    if not card_ids:
+        return []
     seuil = load_app_settings(db).get("min_listing_price") or 0.0
 
-    requete = db.query(Listing).filter(Listing.matched_card_id == card_id)
+    requete = db.query(Listing).filter(Listing.matched_card_id.in_(card_ids))
     lignes = (
         _annonces_visibles(requete, seuil)
         .order_by(nullslast(Listing.deal_score.desc()))
@@ -510,6 +519,7 @@ def annonces_de_la_carte(db: Session, card_id: int, limite: int = 20) -> List[di
     return [
         {
             "id": ligne.id,
+            "card_id": ligne.matched_card_id,
             "source": ligne.source.value if ligne.source else None,
             "title": ligne.title,
             "url": ligne.url,

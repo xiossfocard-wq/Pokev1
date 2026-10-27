@@ -822,11 +822,23 @@ export interface CartePersonnage extends CatalogCard {
   variation_7j: number | null;
   variation_30j: number | null;
   ratio_semblables: number | null;
+  // Combien d'annonces la vendent en ce moment (Vinted, eBay).
+  en_vente: number;
+}
+
+// Une annonce en vente pour l'une de ses cartes, avec la carte qu'elle vend.
+export interface AnnoncePersonnage extends CardListing {
+  card_id: number;
+  carte: Pick<
+    CartePersonnage,
+    "id" | "display_name" | "card_code" | "version" | "visuel" | "price_eur" | "image_url" | "exemplaires" | "suivie"
+  >;
 }
 
 export interface PagePersonnage extends Omit<PersonnageResume, "image_url"> {
   aime: boolean;
   conseils: { cle: string; titre: string; texte: string; carte: CartePersonnage }[];
+  annonces: AnnoncePersonnage[];
   paliers: { cle: string; titre: string; explication: string; cartes: CartePersonnage[] }[];
 }
 
@@ -838,4 +850,16 @@ export function fetchPersonnage(slug: string, toutesLangues = false): Promise<Pa
   return apiFetch<PagePersonnage>(
     `/api/personnages/${encodeURIComponent(slug)}?toutes_langues=${toutesLangues ? "true" : "false"}`
   );
+}
+
+// Suit d'un coup ses belles versions manquantes dans le budget.
+export function chasserPersonnage(
+  slug: string,
+  budgetMax: number,
+  toutesLangues = false
+): Promise<{ ajoutees: number; cout: number }> {
+  return apiFetch(`/api/personnages/${encodeURIComponent(slug)}/chasse`, {
+    method: "POST",
+    body: JSON.stringify({ budget_max: budgetMax, toutes_langues: toutesLangues }),
+  });
 }

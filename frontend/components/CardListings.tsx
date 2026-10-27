@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { CardListing, CardListingsResult, fetchCardListings } from "@/lib/api";
 import { formatEur } from "@/lib/format";
 import { useModeEvaluation } from "@/lib/mode";
@@ -54,7 +54,7 @@ function Score({ score, douteux }: { score: number | null; douteux: boolean }) {
   );
 }
 
-function Annonce({ annonce }: { annonce: CardListing }) {
+export function Annonce({ annonce, entete }: { annonce: CardListing; entete?: ReactNode }) {
   const mode = useModeEvaluation();
   const [index, setIndex] = useState(0);
   const photos = annonce.photo_urls ?? [];
@@ -63,6 +63,7 @@ function Annonce({ annonce }: { annonce: CardListing }) {
 
   return (
     <li className="rounded-sm border border-ink-700 bg-ink-950 p-2">
+      {entete}
       <div className="flex gap-2.5">
         <div className="relative h-[94px] w-[67px] shrink-0 overflow-hidden rounded-sm border border-ink-700 bg-ink-900">
           {photo ? (
