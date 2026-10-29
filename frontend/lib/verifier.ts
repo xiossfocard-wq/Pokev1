@@ -62,7 +62,7 @@ export interface CarteAVerifier {
   /** Code complet, s'il est connu : « OP14-027 ». */
   code?: string | null;
   /** Le nom de la fiche ou le titre de l'annonce. */
-  nom: string;
+  nom: string | null | undefined;
   /** D'autres textes où trouver un code ou l'extension (« OP14 ») : le nom
    *  de l'extension, le titre de l'annonce. */
   indices?: string | null;
@@ -82,7 +82,9 @@ export interface Verification {
 
 export const CARDNEXUS_URL = "https://cardnexus.com/fr/explore/onepiece";
 
-export function verification(carte: CarteAVerifier): Verification {
+export function verification(entree: CarteAVerifier): Verification {
+  // Des annonces anciennes n'ont pas toujours de nom de carte : jamais de plantage.
+  const carte = { ...entree, nom: entree.nom ?? "" };
   const code =
     (carte.code ?? carte.nom.match(CODE)?.[0] ?? carte.indices?.match(CODE)?.[0] ?? "").toUpperCase() || null;
   const nom = nomNettoye(carte.nom);

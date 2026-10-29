@@ -122,7 +122,7 @@ export default function ListingCard({
     identifiee
       ? {
           code: detail.matched_code,
-          nom: detail.matched_card,
+          nom: detail.matched_card || listing.title,
           indices: `${detail.series_name ?? ""} ${listing.title}`,
           nameSlug: detail.matched_name_slug,
         }
