@@ -204,6 +204,11 @@ class Settings:
         ]
     )
 
+    # --- CardNexus (deuxième référence de prix, optionnelle) ---
+    # Clé personnelle (cnk_live_…) créée dans son compte CardNexus. Absente :
+    # CardNexus est simplement ignoré.
+    cardnexus_api_key: Optional[str] = field(default_factory=lambda: os.environ.get("CARDNEXUS_API_KEY"))
+
     # --- Anthropic (scoring qualité par vision) ---
     anthropic_api_key: Optional[str] = field(default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY"))
     vision_model: str = field(default_factory=lambda: os.environ.get("VISION_MODEL", "claude-sonnet-4-6"))

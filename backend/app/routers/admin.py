@@ -12,6 +12,7 @@ from app.pipeline import (
 from app.core.language_filter import detect_language
 from app.collectors.vinted_scraper import VintedScraper
 from app.collectors.zebradex_prices import ZebraDexClient
+from app.collectors.cardnexus import ClientCardNexus
 from app.services.price_index import (
     sync_series_batch, refresh_series_catalog, index_stats, find_price_for_listing,
 )
@@ -305,6 +306,16 @@ def debug_vinted_annonce(url: Optional[str] = None):
         raise HTTPException(status_code=400, detail="Adresse attendue : https://www.vinted.fr/items/<numéro>…")
     scraper = VintedScraper(request_delay_seconds=settings.vinted_request_delay_seconds)
     return scraper.diagnostic_annonce(url)
+
+
+@router.get("/debug-cardnexus")
+def debug_cardnexus(code: str = Query("OP01-120", pattern=r"^[A-Za-z]{2,3}\d{2}-\d{3}$"),
+                    nom: str = Query("Shanks", min_length=2, max_length=60)):
+    """Diagnostic lecture seule de l'API CardNexus (cle CARDNEXUS_API_KEY) :
+    la carte cherchee par code puis par nom, et pour le premier produit
+    trouve, ses prix et ses ventes. Rend la forme des reponses, abregee,
+    jamais la cle."""
+    return ClientCardNexus().diagnostic(code.upper(), nom)
 
 
 @router.get("/debug-zebradex")
