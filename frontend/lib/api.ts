@@ -891,3 +891,30 @@ export function chasserPersonnage(
     body: JSON.stringify({ budget_max: budgetMax, toutes_langues: toutesLangues }),
   });
 }
+
+// ---------------------------------------------------------------------------
+// CardNexus : une deuxième référence de prix, et des ventes conclues.
+// ---------------------------------------------------------------------------
+
+export interface AvisCardNexus {
+  configure: boolean;
+  trouve?: boolean;
+  raison?: string;
+  nom?: string;
+  extension?: string;
+  url?: string;
+  europe?: {
+    plus_bas: number | null;
+    annonces: number;
+    plus_bas_langue: number | null;
+    annonces_langue: number;
+    cardmarket?: { low?: number; mid?: number; marketValue?: number };
+  };
+  ventes_30j?: number;
+  ventes_plus?: boolean;
+  ventes_mediane?: number | null;
+}
+
+export function fetchAvisCardNexus(cardId: number): Promise<AvisCardNexus> {
+  return apiFetch<AvisCardNexus>(`/api/cards/${cardId}/cardnexus`);
+}

@@ -143,6 +143,18 @@ def cartes_en_vogue(
     }
 
 
+@router.get("/{card_id}/cardnexus")
+def avis_cardnexus_de_la_carte(card_id: int, db: Session = Depends(get_db)):
+    """Ce que CardNexus dit de cette carte : la moins chère de ses annonces
+    en Europe, combien il y en a, ses ventes sur 30 jours, sa page.
+    {"configure": false} sans clé CARDNEXUS_API_KEY."""
+    from app.services.cardnexus_carte import avis_cardnexus  # local : n'importe le client qu'au besoin
+    carte = db.query(MarketCardPrice).filter(MarketCardPrice.id == card_id).first()
+    if carte is None:
+        raise HTTPException(status_code=404, detail="Carte introuvable.")
+    return avis_cardnexus(carte)
+
+
 @router.get("/{card_id}/listings")
 def annonces_de_la_carte(card_id: int, limit: int = Query(20, ge=1, le=100),
                          db: Session = Depends(get_db)):

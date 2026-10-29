@@ -7,6 +7,7 @@ import CardListings from "@/components/CardListings";
 import SuiviCarte from "@/components/SuiviCarte";
 import CollectionCarte from "@/components/CollectionCarte";
 import LiensVerification from "@/components/LiensVerification";
+import BlocCardNexus from "@/components/BlocCardNexus";
 import Raisons from "@/components/Raisons";
 import { CatalogCardDetail, fetchCardDetail } from "@/lib/api";
 import { formatEur, formatFourchette, formatNombre } from "@/lib/format";
@@ -191,6 +192,8 @@ export default function CardDetailPanel({
                 />
               </div>
             </div>
+
+            <BlocCardNexus cardId={carte.id} cote={carte.price_eur} langue={carte.language ?? null} />
 
             {carte.analyse?.avis && (
               // Ce qu'un connaisseur en dirait : les mêmes règles que les idées de collection.
