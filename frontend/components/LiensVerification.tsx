@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { fetchLienCardNexus } from "@/lib/api";
 import { CARDNEXUS_URL, type Verification } from "@/lib/verifier";
 
 /**
@@ -30,6 +31,26 @@ export default function LiensVerification({
     }
   }
 
+  // L'onglet s'ouvre tout de suite (sinon le navigateur bloque la fenêtre),
+  // puis va sur la page de la carte quand le serveur l'a trouvée via l'API
+  // CardNexus. Faute de page trouvée : la recherche est copiée, à coller.
+  async function ouvrirCardNexus(e: React.MouseEvent) {
+    e.preventDefault();
+    const onglet = window.open("about:blank", "_blank");
+    let url: string | null = null;
+    try {
+      url = (await fetchLienCardNexus(verification.cardnexus)).url;
+    } catch {
+      url = null;
+    }
+    if (!url) await copier();
+    if (onglet) {
+      onglet.opener = null; // la page ouverte ne peut pas agir sur la nôtre
+      onglet.location.href = url ?? CARDNEXUS_URL;
+    }
+    else window.open(url ?? CARDNEXUS_URL, "_blank", "noopener");
+  }
+
   return (
     <>
       <a
@@ -51,9 +72,9 @@ export default function LiensVerification({
         href={CARDNEXUS_URL}
         target="_blank"
         rel="noopener noreferrer"
-        onClick={copier}
+        onClick={ouvrirCardNexus}
         className={classeBouton}
-        title={`Copie « ${cardnexusTexte} » et ouvre CardNexus : colle-le dans sa recherche`}
+        title={`Ouvre la page de la carte sur CardNexus (sinon, copie « ${cardnexusTexte} » à coller dans sa recherche)`}
       >
         CardNexus ↗
       </a>

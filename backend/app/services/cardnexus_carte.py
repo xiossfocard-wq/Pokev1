@@ -37,6 +37,32 @@ def _slug(texte: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", texte.lower().replace("'", "").replace("’", "")).strip("-")
 
 
+def url_produit(produit: dict) -> str:
+    """La page d'un produit, sur le modele de ses pages publiques :
+    /explore/onepiece/<extension>/card/<nameSlug>-<id>."""
+    extension = (produit.get("expansion") or {}).get("name") or ""
+    return (f"https://cardnexus.com/fr/explore/onepiece/{_slug(extension)}"
+            f"/card/{produit.get('nameSlug')}-{produit.get('id')}")
+
+
+def lien_par_recherche(texte: str, code: Optional[str] = None,
+                       client: Optional[ClientCardNexus] = None) -> Optional[str]:
+    """La page CardNexus d'une carte qu'on n'a pas identifiee : par son code
+    s'il est connu, sinon par son nom ; le premier resultat original."""
+    client = client or ClientCardNexus()
+    if not client.configure:
+        return None
+    try:
+        statut, recherche = client.chercher(**({"printNumber": code} if code else {"name": texte}), limit=10)
+    except ErreurCardNexus:
+        return None
+    produits = [p for p in ((recherche or {}).get("data") or []) if isinstance(p, dict)] if statut == 200 else []
+    originaux = [p for p in produits if not _HORS_SERIE.search(p.get("name") or "")] or produits
+    # L'impression ordinaire d'abord : sans indice de version, c'est la plus probable.
+    originaux.sort(key=lambda p: bool(p.get("variant")))
+    return url_produit(originaux[0]) if originaux else None
+
+
 def choisir_produit(produits: List[dict], carte: MarketCardPrice) -> Optional[dict]:
     """L'impression CardNexus qui correspond a notre fiche, ou None."""
     serie = _norm((carte.card_code or "").split("-")[0])
@@ -133,8 +159,7 @@ def avis_cardnexus(carte: MarketCardPrice, client: Optional[ClientCardNexus] = N
                 "configure": True, "trouve": True,
                 "nom": produit.get("name"),
                 "extension": expansion.get("name"),
-                "url": (f"https://cardnexus.com/fr/explore/onepiece/{_slug(expansion.get('name') or '')}"
-                        f"/card/{produit.get('nameSlug')}-{pid}"),
+                "url": url_produit(produit),
                 "europe": _prix_europe(prix if isinstance(prix, dict) else {}, carte.language),
                 "ventes_30j": len(liste),
                 "ventes_plus": bool(((ventes or {}).get("pagination") or {}).get("nextCursor"))

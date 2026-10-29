@@ -918,3 +918,12 @@ export interface AvisCardNexus {
 export function fetchAvisCardNexus(cardId: number): Promise<AvisCardNexus> {
   return apiFetch<AvisCardNexus>(`/api/cards/${cardId}/cardnexus`);
 }
+
+// La page CardNexus d'une carte (sa version exacte si elle est au catalogue).
+export function fetchLienCardNexus(c: { cardId: number | null; code: string | null; nom: string }): Promise<{ url: string | null }> {
+  const qs = new URLSearchParams();
+  if (c.cardId != null) qs.set("card_id", String(c.cardId));
+  if (c.code) qs.set("code", c.code);
+  if (c.nom) qs.set("texte", c.nom.slice(0, 120));
+  return apiFetch(`/api/cards/cardnexus-lien?${qs.toString()}`);
+}

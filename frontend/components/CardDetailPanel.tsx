@@ -187,6 +187,7 @@ export default function CardDetailPanel({
                     nom: carte.display_name,
                     indices: carte.series_name,
                     nameSlug: carte.name_slug,
+                    cardId: carte.id,
                   })}
                   classeBouton="rounded-md border border-ink-700 px-2.5 py-1 text-[11px] font-medium text-parchment-100 transition-colors hover:border-ember-500 hover:text-ember-400"
                 />

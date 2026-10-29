@@ -143,6 +143,26 @@ def cartes_en_vogue(
     }
 
 
+@router.get("/cardnexus-lien")
+def lien_cardnexus(card_id: Optional[int] = Query(None), texte: str = Query("", max_length=120),
+                   code: Optional[str] = Query(None, pattern=r"^[A-Za-z]{2,3}\d{2}-\d{3}$"),
+                   db: Session = Depends(get_db)):
+    """La page CardNexus d'une carte : celle de sa version exacte si la carte
+    est au catalogue, sinon la premiere trouvee par code ou par nom.
+    {"url": null} si rien n'est trouve ou sans cle CardNexus."""
+    from app.services.cardnexus_carte import avis_cardnexus, lien_par_recherche
+    if card_id is not None:
+        carte = db.query(MarketCardPrice).filter(MarketCardPrice.id == card_id).first()
+        if carte is not None:
+            avis = avis_cardnexus(carte)
+            if avis.get("url"):
+                return {"url": avis["url"]}
+            code = code or carte.card_code
+    if not texte.strip() and not code:
+        return {"url": None}
+    return {"url": lien_par_recherche(texte.strip(), code.upper() if code else None)}
+
+
 @router.get("/{card_id}/cardnexus")
 def avis_cardnexus_de_la_carte(card_id: int, db: Session = Depends(get_db)):
     """Ce que CardNexus dit de cette carte : la moins chère de ses annonces

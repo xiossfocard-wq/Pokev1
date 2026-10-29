@@ -69,6 +69,8 @@ export interface CarteAVerifier {
   /** « shanks-parallele-1 » : donne la version à choisir. Absent si la
    *  carte n'est pas identifiée. */
   nameSlug?: string | null;
+  /** La fiche du catalogue, si on la connaît : CardNexus ouvre alors sa version exacte. */
+  cardId?: number | null;
 }
 
 export interface Verification {
@@ -78,6 +80,8 @@ export interface Verification {
   version: string | null;
   /** À coller dans la recherche de CardNexus : le nom et le code. */
   cardnexusTexte: string;
+  /** Ce qui permet au serveur de trouver la page CardNexus de la carte. */
+  cardnexus: { cardId: number | null; code: string | null; nom: string };
 }
 
 export const CARDNEXUS_URL = "https://cardnexus.com/fr/explore/onepiece";
@@ -103,5 +107,6 @@ export function verification(entree: CarteAVerifier): Verification {
     cardmarketTexte,
     version,
     cardnexusTexte: [nom, code ?? ext].filter(Boolean).join(" ") || carte.nom,
+    cardnexus: { cardId: carte.cardId ?? null, code, nom: nom || carte.nom },
   };
 }

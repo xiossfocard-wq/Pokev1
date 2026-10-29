@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.models import MarketCardPrice
 from app.services import cardnexus_carte
-from app.services.cardnexus_carte import avis_cardnexus, choisir_produit
+from app.services.cardnexus_carte import avis_cardnexus, choisir_produit, lien_par_recherche
 
 ORIGINALE = {"id": 12653, "name": "Shanks", "nameSlug": "shanks", "productType": "card",
              "expansion": {"name": "Romance Dawn", "code": "OP01"}, "printNumber": "OP01-120"}
@@ -82,6 +82,18 @@ class TestAvis(unittest.TestCase):
         class SansCle:
             configure = False
         self.assertEqual(avis_cardnexus(carte(), SansCle()), {"configure": False})
+
+
+class TestLien(unittest.TestCase):
+    def test_par_recherche_jamais_une_promo(self):
+        client = FauxClient()
+        self.assertEqual(lien_par_recherche("Shanks", "OP01-120", client),
+                         "https://cardnexus.com/fr/explore/onepiece/romance-dawn/card/shanks-12653")
+
+    def test_sans_cle(self):
+        class SansCle:
+            configure = False
+        self.assertIsNone(lien_par_recherche("Shanks", None, SansCle()))
 
 
 if __name__ == "__main__":

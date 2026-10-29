@@ -125,6 +125,7 @@ export default function ListingCard({
           nom: detail.matched_card || listing.title,
           indices: `${detail.series_name ?? ""} ${listing.title}`,
           nameSlug: detail.matched_name_slug,
+          cardId: listing.matched_card_id ?? null,
         }
       : { nom: listing.title }
   );
