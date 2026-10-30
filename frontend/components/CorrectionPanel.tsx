@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ajouterExemplaire, correctListing, type CorrectionAction, type Etat, type Listing } from "@/lib/api";
 import FormulaireExemplaire from "./FormulaireExemplaire";
 import LiensVerification from "./LiensVerification";
+import ComparaisonCardNexus from "./ComparaisonCardNexus";
 import { formatEur } from "@/lib/format";
 import type { Verification } from "@/lib/verifier";
 
@@ -126,6 +127,13 @@ export default function CorrectionPanel({
         <a href={searchUrl} target="_blank" rel="noopener noreferrer" className={BTN_QUIET}>
           Recherche Google ↗
         </a>
+        {listing.matched_card_id != null && (
+          <ComparaisonCardNexus
+            cardId={listing.matched_card_id}
+            cout={listing.purchase_cost_eur ?? listing.price + (listing.shipping_price ?? 0)}
+            classeBouton={BTN_QUIET}
+          />
+        )}
       </div>
 
       <div className="mt-2.5 border-t border-ink-800 pt-2.5">
